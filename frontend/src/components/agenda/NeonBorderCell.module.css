@@ -1,0 +1,91 @@
+/* ═══════════════════════════════════════════════════════════════
+   NeonBorderCell.module.css
+   Efecto de punto verde neón que recorre el borde en hover.
+   Funciona con CSS offset-path + @keyframes (sin JS, 0 deps extra).
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 1 ── Contenedor ────────────────────────────────────────────── */
+/* Necesita position:relative para que el overlay se ancle a él. */
+/* overflow:visible permite que el punto sobresalga del borde.   */
+.cell {
+  position: relative;
+  overflow: visible;
+}
+
+/* 2 ── Overlay transparente ──────────────────────────────────── */
+/* Rellena exactamente el área de la celda.                      */
+/* El punto usará SU borde como camino (offset-path: inset(0)).  */
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* no interfiere con clicks */
+  border-radius: inherit;
+  overflow: visible;
+  z-index: 20;
+}
+
+/* 3 ── Keyframe: viaje 0 % → 100 % del perímetro ────────────── */
+@keyframes orbit {
+  from { offset-distance:   0%; }
+  to   { offset-distance: 100%; }
+}
+
+/* 4 ── El punto neón ─────────────────────────────────────────── */
+.dot {
+  /* Tamaño: lo suficientemente visible sin ser enorme */
+  position: absolute;
+  width:  8px;
+  height: 8px;
+  border-radius: 50%;
+
+  /* Color base verde */
+  background: #22c55e;
+
+  /* Glow multicapa: anillo interno, corona media y halo exterior */
+  box-shadow:
+    0 0  4px  2px #22c55e,
+    0 0 12px  5px rgba(34, 197, 94, 0.70),
+    0 0 26px 10px rgba(34, 197, 94, 0.30),
+    0 0 44px 16px rgba(34, 197, 94, 0.10);
+
+  /* ── Ruta del punto: el perímetro del overlay ─────────────── */
+  /* inset(0 round X) = rectángulo redondeado con border-radius X */
+  /* CSS var --r se inyecta inline desde JSX según rounded-xl     */
+  offset-path: inset(0 round var(--neon-radius, 12px));
+
+  /* El CENTRO geométrico del punto sigue la ruta               */
+  /* → el punto queda mitad dentro / mitad fuera del borde      */
+  offset-anchor: 50% 50%;
+
+  /* Comienza al inicio de la ruta */
+  offset-distance: 0%;
+
+  /* Velocidad configurable via CSS var; default 1.8 s           */
+  animation: orbit var(--neon-speed, 1.8s) linear infinite;
+
+  /* Delegamos transform al GPU para animación suave sin jank    */
+  will-change: offset-distance;
+}
+
+/* 5 ── Trailing glow: copia más grande y rezagada ───────────── */
+/* Da sensación de "estela" detrás del punto principal.          */
+.dotTrail {
+  position: absolute;
+  width:  14px;
+  height: 14px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    0 0 18px  8px rgba(34, 197, 94, 0.35),
+    0 0 36px 14px rgba(34, 197, 94, 0.12);
+
+  offset-path: inset(0 round var(--neon-radius, 12px));
+  offset-anchor: 50% 50%;
+  offset-distance: 0%;
+
+  /* Va ligeramente por detrás del punto principal              */
+  animation: orbit var(--neon-speed, 1.8s) linear infinite;
+  animation-delay: -0.12s; /* retraso = sensación de estela     */
+
+  will-change: offset-distance;
+}

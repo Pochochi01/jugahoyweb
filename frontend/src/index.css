@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* smooth scroll global */
+    scroll-behavior: smooth;
+  }
+  h1, h2, h3, h4, h5, h6 { @apply font-semibold tracking-tight; }
+
+  /* scrollbar dark */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #060a12; }
+  ::-webkit-scrollbar-thumb { background: #1e2a3d; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #22c55e44; }
+}
+
+@layer components {
+
+  /* ── botones ── */
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-2.5 rounded-lg font-semibold
+           hover:bg-primary-600 active:scale-95
+           transition-all duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-secondary text-white px-6 py-2.5 rounded-lg font-semibold
+           hover:opacity-90 transition-all duration-200;
+  }
+  .btn-outline {
+    @apply border border-border text-foreground px-6 py-2.5 rounded-lg font-semibold
+           hover:border-primary hover:text-primary
+           transition-all duration-200;
+  }
+
+  /* ── card oscura ── */
+  .card {
+    @apply bg-card rounded-xl border border-border p-6
+           shadow-[0_2px_20px_rgba(0,0,0,0.4)];
+  }
+
+  /* ── inputs dark ── */
+  .input {
+    @apply w-full bg-input border border-border rounded-lg px-3 py-2.5 text-sm
+           text-foreground placeholder-muted-foreground
+           focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
+           transition-all duration-150;
+  }
+  .label {
+    @apply text-sm font-medium text-muted-foreground mb-1 block;
+  }
+
+  /* ── badges ── */
+  .badge-green  { @apply bg-green-500/15  text-green-400  text-xs font-medium px-2.5 py-0.5 rounded-full; }
+  .badge-red    { @apply bg-red-500/15    text-red-400    text-xs font-medium px-2.5 py-0.5 rounded-full; }
+  .badge-yellow { @apply bg-yellow-500/15 text-yellow-400 text-xs font-medium px-2.5 py-0.5 rounded-full; }
+  .badge-blue   { @apply bg-blue-500/15   text-blue-400   text-xs font-medium px-2.5 py-0.5 rounded-full; }
+
+  /* ── panel de sección ── */
+  .section-dark { @apply bg-background py-20; }
+  .section-card { @apply bg-card py-20; }
+}
+
+@layer utilities {
+  /* glass card effect */
+  .glass {
+    background: rgba(13, 18, 32, 0.7);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  /* glow effect para botones primarios */
+  .glow-green {
+    box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
+  }
+  .glow-green:hover {
+    box-shadow: 0 0 40px rgba(34, 197, 94, 0.55);
+  }
+}
