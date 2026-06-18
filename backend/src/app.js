@@ -23,6 +23,7 @@ const googleAuthRoutes = require('./routes/googleAuth');
 const phoneAuthRoutes  = require('./routes/phoneAuth');
 const contactRoutes    = require('./routes/contact');
 const termsRoutes      = require('./routes/terms');
+const chatbotRoutes    = require('./routes/chatbot');
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use('/api/admin',         adminRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/contact',       contactRoutes);  // POST /api/contact
 app.use('/api/terms',         termsRoutes);    // GET /api/terms, POST /api/terms/accept
+app.use('/api/chatbot',       chatbotRoutes);  // chatbotSkill — GET/POST /api/chatbot/*
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
