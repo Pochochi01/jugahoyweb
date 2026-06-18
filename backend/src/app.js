@@ -25,18 +25,42 @@ const contactRoutes    = require('./routes/contact');
 const termsRoutes      = require('./routes/terms');
 const chatbotRoutes    = require('./routes/chatbot');
 
-const app = express();
+const app    = express();
+const isProd = process.env.NODE_ENV === 'production';
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
-app.use(express.json());
+// ── CORS ──────────────────────────────────────────────────────
+// FRONTEND_URL puede ser un único origen o varios separados por coma:
+//   desarrollo:  http://localhost:5173
+//   producción:  https://jugahoy.com.ar,https://www.jugahoy.com.ar
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Permitir peticiones sin origin (apps móviles, curl, webhooks de Meta)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origen no permitido → ${origin}`));
+  },
+  credentials: true,
+}));
+
+// ── Parsers ───────────────────────────────────────────────────
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// ── Passport ──────────────────────────────────────────────────
 app.use(passport.initialize());
+
+// ── Archivos estáticos: uploads ───────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// ── Montaje de rutas ──────────────────────────────────────────
+// ── API routes ────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
-app.use('/api/auth', googleAuthRoutes);  // GET /api/auth/google, /api/auth/google/callback
-app.use('/api/auth', phoneAuthRoutes);   // POST /api/auth/phone/send, /api/auth/phone/verify
+app.use('/api/auth', googleAuthRoutes);   // GET /api/auth/google, /api/auth/google/callback
+app.use('/api/auth', phoneAuthRoutes);    // POST /api/auth/phone/send, /api/auth/phone/verify
 app.use('/api/complexes',     complexRoutes);
 app.use('/api/agenda',        agendaRoutes);
 app.use('/api/operations',    operationsRoutes);
@@ -49,13 +73,32 @@ app.use('/api/public',        publicRoutes);
 app.use('/api/users',         usersRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/notifications', notificationsRoutes);
-app.use('/api/contact',       contactRoutes);  // POST /api/contact
-app.use('/api/terms',         termsRoutes);    // GET /api/terms, POST /api/terms/accept
-app.use('/api/chatbot',       chatbotRoutes);  // chatbotSkill — GET/POST /api/chatbot/*
+app.use('/api/contact',       contactRoutes);
+app.use('/api/terms',         termsRoutes);
+app.use('/api/chatbot',       chatbotRoutes);
 
-app.use((err, req, res, next) => {
+// ── Frontend estático (modo mismo-servidor) ───────────────────
+// Activar con SERVE_FRONTEND=true en .env.production cuando el frontend
+// y el backend corren en el mismo proceso (un solo puerto público).
+// El build del frontend debe estar en ../frontend/dist (npm run build desde /frontend).
+if (isProd && process.env.SERVE_FRONTEND === 'true') {
+  const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  app.use(express.static(frontendDist));
+  // Todas las rutas no-API devuelven el index.html (React Router client-side)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
+// ── Manejador global de errores ───────────────────────────────
+app.use((err, req, res, _next) => {
+  // En producción no exponer el stack trace
+  if (isProd) {
+    console.error(`[ERROR] ${req.method} ${req.path} →`, err.message);
+    return res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor' });
+  }
   console.error(err.stack);
-  res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor' });
+  res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor', stack: err.stack });
 });
 
 module.exports = app;

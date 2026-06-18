@@ -1,6 +1,23 @@
 node_modules/
+
+# Variables de entorno — NUNCA commitear archivos con secretos reales
 .env
+.env.local
+.env.production
+.env.*.local
+
+# Build outputs
 dist/
+build/
+
+# Uploads / user content
 uploads/
+
+# Logs
 *.log
+npm-debug.log*
+logs/*.log
+
+# OS
 .DS_Store
+Thumbs.db
