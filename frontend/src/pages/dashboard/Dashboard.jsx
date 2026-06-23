@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import NotificationBell from '../../components/NotificationBell';
 import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock,
+  Lock, LayoutDashboard,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -30,6 +31,7 @@ const TABS = [
 
 export default function Dashboard() {
   const { user, logout, isGeneralAdmin, isCollaborator, getCollaboratorPermisos } = useAuth();
+  const navigate = useNavigate();
   const [complexes,       setComplexes]      = useState([]);
   const [selectedComplex, setSelectedComplex] = useState(null);
   const [activeTab,       setActiveTab]      = useState(null);
@@ -200,6 +202,17 @@ export default function Dashboard() {
             ))
           )}
         </nav>
+
+        {/* Panel de administración general */}
+        {isGeneralAdmin && (
+          <div className="px-3 pb-2 border-b" style={DIVIDER}>
+            <button
+              onClick={() => navigate('/admin')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-purple-400 hover:bg-purple-900/20 hover:text-purple-300 transition-colors">
+              <LayoutDashboard className="w-4 h-4 shrink-0" /> Admin General
+            </button>
+          </div>
+        )}
 
         {/* notificaciones + logout */}
         <div className="p-3 border-t border-border space-y-1">
