@@ -17,6 +17,7 @@ const Token           = require('./Token');
 const Contact         = require('./Contact');
 const TermsVersion    = require('./TermsVersion');
 const TermsAcceptance = require('./TermsAcceptance');
+const Invite          = require('./Invite');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -81,6 +82,14 @@ Token.belongsTo(User,         { foreignKey: 'usuario_id', as: 'usuario' });
 User.hasMany(TermsAcceptance, { foreignKey: 'usuario_id', as: 'termsAcceptances' });
 TermsAcceptance.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
 
+// ── Invite ────────────────────────────────────────────────────
+Invite.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
+Invite.belongsTo(Field,   { foreignKey: 'field_id',   as: 'field' });
+Invite.belongsTo(User,    { foreignKey: 'created_by', as: 'creator' });
+Invite.belongsTo(User,    { foreignKey: 'player_id',  as: 'player' });
+Complex.hasMany(Invite,   { foreignKey: 'complex_id', as: 'invites' });
+Field.hasMany(Invite,     { foreignKey: 'field_id',   as: 'invites' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -88,4 +97,6 @@ module.exports = {
   TimeSlot, Booking, Subscription, Notification,
   // Skills
   Token, Contact, TermsVersion, TermsAcceptance,
+  // Invites
+  Invite,
 };

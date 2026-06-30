@@ -15,6 +15,7 @@ import PlayerPage         from './pages/player/PlayerPage';
 import ComplexSlotsPage   from './pages/player/ComplexSlotsPage';
 import MyBookingsPage     from './pages/player/MyBookingsPage';
 import AdminDashboard     from './pages/admin/AdminDashboard';
+import InvitePage         from './pages/InvitePage';
 import ProtectedRoute     from './components/ProtectedRoute';
 
 export default function App() {
@@ -34,6 +35,8 @@ export default function App() {
       <Route path="/adherir-complejo" element={<RegisterComplexPage />} />
       {/* Callback de Google OAuth — lee el token del hash y redirige */}
       <Route path="/auth/callback"    element={<AuthCallbackPage />} />
+      {/* Link de invitación a cancha — público */}
+      <Route path="/invite/:token"    element={<InvitePage />} />
 
       {/* Player — requiere login */}
       <Route path="/canchas" element={

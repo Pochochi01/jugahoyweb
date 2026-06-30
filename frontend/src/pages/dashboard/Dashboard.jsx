@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard,
+  Lock, LayoutDashboard, Link2,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -16,10 +16,12 @@ import CollaboratorsTab from './CollaboratorsTab';
 import ImagesTab        from './ImagesTab';
 import StatsTab         from './StatsTab';
 import UsersTab         from './UsersTab';
+import InvitesTab       from './InvitesTab';
 
 // permiso: clave usada en Collaborator.permisos
 const TABS = [
   { key: 'agenda',        label: 'Agenda',        icon: Calendar,    permiso: 'agenda' },
+  { key: 'invitaciones',  label: 'Invitaciones',  icon: Link2,       permiso: 'agenda' },
   { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones' },
   { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja' },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas' },
@@ -75,8 +77,9 @@ export default function Dashboard() {
 
   const renderTab = () => {
     // Tabs sin complejo
-    if (activeTab === 'usuarios')  return <UsersTab />;
-    if (activeTab === 'imagenes')  return <ImagesTab />;
+    if (activeTab === 'usuarios')     return <UsersTab />;
+    if (activeTab === 'imagenes')     return <ImagesTab />;
+    if (activeTab === 'invitaciones') return <InvitesTab complexId={selectedComplex?.id} />;
 
     if (!selectedComplex) {
       if (loadingComplexes) return (

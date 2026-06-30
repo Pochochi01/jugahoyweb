@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { MapPin, ChevronLeft, ChevronRight, CalendarDays, Star, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { MapPin, ChevronLeft, ChevronRight, CalendarDays, Star, CheckCircle, XCircle, RefreshCw, Link2 } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
@@ -19,7 +19,15 @@ function getFavorites() { try { return JSON.parse(localStorage.getItem('favorite
 
 export default function ComplexSlotsPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
+
+  // Filtrado por cancha invitada: viene de /invite/:token vía query param ?field=X
+  const inviteFieldId = searchParams.get('field') ? parseInt(searchParams.get('field')) : null;
+  const inviteContext = (() => {
+    try { return JSON.parse(sessionStorage.getItem('inviteContext') || 'null'); } catch { return null; }
+  })();
+  const inviteFieldName = inviteContext?.fieldId === inviteFieldId ? inviteContext.fieldName : null;
   const [complex,  setComplex]  = useState(null);
   const [date,     setDate]     = useState(today());
   const [slots,    setSlots]    = useState([]);
@@ -82,6 +90,13 @@ export default function ComplexSlotsPage() {
   const getAllSlotsForField = (fieldId) =>
     allSlots.filter(s => s.field_id === fieldId);
 
+  // Si hay filtro por invitación, mostrar solo la cancha invitada
+  const displaySlots = inviteFieldId
+    ? slots
+        .map(g => ({ ...g, fields: g.fields.filter(f => f.id === inviteFieldId) }))
+        .filter(g => g.fields.length > 0)
+    : slots;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -92,6 +107,14 @@ export default function ComplexSlotsPage() {
           <Link to="/canchas" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary mb-6 transition-colors">
             <ChevronLeft className="w-4 h-4" /> Volver a complejos
           </Link>
+
+          {/* Banner de cancha invitada */}
+          {inviteFieldId && (
+            <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-sm text-primary font-medium">
+              <Link2 className="w-4 h-4 shrink-0" />
+              Estás viendo los turnos de <strong className="ml-1">{inviteFieldName || `cancha #${inviteFieldId}`}</strong>
+            </div>
+          )}
 
           {/* header complejo */}
           {complex && (
@@ -156,7 +179,7 @@ export default function ComplexSlotsPage() {
             <div className="flex justify-center py-16">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
             </div>
-          ) : slots.length === 0 ? (
+          ) : displaySlots.length === 0 ? (
             <div className="card text-center py-16 text-muted-foreground">
               <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium mb-1">Sin turnos disponibles</p>
@@ -164,7 +187,7 @@ export default function ComplexSlotsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {slots.map((group, gi) => (
+              {displaySlots.map((group, gi) => (
                 <div key={group.hora} data-aos="fade-up" data-aos-delay={Math.min(gi * 50, 300)}>
                   {/* hora */}
                   <div className="flex items-center gap-3 mb-2">
