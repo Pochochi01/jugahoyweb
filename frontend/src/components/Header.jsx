@@ -13,12 +13,29 @@ export default function Header() {
   const isPlayer       = user?.rol === 'player';
   const isGeneralAdmin = user?.rol === 'general_admin';
 
-  const navLinks = [
+  // Menú del jugador:
+  //  - "Mi agenda" → acceso directo al complejo en el que está logueado
+  //    (default_complex_id). Solo aparece si tiene un complejo asociado.
+  //  - "Buscar canchas" → búsqueda por provincia/localidad.
+  //  - Profesores y Contacto se mantienen como están.
+  const playerLinks = [
+    ...(user?.default_complex_id
+      ? [{ to: `/canchas/${user.default_complex_id}`, label: 'Mi agenda' }]
+      : []),
+    { to: '/canchas',    label: 'Buscar canchas' },
+    { to: '/profesores', label: 'Profesores' },
+    { to: '/contacto',   label: 'Contacto' },
+  ];
+
+  // Menú para visitantes / admins (comportamiento original)
+  const guestLinks = [
     { to: '/canchas',          label: 'Reservar cancha' },
     { to: '/profesores',       label: 'Profesores' },
     { to: '/adherir-complejo', label: 'Adherí tu complejo' },
     { to: '/contacto',         label: 'Contacto' },
   ];
+
+  const navLinks = isPlayer ? playerLinks : guestLinks;
 
   return (
     <header

@@ -4,8 +4,10 @@ import { MapPin, ChevronLeft, ChevronRight, CalendarDays, Star, CheckCircle, XCi
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
+import { favoritesService } from '../../services/favoritesService';
 import { useAuth } from '../../context/AuthContext';
 import BookingModal from '../../components/agenda/BookingModal';
+import NeonBorderCell from '../../components/agenda/NeonBorderCell';
 
 const DEPORTE_ICON = { futbol: '⚽', padel: '🏓', tenis: '🎾', basquet: '🏀', voley: '🏐', otro: '🏃' };
 
@@ -14,8 +16,6 @@ function shiftDate(d, n) {
   const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n);
   return dt.toISOString().split('T')[0];
 }
-
-function getFavorites() { try { return JSON.parse(localStorage.getItem('favorites') || '[]'); } catch { return []; } }
 
 export default function ComplexSlotsPage() {
   const { id } = useParams();
@@ -35,11 +35,15 @@ export default function ComplexSlotsPage() {
   const [allSlots, setAllSlots] = useState([]);  // para BookingModal
   const [selected, setSelected] = useState(null); // { slot, field }
   const [isFav,    setIsFav]    = useState(false);
+  const [favBusy,  setFavBusy]  = useState(false);
   const [toast,    setToast]    = useState(null);
 
   useEffect(() => {
-    setIsFav(getFavorites().includes(parseInt(id)));
     publicService.getComplex(id).then(setComplex).catch(() => {});
+    // Estado de favorito desde la BD (fuente de verdad)
+    favoritesService.getAll()
+      .then(favs => setIsFav((favs || []).some(c => c.id === parseInt(id))))
+      .catch(() => {});
   }, [id]);
 
   const loadSlots = useCallback(() => {
@@ -62,11 +66,20 @@ export default function ComplexSlotsPage() {
 
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
-  const toggleFav = () => {
-    const favs = getFavorites();
-    const next = isFav ? favs.filter(x => x !== parseInt(id)) : [...favs, parseInt(id)];
-    localStorage.setItem('favorites', JSON.stringify(next));
-    setIsFav(!isFav);
+  const toggleFav = async () => {
+    if (favBusy) return;
+    setFavBusy(true);
+    const next = !isFav;
+    setIsFav(next); // optimista
+    try {
+      if (next) await favoritesService.add(parseInt(id));
+      else      await favoritesService.remove(parseInt(id));
+    } catch {
+      setIsFav(!next); // rollback
+      showToast('error', 'No se pudo actualizar el favorito.');
+    } finally {
+      setFavBusy(false);
+    }
   };
 
   const handleBook = (slot, field) => {
@@ -125,8 +138,10 @@ export default function ComplexSlotsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <h1 className="text-xl font-bold">{complex.nombre}</h1>
-                  <button onClick={toggleFav}
-                    className="p-2 rounded-xl hover:bg-muted transition-colors shrink-0">
+                  <button onClick={toggleFav} disabled={favBusy}
+                    aria-label={isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                    aria-pressed={isFav}
+                    className="p-2 rounded-xl hover:bg-muted transition-colors shrink-0 disabled:opacity-60">
                     <Star className={`w-5 h-5 ${isFav ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
                   </button>
                 </div>
@@ -203,31 +218,35 @@ export default function ComplexSlotsPage() {
                         ? Math.min(...Object.values(field.precios_por_duracion).filter(Boolean))
                         : parseFloat(field.precio_base || 0);
                       return (
-                        <button
-                          key={field.id}
-                          onClick={() => handleBook(group, field)}
-                          className="card text-left hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 transition-all group"
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">{DEPORTE_ICON[field.deporte] || '🏃'}</span>
-                            <div>
-                              <div className="text-sm font-semibold group-hover:text-primary transition-colors">{field.nombre}</div>
-                              <div className="text-xs text-muted-foreground capitalize">{field.deporte}</div>
+                        // NeonBorderCell → mismo efecto neón que la agenda del admin
+                        // (radius 12 = rounded-xl del .card). El punto verde recorre
+                        // el borde en hover, indicando que el turno es reservable.
+                        <NeonBorderCell key={field.id} radius={12} className="rounded-xl h-full">
+                          <button
+                            onClick={() => handleBook(group, field)}
+                            className="card text-left w-full h-full hover:border-primary/40 transition-colors group"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xl">{DEPORTE_ICON[field.deporte] || '🏃'}</span>
+                              <div>
+                                <div className="text-sm font-semibold group-hover:text-primary transition-colors">{field.nombre}</div>
+                                <div className="text-xs text-muted-foreground capitalize">{field.deporte}</div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
-                            <span>{field.techada ? '🏠 Techada' : '🌤 Al aire libre'}</span>
-                            {field.dimensiones && <span>{field.dimensiones}</span>}
-                          </div>
-                          {minPrice > 0 && (
-                            <div className="mt-2 pt-2 border-t border-border text-sm font-semibold text-green-600">
-                              Desde ${minPrice.toLocaleString('es-AR')}
+                            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                              <span>{field.techada ? '🏠 Techada' : '🌤 Al aire libre'}</span>
+                              {field.dimensiones && <span>{field.dimensiones}</span>}
                             </div>
-                          )}
-                          <div className="mt-2 flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                            <CheckCircle className="w-3.5 h-3.5" /> Reservar
-                          </div>
-                        </button>
+                            {minPrice > 0 && (
+                              <div className="mt-2 pt-2 border-t border-border text-sm font-semibold text-green-600">
+                                Desde ${minPrice.toLocaleString('es-AR')}
+                              </div>
+                            )}
+                            <div className="mt-2 flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                              <CheckCircle className="w-3.5 h-3.5" /> Reservar
+                            </div>
+                          </button>
+                        </NeonBorderCell>
                       );
                     })}
                   </div>

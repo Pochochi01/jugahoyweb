@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapPin, CalendarDays, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { MapPin, AlertTriangle, CheckCircle, Loader2, Building2 } from 'lucide-react';
 import { inviteService } from '../services/inviteService';
-
-const DEPORTE_ICON = { futbol: '⚽', padel: '🏓', tenis: '🎾', basquet: '🏀', voley: '🏐', otro: '🏃' };
+import { useAuth } from '../context/AuthContext';
+import { storePendingInvite } from '../utils/authRedirect';
 
 export default function InvitePage() {
   const { token }    = useParams();
   const navigate     = useNavigate();
-  const [state, setState] = useState('loading'); // loading | valid | invalid
-  const [data,  setData]  = useState(null);
+  const { user }     = useAuth();
+  const [state, setState]     = useState('loading'); // loading | valid | invalid
+  const [data,  setData]      = useState(null);
+  const [claiming, setClaiming] = useState(false);
 
   useEffect(() => {
     inviteService.validate(token)
@@ -17,15 +19,25 @@ export default function InvitePage() {
       .catch(() => setState('invalid'));
   }, [token]);
 
-  const handleVerTurnos = () => {
-    // Guardar contexto en sessionStorage para filtrar la vista de canchas
-    sessionStorage.setItem('inviteContext', JSON.stringify({
-      token,
-      fieldId   : data.field.id,
-      complexId : data.complex.id,
-      fieldName : data.field.nombre,
-    }));
-    navigate(`/canchas/${data.complex.id}?field=${data.field.id}`);
+  const handleIngresar = async () => {
+    // Usuario sin sesión → guardar invitación pendiente y mandar a login.
+    // La relación player ↔ complejo recién se crea al loguearse (claim).
+    if (!user) {
+      storePendingInvite(token);
+      navigate(`/login?invite=${token}`);
+      return;
+    }
+
+    // Usuario logueado → vincularlo al complejo y entrar directo
+    setClaiming(true);
+    try {
+      await inviteService.claim(token);
+    } catch {
+      // Si el claim falla igual entramos al complejo (no bloqueante)
+    } finally {
+      setClaiming(false);
+    }
+    navigate(`/canchas/${data.complex.id}`);
   };
 
   if (state === 'loading') return (
@@ -42,17 +54,14 @@ export default function InvitePage() {
         </div>
         <h1 className="text-xl font-bold mb-2">Invitación inválida</h1>
         <p className="text-muted-foreground mb-6">
-          Este link ya venció, fue revocado o no existe.
+          Este link fue revocado o no existe.
         </p>
         <a href="/canchas" className="btn-primary inline-block">Ver todos los complejos</a>
       </div>
     </div>
   );
 
-  const { field, complex, expires_at } = data;
-  const expiresLabel = new Date(expires_at).toLocaleDateString('es-AR', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const { complex } = data;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-muted">
@@ -75,54 +84,44 @@ export default function InvitePage() {
               <CheckCircle className="w-4 h-4" />
               <span>Tenés una invitación</span>
             </div>
-            <h2 className="text-xl font-bold">Acceso a cancha</h2>
+            <h2 className="text-xl font-bold">Acceso al complejo</h2>
           </div>
 
           <div className="p-6 space-y-5">
             {/* Complejo */}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Complejo</p>
-              <p className="font-semibold text-lg">{complex.nombre}</p>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
-                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                {complex.ciudad}{complex.provincia ? `, ${complex.provincia}` : ''}
-                {complex.direccion && ` — ${complex.direccion}`}
-              </div>
-            </div>
-
-            {/* Cancha */}
             <div className="border rounded-xl p-4 bg-muted/40">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cancha invitada</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Complejo invitado</p>
               <div className="flex items-center gap-3">
-                <span className="text-3xl">{DEPORTE_ICON[field.deporte] || '🏃'}</span>
-                <div>
-                  <p className="font-bold">{field.nombre}</p>
-                  <p className="text-sm text-muted-foreground capitalize">{field.deporte}</p>
-                  {field.techada !== undefined && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {field.techada ? '🏠 Techada' : '🌤 Al aire libre'}
-                      {field.dimensiones ? ` · ${field.dimensiones}` : ''}
-                    </p>
-                  )}
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Building2 className="w-6 h-6 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold truncate">{complex.nombre}</p>
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
+                      {complex.ciudad}{complex.provincia ? `, ${complex.provincia}` : ''}
+                      {complex.direccion && ` — ${complex.direccion}`}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Vencimiento */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CalendarDays className="w-4 h-4 shrink-0" />
-              <span>Invitación válida hasta el <strong className="text-foreground">{expiresLabel}</strong></span>
-            </div>
-
             {/* CTA */}
             <button
-              onClick={handleVerTurnos}
-              className="w-full btn-primary py-3 text-base font-semibold rounded-xl">
-              Ver turnos disponibles
+              onClick={handleIngresar}
+              disabled={claiming}
+              className="w-full btn-primary py-3 text-base font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-60">
+              {claiming
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Vinculando…</>
+                : (user ? 'Entrar al complejo' : 'Ingresar para reservar')}
             </button>
 
             <p className="text-xs text-center text-muted-foreground">
-              Solo verás los turnos de esta cancha
+              {user
+                ? 'Vas a quedar vinculado a este complejo'
+                : 'Iniciá sesión o registrate para acceder a este complejo'}
             </p>
           </div>
         </div>

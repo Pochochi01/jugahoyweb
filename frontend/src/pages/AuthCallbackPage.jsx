@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+import { resolvePostAuthRoute } from '../utils/authRedirect';
 import { Dumbbell } from 'lucide-react';
 
 export default function AuthCallbackPage() {
@@ -31,9 +32,11 @@ export default function AuthCallbackPage() {
     // Guardar token y obtener perfil
     localStorage.setItem('token', token);
     authService.me()
-      .then(data => {
+      .then(async data => {
         loginWithToken(token, data.user);
-        navigate(data.user.rol === 'player' ? '/canchas' : '/dashboard', { replace: true });
+        // Respeta invitación pendiente (guardada antes de ir a Google) y el
+        // complejo por defecto del jugador.
+        navigate(await resolvePostAuthRoute(data.user), { replace: true });
       })
       .catch(() => {
         localStorage.removeItem('token');

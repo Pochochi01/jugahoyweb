@@ -17,6 +17,7 @@ import MyBookingsPage     from './pages/player/MyBookingsPage';
 import AdminDashboard     from './pages/admin/AdminDashboard';
 import InvitePage         from './pages/InvitePage';
 import ProtectedRoute     from './components/ProtectedRoute';
+import PWABadge           from './components/PWABadge';
 
 export default function App() {
   useEffect(() => {
@@ -24,6 +25,8 @@ export default function App() {
   }, []);
 
   return (
+    <>
+    <PWABadge />
     <Routes>
       {/* Públicas */}
       <Route path="/"                 element={<HomePage />} />
@@ -65,5 +68,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

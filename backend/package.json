@@ -10,7 +10,8 @@
     "migrate": "sequelize db:migrate",
     "migrate:undo": "sequelize db:migrate:undo",
     "migrate:undo:all": "sequelize db:migrate:undo:all",
-    "migrate:status": "sequelize db:migrate:status"
+    "migrate:status": "sequelize db:migrate:status",
+    "seed:localidades": "node scripts/seed-localidades.js"
   },
   "dependencies": {
     "axios": "^1.18.0",

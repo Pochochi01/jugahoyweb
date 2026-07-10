@@ -11,6 +11,10 @@ router.post('/generate',           authenticate, adminCollab, ctrl.generateLink)
 router.get ('/list/:complexId',    authenticate, adminCollab, ctrl.listInvites);
 router.patch('/:id/revoke',        authenticate, adminCollab, ctrl.revokeInvite);
 
+// Reclamar invitación: cualquier usuario autenticado (típicamente un player)
+// queda vinculado al complejo del invite.
+router.post('/:token/claim',       authenticate, ctrl.claimInvite);
+
 // ── Público — debe ir último para no capturar las rutas anteriores ─────────
 router.get('/:token', ctrl.validateInvite);
 

@@ -15,6 +15,10 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('general_admin', 'complex_admin', 'collaborator', 'player'),
     defaultValue: 'player',
   },
+  // Complejo asociado al jugador vía link de invitación.
+  // Se rellena al consumir un invite; permite que el player entre directo a su
+  // complejo al loguearse, sin selección manual. FK → complexes (SET NULL al borrar).
+  default_complex_id: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'users' });
 

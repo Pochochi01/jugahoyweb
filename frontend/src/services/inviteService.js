@@ -4,6 +4,10 @@ export const inviteService = {
   // Valida un token y devuelve { field, complex, expires_at } — público
   validate: (token) => api.get(`/invites/${token}`),
 
+  // Vincula al usuario autenticado con el complejo del invite — requiere auth.
+  // Devuelve { ok, complex_id, field_id }
+  claim: (token) => api.post(`/invites/${token}/claim`),
+
   // Genera un nuevo link — requiere auth (complex_admin | collaborator | general_admin)
   generate: (data) => api.post('/invites/generate', data),
 

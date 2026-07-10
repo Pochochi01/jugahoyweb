@@ -1,15 +1,21 @@
 'use strict';
 /**
  * controllers/inviteController.js
- * Genera y valida links de invitación para que un player acceda a una cancha específica.
+ * Genera y valida links de invitación para que un player acceda a un COMPLEJO.
  *
- * POST /api/invites/generate  — requiere auth (complex_admin | collaborator | general_admin)
- * GET  /api/invites/:token    — público, valida el token
+ * El link:
+ *   - No vence (sin expiración).
+ *   - Apunta al complejo completo, no a una cancha específica.
+ *   - Al loguearse/registrarse, el player queda vinculado al complejo (claim) y
+ *     entra directo a él.
+ *
+ * POST /api/invites/generate        — requiere auth (complex_admin | collaborator | general_admin)
+ * GET  /api/invites/:token          — público, valida el token
+ * POST /api/invites/:token/claim    — requiere auth, vincula al usuario con el complejo
  * GET  /api/invites/list/:complexId — lista invites activos de un complejo (auth requerido)
  */
 const crypto = require('crypto');
-const { Op }  = require('sequelize');
-const { Invite, Field, Complex, Collaborator } = require('../models');
+const { Invite, Complex, Collaborator } = require('../models');
 
 function buildBaseUrl() {
   return process.env.NODE_ENV === 'production'
@@ -20,10 +26,10 @@ function buildBaseUrl() {
 // ── generateLink ──────────────────────────────────────────────
 async function generateLink(req, res) {
   try {
-    const { field_id, complex_id, expires_in_days = 7 } = req.body;
+    const { complex_id } = req.body;
 
-    if (!field_id || !complex_id) {
-      return res.status(400).json({ message: 'field_id y complex_id son requeridos' });
+    if (!complex_id) {
+      return res.status(400).json({ message: 'complex_id es requerido' });
     }
 
     const { user } = req;
@@ -42,24 +48,19 @@ async function generateLink(req, res) {
     }
     // general_admin puede generar para cualquier complejo
 
-    // Verificar que la cancha pertenece al complejo
-    const field = await Field.findOne({ where: { id: field_id, complex_id, activa: true } });
-    if (!field) return res.status(404).json({ message: 'Cancha no encontrada en este complejo' });
+    // Reutilizar un link activo del complejo si ya existe (evita acumular links)
+    let invite = await Invite.findOne({ where: { complex_id, usado: false } });
+    if (!invite) {
+      invite = await Invite.create({
+        token      : crypto.randomUUID(),
+        complex_id,
+        created_by : user.id,
+        // field_id y expires_at quedan null → invite a nivel complejo, sin vencimiento
+      });
+    }
 
-    const token    = crypto.randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + parseInt(expires_in_days));
-
-    await Invite.create({
-      token,
-      complex_id,
-      field_id,
-      created_by : user.id,
-      expires_at : expiresAt,
-    });
-
-    const link = `${buildBaseUrl()}/invite/${token}`;
-    res.json({ link, token, expires_at: expiresAt, field: { id: field.id, nombre: field.nombre } });
+    const link = `${buildBaseUrl()}/invite/${invite.token}`;
+    res.json({ link, token: invite.token });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -71,17 +72,8 @@ async function validateInvite(req, res) {
     const { token } = req.params;
 
     const invite = await Invite.findOne({
-      where: {
-        token,
-        usado    : false,
-        expires_at: { [Op.gt]: new Date() },
-      },
+      where: { token, usado: false },
       include: [
-        {
-          model     : Field,
-          as        : 'field',
-          attributes: ['id', 'nombre', 'deporte', 'piso', 'techada', 'dimensiones', 'precio_base', 'imagen_url'],
-        },
         {
           model     : Complex,
           as        : 'complex',
@@ -92,16 +84,54 @@ async function validateInvite(req, res) {
 
     if (!invite) {
       return res.status(404).json({
-        message: 'El link de invitación es inválido o ya expiró',
+        message: 'El link de invitación es inválido o fue revocado',
         expired: true,
       });
     }
 
     res.json({
-      valid     : true,
-      field     : invite.field,
-      complex   : invite.complex,
-      expires_at: invite.expires_at,
+      valid  : true,
+      complex: invite.complex,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// ── claimInvite ───────────────────────────────────────────────
+/**
+ * POST /api/invites/:token/claim — requiere auth.
+ * Vincula al usuario autenticado con el complejo de la invitación:
+ *   - Guarda user.default_complex_id = invite.complex_id
+ *   - Registra invite.player_id = user.id (solo el primer jugador que lo usa)
+ * Devuelve complex_id para que el front redirija directo al complejo.
+ * Es idempotente: reclamar el mismo link varias veces no rompe nada.
+ */
+async function claimInvite(req, res) {
+  try {
+    const { token } = req.params;
+    const { user }  = req;
+
+    const invite = await Invite.findOne({ where: { token, usado: false } });
+
+    if (!invite) {
+      return res.status(404).json({
+        message: 'El link de invitación es inválido o fue revocado',
+        expired: true,
+      });
+    }
+
+    // Vincular jugador ↔ complejo (relación explícita, recién al loguearse)
+    await user.update({ default_complex_id: invite.complex_id });
+
+    // Registrar al primer jugador que consume el link (trazabilidad)
+    if (!invite.player_id) {
+      await invite.update({ player_id: user.id });
+    }
+
+    res.json({
+      ok        : true,
+      complex_id: invite.complex_id,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -124,12 +154,7 @@ async function listInvites(req, res) {
     }
 
     const invites = await Invite.findAll({
-      where: {
-        complex_id: complexId,
-        expires_at: { [Op.gt]: new Date() },
-        usado: false,
-      },
-      include: [{ model: Field, as: 'field', attributes: ['id', 'nombre', 'deporte'] }],
+      where: { complex_id: complexId, usado: false },
       order: [['created_at', 'DESC']],
       limit: 50,
     });
@@ -138,8 +163,6 @@ async function listInvites(req, res) {
     res.json(invites.map(inv => ({
       id        : inv.id,
       link      : `${baseUrl}/invite/${inv.token}`,
-      field     : inv.field,
-      expires_at: inv.expires_at,
       created_at: inv.created_at,
     })));
   } catch (err) {
@@ -173,4 +196,4 @@ async function revokeInvite(req, res) {
   }
 }
 
-module.exports = { generateLink, validateInvite, listInvites, revokeInvite };
+module.exports = { generateLink, validateInvite, claimInvite, listInvites, revokeInvite };

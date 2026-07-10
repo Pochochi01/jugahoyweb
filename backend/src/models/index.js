@@ -18,6 +18,8 @@ const Contact         = require('./Contact');
 const TermsVersion    = require('./TermsVersion');
 const TermsAcceptance = require('./TermsAcceptance');
 const Invite          = require('./Invite');
+const Localidad       = require('./Localidad');
+const Favorite        = require('./Favorite');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -82,6 +84,11 @@ Token.belongsTo(User,         { foreignKey: 'usuario_id', as: 'usuario' });
 User.hasMany(TermsAcceptance, { foreignKey: 'usuario_id', as: 'termsAcceptances' });
 TermsAcceptance.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
 
+// ── Player ↔ Complejo por defecto (vía invitación) ────────────
+// Un jugador queda vinculado al complejo de la invitación que consumió.
+User.belongsTo(Complex, { foreignKey: 'default_complex_id', as: 'defaultComplex' });
+Complex.hasMany(User,   { foreignKey: 'default_complex_id', as: 'players' });
+
 // ── Invite ────────────────────────────────────────────────────
 Invite.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
 Invite.belongsTo(Field,   { foreignKey: 'field_id',   as: 'field' });
@@ -89,6 +96,19 @@ Invite.belongsTo(User,    { foreignKey: 'created_by', as: 'creator' });
 Invite.belongsTo(User,    { foreignKey: 'player_id',  as: 'player' });
 Complex.hasMany(Invite,   { foreignKey: 'complex_id', as: 'invites' });
 Field.hasMany(Invite,     { foreignKey: 'field_id',   as: 'invites' });
+
+// ── Favoritos: Player ↔ Complejo (N:N) ────────────────────────
+User.belongsToMany(Complex, {
+  through: Favorite, as: 'favoriteComplexes',
+  foreignKey: 'player_id', otherKey: 'complex_id',
+});
+Complex.belongsToMany(User, {
+  through: Favorite, as: 'favoritedBy',
+  foreignKey: 'complex_id', otherKey: 'player_id',
+});
+User.hasMany(Favorite,    { foreignKey: 'player_id',  as: 'favorites' });
+Favorite.belongsTo(User,  { foreignKey: 'player_id',  as: 'player' });
+Favorite.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
 
 module.exports = {
   sequelize,
@@ -99,4 +119,8 @@ module.exports = {
   Token, Contact, TermsVersion, TermsAcceptance,
   // Invites
   Invite,
+  // Catálogo de localidades
+  Localidad,
+  // Favoritos
+  Favorite,
 };

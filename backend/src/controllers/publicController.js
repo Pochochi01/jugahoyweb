@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequelize } = require('../models');
+const { validateProvinciaLocalidad } = require('./localidadesController');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function today() { return new Date().toISOString().split('T')[0]; }
@@ -34,8 +35,18 @@ function isWithinFieldHours(hora, horaApertura = '08:00', horaCierre = '02:00') 
 // ── listado público ───────────────────────────────────────────────────────────
 async function getComplexes(req, res) {
   try {
+    // Filtros opcionales: provincia, ciudad y texto libre (q). Se combinan con AND.
+    const provincia = (req.query.provincia || '').trim();
+    const ciudad    = (req.query.ciudad    || '').trim();
+    const q         = (req.query.q         || '').trim();
+
+    const where = { activo: true };
+    if (provincia) where.provincia = provincia;
+    if (ciudad)    where.ciudad    = ciudad;
+    if (q)         where.nombre    = { [Op.like]: `%${q}%` };
+
     const complexes = await Complex.findAll({
-      where: { activo: true },
+      where,
       include: [{ model: Field, as: 'fields', where: { activa: true }, required: false }],
       order: [['nombre', 'ASC']],
     });
@@ -271,6 +282,14 @@ async function registerComplex(req, res) {
     if (!titular_email || !password || !nombre) {
       await t.rollback();
       return res.status(400).json({ message: 'Email, contraseña y nombre del complejo son obligatorios.' });
+    }
+
+    // Validación de ubicación: provincia y ciudad obligatorias y coherentes
+    // entre sí según el catálogo de localidades (evita pares inconsistentes).
+    const locCheck = await validateProvinciaLocalidad(provincia, ciudad);
+    if (!locCheck.ok) {
+      await t.rollback();
+      return res.status(400).json({ message: locCheck.reason });
     }
 
     const bcrypt  = require('bcryptjs');

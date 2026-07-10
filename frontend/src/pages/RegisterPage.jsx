@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+import { resolvePostAuthRoute, storePendingInvite } from '../utils/authRedirect';
 import { Dumbbell, ArrowRight } from 'lucide-react';
 
 function GoogleIcon() {
@@ -16,11 +17,18 @@ function GoogleIcon() {
 }
 
 export default function RegisterPage() {
-  const { register } = useAuth();
-  const navigate     = useNavigate();
+  const { register }   = useAuth();
+  const navigate       = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form,    setForm]    = useState({ nombre: '', apellido: '', email: '', telefono: '', password: '', confirm: '' });
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Si se llega con ?invite=token, guardar la invitación pendiente
+  useEffect(() => {
+    const invite = searchParams.get('invite');
+    if (invite) storePendingInvite(invite);
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,8 +37,8 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const { nombre, apellido, email, telefono, password } = form;
-      await register({ nombre, apellido, email, telefono, password });
-      navigate('/canchas');
+      const user = await register({ nombre, apellido, email, telefono, password });
+      navigate(await resolvePostAuthRoute(user));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Error al registrarse');
     } finally {

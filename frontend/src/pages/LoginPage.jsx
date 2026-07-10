@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
+import { resolvePostAuthRoute, storePendingInvite } from '../utils/authRedirect';
 import { Dumbbell, Eye, EyeOff, ArrowRight, Phone, RotateCcw } from 'lucide-react';
 
 // ── Ícono de Google ───────────────────────────────────────────
@@ -39,13 +40,19 @@ export default function LoginPage() {
   const [resetSent,    setResetSent]    = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
+  // Si se llega con ?invite=token (link directo), guardar la invitación pendiente
+  useEffect(() => {
+    const invite = searchParams.get('invite');
+    if (invite) storePendingInvite(invite);
+  }, [searchParams]);
+
   // ── Login con email/password ──────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
       const user = await login(form.email, form.password);
-      navigate(user.rol === 'player' ? '/canchas' : '/dashboard');
+      navigate(await resolvePostAuthRoute(user));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Credenciales incorrectas');
     } finally {
@@ -79,7 +86,7 @@ export default function LoginPage() {
     try {
       const { data } = await authService.verifyOTP(phone, otp);
       localStorage.setItem('token', data.token);
-      navigate(data.user.rol === 'player' ? '/canchas' : '/dashboard');
+      navigate(await resolvePostAuthRoute(data.user));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Código inválido o expirado');
     } finally {

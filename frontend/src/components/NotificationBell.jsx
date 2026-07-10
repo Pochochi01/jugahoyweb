@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, X, CheckCircle, XCircle, CalendarClock } from 'lucide-react';
 import { notificationsService } from '../services/notificationsService';
 
@@ -19,9 +20,12 @@ function timeAgo(dateStr) {
 }
 
 export default function NotificationBell() {
-  const [notifs,  setNotifs]  = useState([]);
-  const [open,    setOpen]    = useState(false);
-  const ref = useRef(null);
+  const [notifs, setNotifs] = useState([]);
+  const [open,   setOpen]   = useState(false);
+  const [coords, setCoords] = useState(null); // posición del panel (fixed)
+
+  const bellRef  = useRef(null);
+  const panelRef = useRef(null);
 
   const load = useCallback(() => {
     notificationsService.getAll().then(setNotifs).catch(() => {});
@@ -34,18 +38,60 @@ export default function NotificationBell() {
     return () => clearInterval(timer);
   }, [load]);
 
-  // Cerrar al click fuera
+  // ── Posición del panel calculada desde la campana ──────────
+  // Se renderiza en un portal a <body> con position:fixed, evitando que el
+  // `backdrop-filter` del header (que crea un containing block) lo descoloque.
+  const computePosition = useCallback(() => {
+    const el = bellRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const gap = 8;
+    const isMobile = window.innerWidth < 640;
+    if (isMobile) {
+      // Móvil: panel casi full-width, anclado bajo la campana
+      setCoords({
+        left: 12, right: 12, width: undefined,
+        top: r.bottom + gap,
+        maxHeight: window.innerHeight - r.bottom - gap - 12,
+      });
+    } else {
+      // Desktop/notebook: centrado en la parte superior de la pantalla.
+      // La campana puede estar en un sidebar (abajo a la izquierda) o en la
+      // topbar; centrar arriba garantiza que el panel siempre sea visible.
+      const width = Math.min(420, window.innerWidth - 32);
+      const top   = 72; // debajo de un header típico; en el dashboard queda arriba
+      setCoords({
+        left: Math.round((window.innerWidth - width) / 2), right: undefined, width,
+        top,
+        maxHeight: window.innerHeight - top - 24,
+      });
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    computePosition();
+    const onMove = () => computePosition();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [open, computePosition]);
+
+  // Cerrar al click fuera (campana o panel, que vive en el portal)
   useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e) => {
+      if (bellRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   const unread = notifs.filter(n => !n.leida).length;
-
-  const handleOpen = () => {
-    setOpen(o => !o);
-  };
 
   const markOne = async (id) => {
     await notificationsService.markRead(id);
@@ -57,13 +103,107 @@ export default function NotificationBell() {
     setNotifs(ns => ns.map(n => ({ ...n, leida: true })));
   };
 
+  // ── Panel (portal) ─────────────────────────────────────────
+  const panel = open && coords ? createPortal(
+    <>
+      {/* Backdrop translúcido en móvil */}
+      <div className="fixed inset-0 bg-black/30 z-[9998] sm:hidden"
+        onClick={() => setOpen(false)} aria-hidden="true" />
+
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-label="Notificaciones"
+        className="fixed z-[9999] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200
+                   overflow-hidden flex flex-col"
+        style={{
+          top: coords.top,
+          left: coords.left,
+          right: coords.right,
+          width: coords.width,
+          maxHeight: coords.maxHeight,
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0 bg-slate-50">
+          <div className="flex items-center gap-2 min-w-0">
+            <Bell className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-semibold text-sm text-slate-900 truncate">Notificaciones</span>
+            {unread > 0 && (
+              <span className="text-xs bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full shrink-0">
+                {unread} nueva{unread !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1 shrink-0">
+            {unread > 0 && (
+              <button onClick={markAll}
+                title="Marcar todas como leídas"
+                className="p-2 rounded-lg text-slate-500 hover:text-primary hover:bg-slate-200/70 transition-colors">
+                <CheckCheck className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={() => setOpen(false)}
+              title="Cerrar"
+              className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Lista — scroll interno, altura fluida */}
+        <div className="flex-1 overflow-y-auto overscroll-contain divide-y divide-slate-100">
+          {notifs.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <Bell className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">Sin notificaciones</p>
+            </div>
+          ) : notifs.map(n => {
+            const cfg = TIPO_CONFIG[n.tipo] || TIPO_CONFIG.nueva_reserva;
+            const Icon = cfg.icon;
+            return (
+              <div key={n.id}
+                className={`flex gap-3 px-4 py-3 transition-colors ${n.leida ? 'bg-white hover:bg-slate-50' : 'bg-blue-50'}`}>
+                <div className={`w-9 h-9 rounded-full ${cfg.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                  <Icon className={`w-5 h-5 ${cfg.color}`} />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-sm font-semibold leading-snug break-words ${n.leida ? 'text-slate-800' : 'text-slate-900'}`}>
+                      {n.titulo}
+                    </p>
+                    {!n.leida && (
+                      <button onClick={() => markOne(n.id)}
+                        title="Marcar como leída"
+                        className="p-1 -m-1 text-slate-400 hover:text-primary shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5 leading-relaxed break-words">{n.mensaje}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">{timeAgo(n.created_at)}</p>
+                </div>
+
+                {!n.leida && <div className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1.5" />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={ref} className="relative">
-      {/* Campana */}
+    <>
       <button
-        onClick={handleOpen}
+        ref={bellRef}
+        onClick={() => setOpen(o => !o)}
         className="relative p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
         title="Notificaciones"
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
         <Bell className="w-5 h-5" />
         {unread > 0 && (
@@ -72,78 +212,7 @@ export default function NotificationBell() {
           </span>
         )}
       </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-96 max-w-[92vw] bg-white rounded-2xl shadow-xl border border-border z-50 overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Notificaciones</span>
-              {unread > 0 && (
-                <span className="text-xs bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">{unread} nueva{unread !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex gap-1">
-              {unread > 0 && (
-                <button onClick={markAll}
-                  title="Marcar todas como leídas"
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors">
-                  <CheckCheck className="w-4 h-4" />
-                </button>
-              )}
-              <button onClick={() => setOpen(false)}
-                className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Lista */}
-          <div className="max-h-96 overflow-y-auto divide-y divide-border">
-            {notifs.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Sin notificaciones</p>
-              </div>
-            ) : notifs.map(n => {
-              const cfg = TIPO_CONFIG[n.tipo] || TIPO_CONFIG.nueva_reserva;
-              const Icon = cfg.icon;
-              return (
-                <div key={n.id}
-                  className={`flex gap-3 px-4 py-3 transition-colors ${n.leida ? 'bg-white' : 'bg-blue-50/40'}`}>
-                  {/* Icono */}
-                  <div className={`w-9 h-9 rounded-full ${cfg.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                    <Icon className={`w-4.5 h-4.5 ${cfg.color}`} />
-                  </div>
-
-                  {/* Contenido */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className={`text-sm font-semibold leading-tight ${n.leida ? 'text-foreground' : 'text-primary'}`}>
-                        {n.titulo}
-                      </p>
-                      {!n.leida && (
-                        <button onClick={() => markOne(n.id)}
-                          title="Marcar como leída"
-                          className="text-muted-foreground hover:text-primary shrink-0">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.mensaje}</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
-                  </div>
-
-                  {/* Punto de no leído */}
-                  {!n.leida && <div className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1.5" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+      {panel}
+    </>
   );
 }
