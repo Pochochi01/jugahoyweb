@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, sequelize } = require('../models');
 const notifService = require('./../services/notification.service');
+const { todayAR } = require('../utils/time');
 
 // ── utilidades ────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ function horaToLogicalMin(hora, startH = 8) {
 async function getSlotsForField(req, res) {
   try {
     const { complexId, fieldId } = req.params;
-    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const date = req.query.date || todayAR();
 
     // Admin puede ver slots de canchas inactivas (para consulta histórica)
     const field = await Field.findOne({ where: { id: fieldId, complex_id: complexId } });
@@ -311,7 +312,7 @@ async function getPendingBookings(req, res) {
       where: {
         field_id: { [Op.in]: fieldIds },
         estado:   'pendiente',
-        fecha:    { [Op.gte]: new Date().toISOString().split('T')[0] },
+        fecha:    { [Op.gte]: todayAR() },
       },
       include: [{ model: Field, as: 'field', attributes: ['id', 'nombre', 'deporte'] }],
       order: [['fecha', 'ASC'], ['hora_inicio', 'ASC']],

@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2,
+  Lock, LayoutDashboard, Link2, Menu, X,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [selectedComplex, setSelectedComplex] = useState(null);
   const [activeTab,       setActiveTab]      = useState(null);
   const [loadingComplexes, setLoadingComplexes] = useState(true);
+  const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false); // hamburguesa móvil
 
   // Cargar complejos según el rol
   useEffect(() => {
@@ -232,19 +233,76 @@ export default function Dashboard() {
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* mobile header */}
-        <div className="md:hidden bg-white border-b border-border px-4 py-3 flex items-center justify-between">
-          <span className="font-bold text-primary">JugaHoy</span>
+        {/* ── mobile header + hamburguesa ── */}
+        <div className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b"
+          style={{ background: '#0a0e1a', borderColor: '#1e2a3d' }}>
+          <span className="font-black text-white flex items-center gap-2">
+            <span className="w-6 h-6 bg-primary rounded flex items-center justify-center text-white text-xs font-black">J</span>
+            JugaHoy
+          </span>
           <div className="flex items-center gap-1">
             <NotificationBell />
-            {visibleTabs.map(({ key, icon: Icon }) => (
-              <button key={key} onClick={() => setActiveTab(key)}
-                className={`p-2 rounded-lg transition-colors ${activeTab === key ? 'bg-primary text-white' : 'text-muted-foreground'}`}>
-                <Icon className="w-4 h-4" />
-              </button>
-            ))}
+            <button onClick={() => setMobileMenuOpen(o => !o)}
+              aria-label="Menú" aria-expanded={mobileMenuOpen}
+              className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* ── drawer del menú móvil ── */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-b" style={{ background: '#0a0e1a', borderColor: '#1e2a3d' }}>
+            <div className="p-4 space-y-3">
+              {/* usuario + rol */}
+              <div>
+                <div className="text-sm font-semibold text-white truncate">{user?.nombre} {user?.apellido}</div>
+                <span className={`text-xs mt-1 inline-block px-2.5 py-0.5 rounded-full font-medium ${roleBadge()}`}>
+                  {roleLabel()}
+                </span>
+              </div>
+
+              {/* selector de complejo */}
+              {complexes.length > 1 && (
+                <select className="input text-sm w-full" value={selectedComplex?.id || ''}
+                  onChange={e => setSelectedComplex(complexes.find(c => c.id === parseInt(e.target.value)))}>
+                  {complexes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              )}
+
+              {/* opciones del sistema */}
+              <div className="space-y-1">
+                {visibleTabs.map(({ key, label, icon: Icon }) => (
+                  <button key={key} onClick={() => { setActiveTab(key); setMobileMenuOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                      ${activeTab === key ? 'bg-primary text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+                    <Icon className="w-4 h-4 shrink-0" /> {label}
+                  </button>
+                ))}
+
+                {/* tabs sin permiso (visibles, no accesibles) */}
+                {isCollaborator && selectedComplex &&
+                  TABS.filter(t => !t.adminOnly && !visibleTabs.find(vt => vt.key === t.key)).map(({ key, label, icon: Icon }) => (
+                    <div key={key} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/25 cursor-not-allowed select-none">
+                      <Icon className="w-4 h-4 shrink-0" /> {label} <Lock className="w-3 h-3 ml-auto" />
+                    </div>
+                  ))}
+              </div>
+
+              {isGeneralAdmin && (
+                <button onClick={() => { navigate('/admin'); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-purple-400 hover:bg-purple-900/20 transition-colors">
+                  <LayoutDashboard className="w-4 h-4 shrink-0" /> Admin General
+                </button>
+              )}
+
+              <button onClick={logout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors border-t border-[#1e2a3d] mt-2 pt-3">
+                <LogOut className="w-4 h-4 shrink-0" /> Cerrar sesión
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 overflow-auto p-6">
           {renderTab()}

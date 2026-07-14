@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { MapPin, ChevronLeft, ChevronRight, CalendarDays, Star, CheckCircle, XCircle, RefreshCw, Link2 } from 'lucide-react';
+import { MapPin, ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Star, CheckCircle, XCircle, RefreshCw, Link2, Clock, Building2, LayoutGrid, X } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
@@ -8,7 +8,6 @@ import { favoritesService } from '../../services/favoritesService';
 import { paymentService } from '../../services/paymentService';
 import { useAuth } from '../../context/AuthContext';
 import BookingModal from '../../components/agenda/BookingModal';
-import NeonBorderCell from '../../components/agenda/NeonBorderCell';
 
 const DEPORTE_ICON = { futbol: '⚽', padel: '🏓', tenis: '🎾', basquet: '🏀', voley: '🏐', otro: '🏃' };
 
@@ -31,13 +30,19 @@ export default function ComplexSlotsPage() {
   const inviteFieldName = inviteContext?.fieldId === inviteFieldId ? inviteContext.fieldName : null;
   const [complex,  setComplex]  = useState(null);
   const [date,     setDate]     = useState(today());
-  const [slots,    setSlots]    = useState([]);
+  const [slots,    setSlots]    = useState([]);   // agrupado por horario
+  const [canchas,  setCanchas]  = useState([]);   // agrupado por cancha
   const [loading,  setLoading]  = useState(true);
   const [allSlots, setAllSlots] = useState([]);  // para BookingModal
   const [selected, setSelected] = useState(null); // { slot, field }
   const [isFav,    setIsFav]    = useState(false);
   const [favBusy,  setFavBusy]  = useState(false);
   const [toast,    setToast]    = useState(null);
+
+  // Vista: agrupar por cancha o por horario (filtro pedido para móvil)
+  const [viewMode,   setViewMode]   = useState('cancha'); // 'cancha' | 'horario'
+  const [openCancha, setOpenCancha] = useState(null);     // id de cancha expandida (vista por cancha)
+  const [horaModal,  setHoraModal]  = useState(null);     // grupo de la hora elegida → modal (vista por horario)
 
   useEffect(() => {
     publicService.getComplex(id).then(setComplex).catch(() => {});
@@ -49,9 +54,11 @@ export default function ComplexSlotsPage() {
 
   const loadSlots = useCallback(() => {
     setLoading(true);
+    setOpenCancha(null); setHoraModal(null);
     publicService.getSlots(id, date)
       .then(data => {
         setSlots(data.slots || []);
+        setCanchas(data.canchas || []);
         // Construir lista plana para BookingModal (verificación de disponibilidad)
         const flat = [];
         (data.slots || []).forEach(s => {
@@ -61,7 +68,7 @@ export default function ComplexSlotsPage() {
         });
         setAllSlots(flat);
       })
-      .catch(() => setSlots([]))
+      .catch(() => { setSlots([]); setCanchas([]); })
       .finally(() => setLoading(false));
   }, [id, date]);
 
@@ -85,6 +92,7 @@ export default function ComplexSlotsPage() {
 
   const handleBook = (slot, field) => {
     if (!user) { window.location.href = '/login'; return; }
+    setHoraModal(null); // cerrar el modal de selección de cancha si estaba abierto
     setSelected({ slot: { ...slot, field_id: field.id, fecha: date }, field });
   };
 
@@ -126,6 +134,15 @@ export default function ComplexSlotsPage() {
         .map(g => ({ ...g, fields: g.fields.filter(f => f.id === inviteFieldId) }))
         .filter(g => g.fields.length > 0)
     : slots;
+  const displayCanchas = inviteFieldId ? canchas.filter(c => c.id === inviteFieldId) : canchas;
+
+  const hasResults = viewMode === 'cancha' ? displayCanchas.length > 0 : displaySlots.length > 0;
+
+  // Precio mínimo de una cancha (precios_por_duracion o precio_base)
+  const fieldMinPrice = (field) =>
+    field.precios_por_duracion && Object.keys(field.precios_por_duracion).length
+      ? Math.min(...Object.values(field.precios_por_duracion).filter(Boolean))
+      : parseFloat(field.precio_base || 0);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -206,74 +223,143 @@ export default function ComplexSlotsPage() {
             </button>
           </div>
 
-          {/* slots agrupados */}
+          {/* Toggle de agrupación (filtro) */}
+          {!inviteFieldId && (
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-muted-foreground">Ver turnos agrupados por:</span>
+              <div className="inline-flex rounded-xl border border-border overflow-hidden text-sm shrink-0">
+                <button onClick={() => setViewMode('cancha')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 font-medium transition-colors ${viewMode === 'cancha' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'}`}>
+                  <Building2 className="w-3.5 h-3.5" /> Cancha
+                </button>
+                <button onClick={() => setViewMode('horario')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 font-medium transition-colors ${viewMode === 'horario' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'}`}>
+                  <LayoutGrid className="w-3.5 h-3.5" /> Horario
+                </button>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex justify-center py-16">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
             </div>
-          ) : displaySlots.length === 0 ? (
+          ) : !hasResults ? (
             <div className="card text-center py-16 text-muted-foreground">
               <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium mb-1">Sin turnos disponibles</p>
               <p className="text-sm">Probá con otra fecha.</p>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {displaySlots.map((group, gi) => (
-                <div key={group.hora} data-aos="fade-up" data-aos-delay={Math.min(gi * 50, 300)}>
-                  {/* hora */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-lg font-bold tabular-nums text-primary">{group.hora}</span>
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground">{group.fields.length} cancha{group.fields.length !== 1 ? 's' : ''}</span>
-                  </div>
-
-                  {/* cards de canchas */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {group.fields.map(field => {
-                      const minPrice = field.precios_por_duracion
-                        ? Math.min(...Object.values(field.precios_por_duracion).filter(Boolean))
-                        : parseFloat(field.precio_base || 0);
-                      return (
-                        // NeonBorderCell → mismo efecto neón que la agenda del admin
-                        // (radius 12 = rounded-xl del .card). El punto verde recorre
-                        // el borde en hover, indicando que el turno es reservable.
-                        <NeonBorderCell key={field.id} radius={12} className="rounded-xl h-full">
-                          <button
-                            onClick={() => handleBook(group, field)}
-                            className="card text-left w-full h-full hover:border-primary/40 transition-colors group"
-                          >
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xl">{DEPORTE_ICON[field.deporte] || '🏃'}</span>
-                              <div>
-                                <div className="text-sm font-semibold group-hover:text-primary transition-colors">{field.nombre}</div>
-                                <div className="text-xs text-muted-foreground capitalize">{field.deporte}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
-                              <span>{field.techada ? '🏠 Techada' : '🌤 Al aire libre'}</span>
-                              {field.dimensiones && <span>{field.dimensiones}</span>}
-                            </div>
-                            {minPrice > 0 && (
-                              <div className="mt-2 pt-2 border-t border-border text-sm font-semibold text-green-600">
-                                Desde ${minPrice.toLocaleString('es-AR')}
-                              </div>
-                            )}
-                            <div className="mt-2 flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                              <CheckCircle className="w-3.5 h-3.5" /> Reservar
-                            </div>
+          ) : viewMode === 'cancha' ? (
+            /* ── Vista POR CANCHA: acordeón con rango y turnos disponibles ── */
+            <div className="space-y-3">
+              {displayCanchas.map((c, ci) => {
+                const open = openCancha === c.id;
+                return (
+                  <div key={c.id} className="card p-0 overflow-hidden" data-aos="fade-up" data-aos-delay={Math.min(ci * 40, 200)}>
+                    <button onClick={() => setOpenCancha(open ? null : c.id)}
+                      aria-expanded={open}
+                      className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/40 transition-colors">
+                      <span className="text-2xl shrink-0">{DEPORTE_ICON[c.deporte] || '🏃'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate">{c.nombre}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          <Clock className="w-3 h-3 inline mr-1" />{c.rango.label}
+                          <span className="mx-1">·</span>
+                          <span className="text-primary font-semibold">{c.count} turno{c.count !== 1 ? 's' : ''} libre{c.count !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                      <ChevronDown className={`w-5 h-5 text-muted-foreground shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </button>
+                    {open && (
+                      <div className="px-4 pb-4 pt-1 grid grid-cols-3 sm:grid-cols-5 gap-2">
+                        {c.starts.map(s => (
+                          <button key={s.hora}
+                            onClick={() => handleBook({ hora: s.hora, hora_fin: s.hora_fin }, c)}
+                            className="py-2.5 rounded-lg border border-border text-sm font-semibold tabular-nums
+                                       hover:border-primary hover:bg-primary/5 hover:text-primary transition-colors">
+                            {s.hora}
                           </button>
-                        </NeonBorderCell>
-                      );
-                    })}
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── Vista POR HORARIO: grilla de 2 columnas → modal al elegir hora ── */
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {displaySlots.map((g) => (
+                <button key={g.hora} onClick={() => setHoraModal(g)}
+                  className="card text-left transition-colors hover:border-primary/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-bold tabular-nums text-primary">{g.hora}</span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {g.count} cancha{g.count !== 1 ? 's' : ''} disponible{g.count !== 1 ? 's' : ''}
+                  </div>
+                </button>
               ))}
             </div>
           )}
         </div>
       </main>
       <Footer />
+
+      {/* modal: elegir cancha para el horario seleccionado (vista por horario) */}
+      {horaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setHoraModal(null)} />
+          <div className="relative z-10 w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* cabecera */}
+            <div className="bg-primary px-6 py-4 text-white flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Clock className="w-5 h-5 shrink-0" />
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold leading-tight">Turno de las {horaModal.hora} hs</h2>
+                  <p className="text-sm text-white/85 truncate">
+                    {horaModal.fields.length} cancha{horaModal.fields.length !== 1 ? 's' : ''} disponible{horaModal.fields.length !== 1 ? 's' : ''} — elegí una
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setHoraModal(null)} aria-label="Cerrar"
+                className="p-1.5 rounded-lg hover:bg-white/20 shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* lista de canchas disponibles */}
+            <div className="p-4 sm:p-5 space-y-2.5 max-h-[65vh] overflow-y-auto">
+              {horaModal.fields.map(field => {
+                const minPrice = fieldMinPrice(field);
+                return (
+                  <button key={field.id} onClick={() => handleBook(horaModal, field)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-slate-200
+                               hover:border-primary hover:bg-primary/5 text-left transition-all">
+                    <span className="text-2xl shrink-0">{DEPORTE_ICON[field.deporte] || '🏃'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 truncate">{field.nombre}</div>
+                      <div className="text-xs text-slate-500 capitalize">
+                        {field.deporte}{field.techada ? ' · 🏠 Techada' : ' · 🌤 Aire libre'}
+                      </div>
+                      {minPrice > 0 && (
+                        <div className="text-xs font-semibold text-green-600 mt-0.5">
+                          Desde ${minPrice.toLocaleString('es-AR')}
+                        </div>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-semibold text-primary shrink-0">
+                      Reservar <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* modal de reserva */}
       {selected && (

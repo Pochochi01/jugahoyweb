@@ -29,6 +29,11 @@ const sequelize = new Sequelize(
 
     dialectOptions: sslOptions,
 
+    // Zona horaria de Argentina (GMT-3, sin DST) para columnas DATETIME.
+    // Las fechas de turno se guardan como DATEONLY + hora STRING, pero esto
+    // mantiene coherentes created_at/updated_at y comparaciones de fecha.
+    timezone: '-03:00',
+
     define: { underscored: true, timestamps: true },
   }
 );

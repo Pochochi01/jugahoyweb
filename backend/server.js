@@ -1,4 +1,10 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
+// ── Zona horaria: Argentina (GMT-3) ──────────────────────────
+// Debe fijarse ANTES de requerir modelos/app para que todo `new Date()` del
+// proceso opere en hora local argentina. Se puede sobreescribir con TZ en .env.
+process.env.TZ = process.env.TZ || 'America/Argentina/Buenos_Aires';
+
 const app = require('./src/app');
 const { sequelize } = require('./src/models');
 

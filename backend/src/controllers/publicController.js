@@ -2,9 +2,11 @@ const { Op } = require('sequelize');
 const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequelize } = require('../models');
 const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
+const { todayAR } = require('../utils/time');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-function today() { return new Date().toISOString().split('T')[0]; }
+// Fecha "hoy" en Argentina (GMT-3), no en UTC.
+function today() { return todayAR(); }
 
 // Nunca exponer credenciales del complejo al público. Devuelve un flag booleano
 // `mp_enabled` (si tiene MercadoPago configurado) en lugar del token.
@@ -26,6 +28,21 @@ function generateSlots(start = 8, end = 26) {
     s.push(`${String(d).padStart(2, '0')}:30`);
   }
   return s;
+}
+
+// Grilla de 30 min propia de una cancha, entre su apertura y su cierre.
+// Maneja el cruce de medianoche (cierre 02:00 = 2am del día siguiente).
+function fieldGrid(apertura = '08:00', cierre = '02:00') {
+  const startH = parseInt(apertura.split(':')[0]);
+  const closeH = parseInt(cierre.split(':')[0]);
+  const endH   = closeH <= startH ? closeH + 24 : closeH;
+  const arr = [];
+  for (let h = startH; h < endH; h++) {
+    const d = h % 24;
+    arr.push(`${String(d).padStart(2, '0')}:00`);
+    arr.push(`${String(d).padStart(2, '0')}:30`);
+  }
+  return arr;
 }
 
 function addMinutes(hora, min) {
@@ -127,10 +144,50 @@ async function getComplexSlots(req, res) {
           sena_monto: f.sena_monto,   // para ofrecer "pagar seña" en el modal
         }));
       if (freeFields.length === 0) return null;
-      return { hora, hora_fin: addMinutes(hora, 30), fields: freeFields };
+      return { hora, hora_fin: addMinutes(hora, 30), count: freeFields.length, fields: freeFields };
     }).filter(Boolean);
 
-    res.json({ complex: sanitizeComplex(complex), date, slots: grouped });
+    // ── Agrupado POR CANCHA: rango horario + turnos disponibles ──
+    // Para cada cancha, calcula sus horarios de inicio libres (alineados a su
+    // duración de turno) dentro de su rango de apertura/cierre.
+    const isFreeAt = (fieldId, hora) => {
+      const [hh] = hora.split(':').map(Number);
+      const slotDt = new Date(`${date}T${hora}:00`);
+      if (hh < 8) slotDt.setDate(slotDt.getDate() + 1);
+      return slotDt > now && !occupiedSet.has(`${fieldId}:${hora}`);
+    };
+
+    const canchas = fields.map(f => {
+      const apertura = f.hora_apertura || '08:00';
+      const cierre   = f.hora_cierre   || '02:00';
+      const turno    = parseInt(f.duracion_turno) || 60;
+      const step     = Math.max(1, Math.round(turno / 30)); // slots de 30 min por turno
+      const grid     = fieldGrid(apertura, cierre);
+
+      const starts = [];
+      for (let i = 0; i + step <= grid.length; i += step) {
+        const chunk = grid.slice(i, i + step);
+        if (chunk.every(h => isFreeAt(f.id, h))) {
+          starts.push({ hora: chunk[0], hora_fin: addMinutes(chunk[0], turno) });
+        }
+      }
+
+      return {
+        id: f.id, nombre: f.nombre, deporte: f.deporte,
+        techada: f.techada, dimensiones: f.dimensiones,
+        precio_base: f.precio_base,
+        precios_por_duracion:  f.precios_por_duracion  || {},
+        duraciones_permitidas: f.duraciones_permitidas || [60],
+        sena_monto: f.sena_monto,
+        duracion_turno: turno,
+        rango: { desde: apertura, hasta: cierre, label: `de ${apertura.slice(0, 2)} a ${cierre.slice(0, 2)} hs` },
+        count: starts.length,
+        starts,
+      };
+    }).filter(c => c.count > 0);
+
+    // JSON normalizado: dos agrupaciones listas para el frontend.
+    res.json({ complex: sanitizeComplex(complex), date, slots: grouped, canchas });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

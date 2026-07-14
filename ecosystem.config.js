@@ -17,6 +17,7 @@ module.exports = {
       env_production: {
         NODE_ENV:  'production',
         PORT:       5003,
+        TZ:        'America/Argentina/Buenos_Aires',   // huso horario Argentina (GMT-3)
         // El resto de variables se carga del archivo .env ubicado en backend/
       },
 
