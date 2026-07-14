@@ -9,8 +9,10 @@
     <title>JugaHoy – Gestión de Complejos Deportivos</title>
     <meta name="description" content="Plataforma integral para gestión y reserva de complejos deportivos" />
 
-    <!-- ── PWA ── -->
-    <meta name="theme-color" content="#060a12" />
+    <!-- ── PWA ──
+         El color de tema lo define el manifest (theme_color: #060a12), que es el
+         estándar para la app instalada. Se omite el <meta name="theme-color">
+         (Chrome/Safari lo tomarían del manifest; Firefox/Opera no lo soportan). -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
