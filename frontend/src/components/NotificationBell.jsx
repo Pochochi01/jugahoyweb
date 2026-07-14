@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react
 import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, X, CheckCircle, XCircle, CalendarClock } from 'lucide-react';
 import { notificationsService } from '../services/notificationsService';
+import PushToggle from './PushToggle';
 
 const TIPO_CONFIG = {
   nueva_reserva:      { icon: CalendarClock, color: 'text-blue-500',  bg: 'bg-blue-50' },
@@ -149,6 +150,12 @@ export default function NotificationBell() {
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Barra de activación de notificaciones push */}
+        <div className="px-4 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center justify-between">
+          <span className="text-xs text-slate-500">Notificaciones del dispositivo</span>
+          <PushToggle />
         </div>
 
         {/* Lista — scroll interno, altura fluida */}

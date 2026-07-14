@@ -13,7 +13,7 @@ const Token = sequelize.define('Token', {
   usuario_id: { type: DataTypes.INTEGER, allowNull: false },
 
   // Hash SHA-256 del token real; nunca se guarda el token en claro
-  token: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+  token: { type: DataTypes.STRING(255), allowNull: false },  // único por índice `token` en BD
 
   tipo: {
     type: DataTypes.ENUM('reset_password', 'email_verificacion', 'otp_phone'),

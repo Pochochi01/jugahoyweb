@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Menu, X, Dumbbell, LogOut, LayoutDashboard, CalendarCheck, ShieldCheck } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, CalendarCheck, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import NotificationBell from './NotificationBell';
+import BrandLogo from './BrandLogo';
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -48,14 +49,11 @@ export default function Header() {
       }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20">
 
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 font-black text-xl text-white">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Dumbbell className="w-4 h-4 text-white" />
-            </div>
-            JugaHoy
+          <Link to="/" className="flex items-center" aria-label="JugaHoy — inicio">
+            <BrandLogo emblem="h-12 sm:h-14" text="text-2xl sm:text-3xl" />
           </Link>
 
           {/* Nav desktop */}

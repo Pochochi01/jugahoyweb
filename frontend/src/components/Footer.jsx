@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Dumbbell, Mail, Phone, MapPin } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 export default function Footer() {
   return (
@@ -9,11 +10,8 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="col-span-2 sm:col-span-2 md:col-span-1">
-            <Link to="/" className="inline-flex items-center gap-2 font-black text-xl text-white mb-4">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Dumbbell className="w-4 h-4 text-white" />
-              </div>
-              JugaHoy
+            <Link to="/" className="inline-block mb-4" aria-label="JugaHoy — inicio">
+              <BrandLogo emblem="h-11" text="text-2xl" tagline tagClass="text-[0.5rem] mt-1" />
             </Link>
             <p className="text-sm text-white/35 leading-relaxed max-w-xs">
               La plataforma integral para gestión y reserva de complejos deportivos en Argentina.

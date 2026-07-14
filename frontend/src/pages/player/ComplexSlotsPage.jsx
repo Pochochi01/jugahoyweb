@@ -5,6 +5,7 @@ import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
 import { favoritesService } from '../../services/favoritesService';
+import { paymentService } from '../../services/paymentService';
 import { useAuth } from '../../context/AuthContext';
 import BookingModal from '../../components/agenda/BookingModal';
 import NeonBorderCell from '../../components/agenda/NeonBorderCell';
@@ -88,9 +89,25 @@ export default function ComplexSlotsPage() {
   };
 
   const handleConfirm = async (formData) => {
-    await publicService.reserve(id, formData);
+    const { booking } = await publicService.reserve(id, formData);
+
+    // Flujo MercadoPago: crear preference y redirigir al checkout
+    if (formData.tipo_pago === 'seña' || formData.tipo_pago === 'total') {
+      const pref = await paymentService.initMp({
+        reserva_id: booking.id,
+        cancha_id:  booking.field_id,
+        player_id:  user?.id,
+        tipoPago:   formData.tipo_pago,
+      });
+      const url = pref.init_point || pref.sandbox_init_point;
+      if (!url) throw new Error('No se pudo iniciar el pago con MercadoPago.');
+      window.location.href = url;   // sale del SPA hacia MercadoPago
+      return;
+    }
+
+    // Pago en el complejo (offline)
     setSelected(null);
-    showToast('success', '¡Turno reservado! Podés verlo en Mis turnos.');
+    showToast('success', '¡Turno reservado! Pagás en el complejo. Lo ves en Mis turnos.');
     loadSlots();
   };
 
@@ -273,6 +290,7 @@ export default function ComplexSlotsPage() {
           onConfirm={handleConfirm}
           onClose={() => setSelected(null)}
           playerMode
+          mpEnabled={!!complex?.mp_enabled}
           playerData={{ nombre: `${user?.nombre} ${user?.apellido}`, telefono: user?.telefono }}
         />
       )}

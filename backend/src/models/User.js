@@ -5,7 +5,10 @@ const User = sequelize.define('User', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   nombre: { type: DataTypes.STRING(100), allowNull: false },
   apellido: { type: DataTypes.STRING(100), allowNull: false },
-  email: { type: DataTypes.STRING(150), allowNull: false, unique: true },
+  // La unicidad la garantiza el índice `email` de la BD (definido en la migración
+  // inicial). NO usar `unique: true` acá: con sync() Sequelize agrega un índice
+  // UNIQUE nuevo en cada arranque y satura la tabla (ER_TOO_MANY_KEYS, máx 64).
+  email: { type: DataTypes.STRING(150), allowNull: false },
   // allowNull: true → usuarios registrados con Google no tienen contraseña local
   password:   { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
   telefono:   { type: DataTypes.STRING(20)  },

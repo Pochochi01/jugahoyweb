@@ -6,7 +6,8 @@ const Invite = sequelize.define('Invite', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
 
   // Token UUID de un solo uso (viaja en la URL)
-  token: { type: DataTypes.STRING(36), allowNull: false, unique: true },
+  // Unicidad por índice `token` en BD (no usar unique inline: satura con sync)
+  token: { type: DataTypes.STRING(36), allowNull: false },
 
   complex_id:  { type: DataTypes.INTEGER, allowNull: false },
   // field_id ya no se usa (el invite es a nivel complejo). Se deja nullable por

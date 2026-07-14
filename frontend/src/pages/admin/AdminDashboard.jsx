@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Building2, Dumbbell, DollarSign, Power, PowerOff, Pencil,
+  Building2, DollarSign, Power, PowerOff, Pencil,
   Trash2, Plus, X, CheckCircle, XCircle, LayoutDashboard,
   TrendingUp, AlertCircle, Filter, LogOut,
 } from 'lucide-react';

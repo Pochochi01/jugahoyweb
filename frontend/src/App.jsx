@@ -14,6 +14,7 @@ import Dashboard          from './pages/dashboard/Dashboard';
 import PlayerPage         from './pages/player/PlayerPage';
 import ComplexSlotsPage   from './pages/player/ComplexSlotsPage';
 import MyBookingsPage     from './pages/player/MyBookingsPage';
+import ReservaResultadoPage from './pages/player/ReservaResultadoPage';
 import AdminDashboard     from './pages/admin/AdminDashboard';
 import InvitePage         from './pages/InvitePage';
 import ProtectedRoute     from './components/ProtectedRoute';
@@ -40,6 +41,11 @@ export default function App() {
       <Route path="/auth/callback"    element={<AuthCallbackPage />} />
       {/* Link de invitación a cancha — público */}
       <Route path="/invite/:token"    element={<InvitePage />} />
+
+      {/* Retorno de MercadoPago (públicas: MP redirige acá) */}
+      <Route path="/reserva/exito"     element={<ReservaResultadoPage variant="exito" />} />
+      <Route path="/reserva/error"     element={<ReservaResultadoPage variant="error" />} />
+      <Route path="/reserva/pendiente" element={<ReservaResultadoPage variant="pendiente" />} />
 
       {/* Player — requiere login */}
       <Route path="/canchas" element={

@@ -3,7 +3,99 @@ import { settingsService } from '../../services/settingsService';
 import {
   Save, Plus, X, Wind, Home, Pencil, Trash2, Check,
   Eye, EyeOff, Power, PowerOff, Clock, ChevronDown, ChevronUp,
+  CreditCard, ShieldCheck, ExternalLink,
 } from 'lucide-react';
+
+// Detecta el ambiente del token de MercadoPago por su prefijo
+function mpEnv(t) {
+  if (!t) return null;
+  if (t.startsWith('TEST-'))    return { label: 'Modo prueba (sandbox)', cls: 'bg-amber-100 text-amber-700' };
+  if (t.startsWith('APP_USR-')) return { label: 'Producción',           cls: 'bg-green-100 text-green-700' };
+  return { label: 'Token no reconocido', cls: 'bg-red-100 text-red-600' };
+}
+
+// ── Tarjeta de configuración de MercadoPago (por complejo) ────────────────────
+function MercadoPagoCard({ complexId, initialToken }) {
+  const [token,  setToken]  = useState(initialToken || '');
+  const [show,   setShow]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [ok,     setOk]     = useState(false);
+  const [err,    setErr]    = useState('');
+
+  const trimmed = token.trim();
+  const env = mpEnv(trimmed);
+
+  const save = async () => {
+    setSaving(true); setErr('');
+    try {
+      await settingsService.update(complexId, { mercadopago_token: trimmed || null });
+      setOk(true); setTimeout(() => setOk(false), 2500);
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message || 'Error al guardar el token.');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-2">
+        <CreditCard className="w-5 h-5 text-primary" />
+        <h3 className="font-semibold">Cobros con MercadoPago</h3>
+        {initialToken
+          ? <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-0.5 rounded-full">Configurado</span>
+          : <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-full">Sin configurar</span>}
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Pegá el <strong>Access Token</strong> de la cuenta de MercadoPago de este complejo. Los pagos de
+        seña y turnos de tus jugadores entran directo a <strong>tu cuenta</strong>.
+      </p>
+
+      <div>
+        <label className="label">Access Token</label>
+        <div className="relative">
+          <input
+            type={show ? 'text' : 'password'}
+            className="input pr-24 font-mono text-sm"
+            placeholder="APP_USR-... o TEST-..."
+            value={token}
+            onChange={e => setToken(e.target.value)}
+            autoComplete="off"
+          />
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {show ? 'Ocultar' : 'Ver'}
+          </button>
+        </div>
+        {env && (
+          <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${env.cls}`}>
+            {env.label}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3">
+        <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <span>
+          El token es secreto: no lo compartas. Se guarda en el servidor y nunca se expone a los jugadores.
+          {' '}
+          <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-0.5">
+            Obtener mi token <ExternalLink className="w-3 h-3" />
+          </a>
+        </span>
+      </div>
+
+      {err && <p className="text-sm text-red-500">{err}</p>}
+
+      <button onClick={save} disabled={saving}
+        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-600 text-white' : 'btn-primary'}`}>
+        <Save className="w-4 h-4" />
+        {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar token'}
+      </button>
+    </div>
+  );
+}
 
 const DEPORTES = [
   { value: 'futbol', label: 'Fútbol',  emoji: '⚽' },
@@ -21,6 +113,7 @@ const CANCHA_INICIAL = {
   nombre: '', deporte: 'futbol', dimensiones: '', techada: false,
   duraciones_permitidas: [60], precios_por_duracion: { 60: '' },
   precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
+  sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
 };
 
 // ── formulario crear/editar ───────────────────────────────────────────────────
@@ -54,7 +147,18 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
       const v = parseFloat(form.precios_por_duracion?.[d]);
       if (!isNaN(v) && v > 0) precios[d] = v;
     });
-    onSave({ ...form, duracion_turno, precio_base: parseFloat(form.precio_base) || 0, precios_por_duracion: precios });
+    // Seña: null si está vacía; validar que no supere el precio base
+    const sena = form.sena_monto === '' || form.sena_monto == null ? null : parseFloat(form.sena_monto);
+    if (sena != null && (isNaN(sena) || sena < 0)) return setError('La seña debe ser un monto válido.');
+    const base = parseFloat(form.precio_base) || 0;
+    if (sena != null && base > 0 && sena > base) return setError('La seña no puede superar el precio base.');
+
+    onSave({
+      ...form, duracion_turno,
+      precio_base: base,
+      precios_por_duracion: precios,
+      sena_monto: sena,
+    });
   };
 
   return (
@@ -101,6 +205,16 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
           <input type="number" min="0" step="0.01" className="input" placeholder="0"
             value={form.precio_base} onChange={e => setForm(f => ({ ...f, precio_base: e.target.value }))} />
         </div>
+      </div>
+
+      {/* Seña para reservar online (MercadoPago) */}
+      <div>
+        <label className="label">Seña para reservar online ($)</label>
+        <input type="number" min="0" step="0.01" className="input" placeholder="Vacío = no se ofrece pagar seña"
+          value={form.sena_monto ?? ''} onChange={e => setForm(f => ({ ...f, sena_monto: e.target.value }))} />
+        <p className="text-xs text-muted-foreground mt-1">
+          Monto fijo que el jugador paga con MercadoPago para asegurar el turno. Dejalo vacío para no ofrecer seña en esta cancha.
+        </p>
       </div>
 
       {/* Horario */}
@@ -208,6 +322,8 @@ function FieldDetail({ field, onClose }) {
         <Row label="Horario"
           value={`${field.hora_apertura || '08:00'} → ${field.hora_cierre || '02:00'}`} />
         <Row label="Estado" value={field.activa ? '🟢 Habilitada' : '🔴 Inhabilitada'} />
+        <Row label="Seña online"
+          value={field.sena_monto > 0 ? `$${parseFloat(field.sena_monto).toLocaleString('es-AR')}` : '— (no ofrece seña)'} />
       </div>
 
       {Object.keys(precios).length > 0 && (
@@ -385,6 +501,7 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
               hora_cierre:           field.hora_cierre   || '02:00',
               duraciones_permitidas: field.duraciones_permitidas?.length ? field.duraciones_permitidas : [field.duracion_turno || 60],
               precios_por_duracion:  field.precios_por_duracion || {},
+              sena_monto:            field.sena_monto ?? '',
             }}
             onSave={handleSave}
             onCancel={() => setMode(null)}
@@ -417,7 +534,17 @@ export default function SettingsTab({ complexId, onUpdate }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const updated = await settingsService.update(complexId, form);
+      // Enviar solo los campos generales (no pisar mercadopago_token, que se guarda
+      // desde su propia tarjeta con estado independiente).
+      const payload = {
+        nombre:      form.nombre,
+        telefono:    form.telefono,
+        email:       form.email,
+        ciudad:      form.ciudad,
+        direccion:   form.direccion,
+        descripcion: form.descripcion,
+      };
+      const updated = await settingsService.update(complexId, payload);
       onUpdate?.(updated);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
@@ -485,6 +612,9 @@ export default function SettingsTab({ complexId, onUpdate }) {
           {saving ? 'Guardando...' : saveOk ? '¡Guardado!' : 'Guardar cambios'}
         </button>
       </form>
+
+      {/* MercadoPago */}
+      <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
 
       {/* canchas */}
       <div className="card">

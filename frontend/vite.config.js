@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       // ── PWA ────────────────────────────────────────────────
       VitePWA({
         registerType: 'autoUpdate',        // actualiza el SW solo al haber nueva versión
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['apple-touch-icon.png', 'pwa-192.png', 'pwa-512.png', 'logo.png', 'emblem.png'],
         manifest: {
           name: 'JugaHoy – Gestión de Complejos Deportivos',
           short_name: 'JugaHoy',
@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => {
           navigateFallback: '/index.html',   // routing SPA offline
           // Excluir la API del fallback de navegación (deben ir a la red)
           navigateFallbackDenylist: [/^\/api\//],
+          // Handlers de Web Push: se importan dentro del SW generado por Workbox
+          importScripts: ['/push-sw.js'],
           runtimeCaching: [
             {
               // Datos de la API: red primero, cache como respaldo offline.

@@ -20,6 +20,7 @@ const TermsAcceptance = require('./TermsAcceptance');
 const Invite          = require('./Invite');
 const Localidad       = require('./Localidad');
 const Favorite        = require('./Favorite');
+const PushSubscription = require('./PushSubscription');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -110,6 +111,10 @@ User.hasMany(Favorite,    { foreignKey: 'player_id',  as: 'favorites' });
 Favorite.belongsTo(User,  { foreignKey: 'player_id',  as: 'player' });
 Favorite.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
 
+// ── Push subscriptions ────────────────────────────────────────
+User.hasMany(PushSubscription,   { foreignKey: 'user_id', as: 'pushSubscriptions' });
+PushSubscription.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -123,4 +128,6 @@ module.exports = {
   Localidad,
   // Favoritos
   Favorite,
+  // Push
+  PushSubscription,
 };

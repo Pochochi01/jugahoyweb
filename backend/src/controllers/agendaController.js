@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, sequelize } = require('../models');
+const notifService = require('./../services/notification.service');
 
 // ── utilidades ────────────────────────────────────────────────────────────────
 
@@ -353,6 +354,19 @@ async function confirmBooking(req, res) {
     }, { transaction: t });
 
     await t.commit();
+
+    // Push al jugador: su turno fue confirmado
+    if (booking.user_id) {
+      notifService.sendToUserAsync(booking.user_id, {
+        tipo:   'confirmacion',
+        titulo: '¡Turno confirmado! ✅',
+        body:   `Tu reserva del ${booking.fecha} ${booking.hora_inicio}–${booking.hora_fin} en ${booking.field?.nombre || 'la cancha'} fue confirmada.`,
+        url:    '/mis-turnos',
+        data:   { cancha_id: booking.field_id, cancha_nombre: booking.field?.nombre, fecha: booking.fecha, hora: booking.hora_inicio, booking_id: booking.id },
+        actions: [{ action: 'ver', title: 'Ver mis turnos' }],
+      });
+    }
+
     res.json(booking);
   } catch (err) {
     await t.rollback();
@@ -402,6 +416,18 @@ async function rejectBooking(req, res) {
     }, { transaction: t });
 
     await t.commit();
+
+    // Push al jugador: su turno fue rechazado/cancelado por el admin
+    if (booking.user_id) {
+      notifService.sendToUserAsync(booking.user_id, {
+        tipo:   'cancelacion',
+        titulo: 'Turno no disponible ❌',
+        body:   `Tu reserva del ${booking.fecha} ${booking.hora_inicio} en ${booking.field?.nombre || 'la cancha'} no pudo confirmarse${motivo?.trim() ? `: ${motivo.trim()}` : ''}.`,
+        url:    '/mis-turnos',
+        data:   { cancha_id: booking.field_id, cancha_nombre: booking.field?.nombre, fecha: booking.fecha, hora: booking.hora_inicio, booking_id: booking.id },
+      });
+    }
+
     res.json(booking);
   } catch (err) {
     await t.rollback();

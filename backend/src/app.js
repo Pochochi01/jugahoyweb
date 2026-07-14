@@ -25,6 +25,7 @@ const contactRoutes    = require('./routes/contact');
 const termsRoutes      = require('./routes/terms');
 const chatbotRoutes    = require('./routes/chatbot');
 const invitesRoutes    = require('./routes/invites');
+const paymentRoutes    = require('./routes/payment.routes');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -83,6 +84,7 @@ app.use('/api/contact',       contactRoutes);
 app.use('/api/terms',         termsRoutes);
 app.use('/api/chatbot',       chatbotRoutes);
 app.use('/api/invites',       invitesRoutes);
+app.use('/api/payments',      paymentRoutes);
 
 // ── Frontend estático (modo mismo-servidor) ───────────────────
 // Activar con SERVE_FRONTEND=true en .env.production cuando el frontend

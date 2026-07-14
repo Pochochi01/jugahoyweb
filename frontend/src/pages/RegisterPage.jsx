@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { resolvePostAuthRoute, storePendingInvite } from '../utils/authRedirect';
-import { Dumbbell, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 
 function GoogleIcon() {
   return (
@@ -61,11 +62,8 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 font-black text-xl text-white mb-6">
-            <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center">
-              <Dumbbell className="w-5 h-5 text-white" />
-            </div>
-            JugaHoy
+          <Link to="/" className="inline-block mb-6" aria-label="JugaHoy — inicio">
+            <BrandLogo emblem="h-16" text="text-4xl" tagline tagClass="text-[0.6rem] mt-1 tracking-[0.22em]" />
           </Link>
           <h1 className="text-2xl font-black text-white mb-1">Crear cuenta</h1>
           <p className="text-muted-foreground text-sm">Empezá a reservar gratis</p>

@@ -7,7 +7,7 @@ const sequelize     = require('../config/database');
 
 const TermsVersion = sequelize.define('TermsVersion', {
   id:        { type: DataTypes.INTEGER,     primaryKey: true, autoIncrement: true },
-  version:   { type: DataTypes.STRING(20),  allowNull: false, unique: true },
+  version:   { type: DataTypes.STRING(20),  allowNull: false },  // único por índice en BD
   contenido: { type: DataTypes.TEXT('long'), allowNull: false },
   activo:    { type: DataTypes.BOOLEAN,     defaultValue: true },
 }, { tableName: 'terminos' });

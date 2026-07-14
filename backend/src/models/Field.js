@@ -16,6 +16,9 @@ const Field = sequelize.define('Field', {
   precios_por_duracion:  { type: DataTypes.JSON, defaultValue: {} },
   techada:     { type: DataTypes.BOOLEAN, defaultValue: false },
   precio_base: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  // Monto fijo de la seña para pagar online (lo define el admin por cancha).
+  // 0 / null → no se ofrece la opción "pagar seña" en esta cancha.
+  sena_monto:  { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: null },
   activa:      { type: DataTypes.BOOLEAN, defaultValue: true },
   hora_apertura: { type: DataTypes.STRING(5), defaultValue: '08:00' },
   hora_cierre:   { type: DataTypes.STRING(5), defaultValue: '02:00' },

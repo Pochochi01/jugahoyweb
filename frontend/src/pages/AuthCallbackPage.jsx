@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { resolvePostAuthRoute } from '../utils/authRedirect';
-import { Dumbbell } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 
 export default function AuthCallbackPage() {
   const navigate       = useNavigate();
@@ -47,8 +47,8 @@ export default function AuthCallbackPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
-          <Dumbbell className="w-6 h-6 text-white" />
+        <div className="flex justify-center mb-4 animate-pulse">
+          <BrandLogo emblem="h-16" text="text-3xl" />
         </div>
         <p className="text-muted-foreground text-sm">Autenticando con Google…</p>
       </div>

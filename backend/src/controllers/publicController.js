@@ -1,9 +1,21 @@
 const { Op } = require('sequelize');
 const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequelize } = require('../models');
 const { validateProvinciaLocalidad } = require('./localidadesController');
+const notifService = require('../services/notification.service');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function today() { return new Date().toISOString().split('T')[0]; }
+
+// Nunca exponer credenciales del complejo al público. Devuelve un flag booleano
+// `mp_enabled` (si tiene MercadoPago configurado) en lugar del token.
+function sanitizeComplex(complex) {
+  if (!complex) return complex;
+  const json = typeof complex.toJSON === 'function' ? complex.toJSON() : { ...complex };
+  json.mp_enabled = !!json.mercadopago_token;
+  delete json.mercadopago_token;
+  delete json.cuentas_bancarias;
+  return json;
+}
 
 // Rango máximo del complejo: 08:00 a 02:00 (madrugada)
 function generateSlots(start = 8, end = 26) {
@@ -50,7 +62,7 @@ async function getComplexes(req, res) {
       include: [{ model: Field, as: 'fields', where: { activa: true }, required: false }],
       order: [['nombre', 'ASC']],
     });
-    res.json(complexes);
+    res.json(complexes.map(sanitizeComplex));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -66,7 +78,7 @@ async function getComplex(req, res) {
       ],
     });
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
-    res.json(complex);
+    res.json(sanitizeComplex(complex));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -112,12 +124,13 @@ async function getComplexSlots(req, res) {
           duraciones_permitidas: f.duraciones_permitidas || [60],
           precios_por_duracion:  f.precios_por_duracion  || {},
           precio_base: f.precio_base,
+          sena_monto: f.sena_monto,   // para ofrecer "pagar seña" en el modal
         }));
       if (freeFields.length === 0) return null;
       return { hora, hora_fin: addMinutes(hora, 30), fields: freeFields };
     }).filter(Boolean);
 
-    res.json({ complex, date, slots: grouped });
+    res.json({ complex: sanitizeComplex(complex), date, slots: grouped });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -132,6 +145,7 @@ async function playerReserve(req, res) {
       field_id, fecha, hora, duracion = 60,
       nombre_cliente, telefono_cliente, email_cliente,
       metodo_pago, monto, notas,
+      tipo_pago,   // 'seña' | 'total' (MercadoPago) | 'complejo' (pago en sitio)
     } = req.body;
 
     if (!field_id || !fecha || !hora) {
@@ -166,16 +180,27 @@ async function playerReserve(req, res) {
       return res.status(409).json({ message: `El horario ${h} ya está ocupado. Elegí otra franja.` });
     }
 
+    // Ciclo de vida según el pago elegido:
+    //  - MercadoPago (seña/total) → 'pendiente_pago': retiene el slot mientras paga;
+    //    la reconciliación (webhook/sync) lo confirma o libera.
+    //  - complejo / otros         → 'pendiente': a pagar en sitio / confirmar por admin.
+    const esMP          = tipo_pago === 'seña' || tipo_pago === 'total';
+    const estadoInicial = esMP ? 'pendiente_pago' : 'pendiente';
+    const metodoFinal   = esMP ? 'mercadopago'
+                        : tipo_pago === 'complejo' ? 'efectivo'
+                        : (metodo_pago || 'efectivo');
+
     const booking = await Booking.create({
       field_id, fecha,
       hora_inicio: hora, hora_fin: horaFin, duracion,
       nombre_cliente:   clientName,
       telefono_cliente: clientPhone,
       email_cliente,
-      metodo_pago: metodo_pago || 'efectivo',
+      metodo_pago: metodoFinal,
+      tipo_pago:   tipo_pago || null,
       monto,
       notas,
-      estado:     'pendiente',   // el admin debe confirmar
+      estado:     estadoInicial,
       user_id:    req.user.id,
       created_by: req.user.id,
     }, { transaction: t });
@@ -208,6 +233,22 @@ async function playerReserve(req, res) {
     }
 
     await t.commit();
+
+    // Push al dueño del complejo (best-effort, fuera de la transacción)
+    if (complex?.owner_id) {
+      notifService.sendToUserAsync(complex.owner_id, {
+        tipo:   'reserva',
+        titulo: '🔔 Nueva solicitud de turno',
+        body:   `${clientName} pidió ${fecha} ${hora}–${horaFin} en ${field.nombre}.`,
+        url:    '/dashboard',
+        data:   { cancha_id: field.id, cancha_nombre: field.nombre, fecha, hora, booking_id: booking.id },
+        actions: [
+          { action: 'confirmar', title: 'Confirmar reserva' },
+          { action: 'rechazar',  title: 'Rechazar turno' },
+        ],
+      });
+    }
+
     res.status(201).json({ booking });
   } catch (err) {
     await t.rollback();
@@ -237,7 +278,11 @@ async function cancelMyBooking(req, res) {
   try {
     const booking = await Booking.findOne({
       where: { id: req.params.id, user_id: req.user.id },
-      include: [{ model: TimeSlot, as: 'timeSlots' }],
+      include: [
+        { model: TimeSlot, as: 'timeSlots' },
+        { model: Field, as: 'field', attributes: ['id', 'nombre'],
+          include: [{ model: Complex, as: 'complex', attributes: ['owner_id', 'nombre'] }] },
+      ],
       transaction: t,
     });
     if (!booking) {
@@ -258,6 +303,19 @@ async function cancelMyBooking(req, res) {
     );
     await booking.update({ estado: 'cancelado' }, { transaction: t });
     await t.commit();
+
+    // Push al dueño: el jugador canceló un turno
+    const ownerId = booking.field?.complex?.owner_id;
+    if (ownerId) {
+      notifService.sendToUserAsync(ownerId, {
+        tipo:   'cancelacion',
+        titulo: 'Turno cancelado por el jugador',
+        body:   `${booking.nombre_cliente} canceló el ${booking.fecha} ${booking.hora_inicio}–${booking.hora_fin} en ${booking.field?.nombre}.`,
+        url:    '/dashboard',
+        data:   { cancha_id: booking.field_id, cancha_nombre: booking.field?.nombre, fecha: booking.fecha, hora: booking.hora_inicio, booking_id: booking.id },
+      });
+    }
+
     res.json({ message: 'Turno cancelado exitosamente', booking });
   } catch (err) {
     await t.rollback();

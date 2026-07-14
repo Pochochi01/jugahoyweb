@@ -3,7 +3,7 @@ const sequelize = require('../config/database');
 
 const Subscription = sequelize.define('Subscription', {
   id:               { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  complex_id:       { type: DataTypes.INTEGER, allowNull: false, unique: true },
+  complex_id:       { type: DataTypes.INTEGER, allowNull: false },  // único por índice en BD
   precio_mensual:   { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   estado:           { type: DataTypes.ENUM('activo', 'inactivo'), defaultValue: 'activo' },
   fecha_inicio:     { type: DataTypes.DATEONLY },

@@ -21,7 +21,7 @@ function addMinutes(hora, min) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, playerData = {} }) {
+export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, mpEnabled = false, playerData = {} }) {
   // Duraciones que permite la cancha (default: todas)
   const fieldDuraciones = field?.duraciones_permitidas?.length
     ? field.duraciones_permitidas
@@ -52,6 +52,11 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+
+  // Opciones de pago del jugador: 'complejo' | 'seña' | 'total'
+  const [tipoPago, setTipoPago] = useState('complejo');
+  const senaMonto  = Number(field?.sena_monto) || 0;
+  const totalMonto = Number(form.monto) || 0;
 
   const horaFin = duracion ? addMinutes(slot.hora, duracion) : '--:--';
 
@@ -90,6 +95,8 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
         hora:     slot.hora,
         duracion,
         monto:    form.monto ? parseFloat(form.monto) : undefined,
+        // En modo jugador, el tipo de pago define el flujo (offline / MercadoPago)
+        tipo_pago: playerMode ? tipoPago : undefined,
       });
     } catch (err) {
       setError(err.message || 'Error al confirmar la reserva.');
@@ -129,7 +136,8 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 overflow-y-auto max-h-[75vh]">
+        {/* [&_.label]: fuerza etiquetas oscuras y legibles sobre el modal blanco */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 overflow-y-auto max-h-[75vh] [&_.label]:text-slate-600">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2.5 text-sm">
               {error}
@@ -161,7 +169,7 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
                         ${selected
                           ? 'bg-primary text-white border-primary shadow-md scale-[1.02]'
                           : available
-                            ? 'border-border text-foreground hover:border-primary hover:text-primary bg-white'
+                            ? 'border-slate-300 text-slate-700 hover:border-primary hover:text-primary bg-white'
                             : 'border-gray-100 text-gray-300 bg-gray-50 cursor-not-allowed'
                         }`}
                     >
@@ -216,26 +224,87 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
           </div>
 
           {/* ── pago ── */}
-          <div className="grid grid-cols-2 gap-3">
+          {playerMode ? (
+            /* Jugador: elige cómo pagar. El monto lo fija la cancha (no editable).
+               Las opciones de MercadoPago solo aparecen si el complejo tiene MP
+               configurado (mpEnabled). */
             <div>
-              <label className="label">Método de pago</label>
-              <select className="input text-sm" value={form.metodo_pago}
-                onChange={e => set('metodo_pago', e.target.value)}>
-                {METODOS.map(m => (
-                  <option key={m.value} value={m.value}>{m.icon} {m.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Precio ($)</label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input type="number" min="0" step="1" className="input pl-9" placeholder="0"
-                  value={form.monto}
-                  onChange={e => set('monto', e.target.value)} />
+              <label className="label !text-slate-600">¿Cómo querés pagar?</label>
+              <div className="space-y-2">
+                {/* Pagar en el complejo (offline) — siempre disponible */}
+                <button type="button" onClick={() => setTipoPago('complejo')}
+                  aria-pressed={tipoPago === 'complejo'}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
+                    ${tipoPago === 'complejo' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
+                  <span className="text-xl">🏟️</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800">Pagar en el complejo</div>
+                    <div className="text-xs text-slate-500">Reservás ahora y pagás en el lugar.</div>
+                  </div>
+                  {tipoPago === 'complejo' && <CheckCircle className="w-5 h-5 text-primary shrink-0" />}
+                </button>
+
+                {/* Pagar seña con MercadoPago (MP habilitado + cancha con seña) */}
+                {mpEnabled && senaMonto > 0 && (
+                  <button type="button" onClick={() => setTipoPago('seña')}
+                    aria-pressed={tipoPago === 'seña'}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
+                      ${tipoPago === 'seña' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
+                    <span className="text-xl">💳</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">Pagar seña con MercadoPago</div>
+                      <div className="text-xs text-slate-500">Asegurás el turno con una seña.</div>
+                    </div>
+                    <span className="text-sm font-bold text-primary shrink-0">${senaMonto.toLocaleString('es-AR')}</span>
+                  </button>
+                )}
+
+                {/* Pagar total con MercadoPago (solo si MP está habilitado) */}
+                {mpEnabled && (
+                  <button type="button" onClick={() => setTipoPago('total')}
+                    aria-pressed={tipoPago === 'total'}
+                    disabled={totalMonto <= 0}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all disabled:opacity-50
+                      ${tipoPago === 'total' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
+                    <span className="text-xl">💳</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-slate-800">Pagar total con MercadoPago</div>
+                      <div className="text-xs text-slate-500">Pagás el turno completo ahora.</div>
+                    </div>
+                    <span className="text-sm font-bold text-primary shrink-0">${totalMonto.toLocaleString('es-AR')}</span>
+                  </button>
+                )}
+
+                {!mpEnabled && (
+                  <p className="text-xs text-slate-500">
+                    Este complejo aún no acepta pagos online. Podés reservar y pagar en el lugar.
+                  </p>
+                )}
               </div>
             </div>
-          </div>
+          ) : (
+            /* Admin: método y precio manuales */
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label !text-slate-600">Método de pago</label>
+                <select className="input text-sm" value={form.metodo_pago}
+                  onChange={e => set('metodo_pago', e.target.value)}>
+                  {METODOS.map(m => (
+                    <option key={m.value} value={m.value}>{m.icon} {m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label !text-slate-600">Precio ($)</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input type="number" min="0" step="1" className="input pl-9" placeholder="0"
+                    value={form.monto}
+                    onChange={e => set('monto', e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="label">Notas</label>
@@ -247,7 +316,9 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
           </div>
 
           <div className="flex gap-3 pt-1 border-t border-border">
-            <button type="button" onClick={onClose} className="btn-outline flex-1 py-2.5">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg font-semibold border border-slate-300 text-slate-700
+                         hover:border-primary hover:text-primary transition-colors">
               Cancelar
             </button>
             <button
@@ -256,7 +327,9 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
               className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2"
             >
               {loading
-                ? <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Reservando...</>
+                ? <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Procesando...</>
+                : (playerMode && tipoPago === 'seña') ? `Pagar seña $${senaMonto.toLocaleString('es-AR')}`
+                : (playerMode && tipoPago === 'total') ? `Pagar total $${totalMonto.toLocaleString('es-AR')}`
                 : 'Confirmar reserva'
               }
             </button>
