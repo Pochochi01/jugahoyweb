@@ -17,6 +17,7 @@ import MyBookingsPage     from './pages/player/MyBookingsPage';
 import ReservaResultadoPage from './pages/player/ReservaResultadoPage';
 import AdminDashboard     from './pages/admin/AdminDashboard';
 import InvitePage         from './pages/InvitePage';
+import PrivacyPage        from './pages/PrivacyPage';
 import ProtectedRoute     from './components/ProtectedRoute';
 import PWABadge           from './components/PWABadge';
 
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/profesores"       element={<TeachersPage />} />
       <Route path="/contacto"         element={<ContactPage />} />
       <Route path="/adherir-complejo" element={<RegisterComplexPage />} />
+      <Route path="/politica-privacidad" element={<PrivacyPage />} />
       {/* Callback de Google OAuth — lee el token del hash y redirige */}
       <Route path="/auth/callback"    element={<AuthCallbackPage />} />
       {/* Link de invitación a cancha — público */}
