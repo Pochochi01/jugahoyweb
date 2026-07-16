@@ -29,9 +29,11 @@
  *   GET  /api/chatbot/webhook   ← verificación Meta
  *   POST /api/chatbot/webhook   ← mensajes entrantes WhatsApp
  */
+const crypto       = require('crypto');
 const { Op }       = require('sequelize');
 const { Field, TimeSlot, Booking, sequelize } = require('../models');
 const wa           = require('../services/whatsappService');
+const { todayAR }  = require('../utils/time');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -48,23 +50,32 @@ function parseLocalDate(str) {
   return new Date(y, m - 1, d);
 }
 
+/** 'YYYY-MM-DD' desde las partes locales (ART con TZ forzado), sin desfase UTC */
+function ymd(date) {
+  const y  = date.getFullYear();
+  const m  = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 /** Devuelve "Hoy 17 jun" / "Mañana 18 jun" / "Sábado 20 jun" */
 function formatFechaLabel(dateOrStr) {
-  const d   = typeof dateOrStr === 'string' ? parseLocalDate(dateOrStr) : dateOrStr;
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const d = typeof dateOrStr === 'string' ? parseLocalDate(dateOrStr) : dateOrStr;
+  // "Hoy" anclado a la fecha de Argentina (no a la UTC del proceso)
+  const [ty, tm, td] = todayAR().split('-').map(Number);
+  const hoy = new Date(ty, tm - 1, td);
   const tgt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diff = Math.round((tgt - hoy) / 86_400_000);
   const prefix = diff === 0 ? 'Hoy' : diff === 1 ? 'Mañana' : DIAS[d.getDay()];
   return `${prefix} ${d.getDate()} ${MESES[d.getMonth()]}`;
 }
 
-/** Genera los próximos 8 días { value: 'YYYY-MM-DD', label } */
+/** Genera los próximos 8 días { value: 'YYYY-MM-DD', label } — en hora Argentina */
 function getNext8Days() {
-  const now  = new Date();
+  const [y, m, d] = todayAR().split('-').map(Number);
   return Array.from({ length: 8 }, (_, i) => {
-    const d     = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-    const value = d.toISOString().split('T')[0];
-    return { value, label: formatFechaLabel(d) };
+    const dt = new Date(y, m - 1, d + i);   // fecha local (Argentina)
+    return { value: ymd(dt), label: formatFechaLabel(dt) };
   });
 }
 
@@ -373,6 +384,35 @@ async function getExtras(_req, res) {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Valida la firma X-Hub-Signature-256 que Meta envía en cada POST.
+ * Es un HMAC-SHA256 del cuerpo CRUDO usando el App Secret (META_APP_SECRET).
+ * Requiere que express.json haya guardado el buffer en req.rawBody (ver app.js).
+ *
+ * Si META_APP_SECRET no está configurado (ej. desarrollo), no se valida.
+ */
+function isValidSignature(req) {
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appSecret) return true;                     // sin secret → no validar (dev)
+
+  const signature = req.get('x-hub-signature-256');
+  if (!signature || !req.rawBody) return false;
+
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', appSecret)
+    .update(req.rawBody)
+    .digest('hex');
+
+  // Comparación en tiempo constante (evita timing attacks)
+  try {
+    const a = Buffer.from(signature);
+    const b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * GET /api/chatbot/webhook
  * Meta envía una petición GET para verificar el endpoint antes de activarlo.
  */
@@ -394,6 +434,12 @@ function verifyWebhook(req, res) {
  * Responde 200 inmediatamente (Meta requiere respuesta en < 5 s).
  */
 async function handleWebhook(req, res) {
+  // Rechazar requests que no vengan realmente de Meta (firma inválida)
+  if (!isValidSignature(req)) {
+    console.warn('[WhatsApp] Webhook con firma inválida — rechazado.');
+    return res.sendStatus(403);
+  }
+
   res.sendStatus(200);
 
   try {

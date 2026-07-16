@@ -55,7 +55,12 @@ app.use(cors({
 // -- request options agregate mauro ----------------------------
 app.options('*',cors());
 // ── Parsers ───────────────────────────────────────────────────
-app.use(express.json({ limit: '5mb' }));
+// `verify` guarda el cuerpo crudo en req.rawBody → necesario para validar la
+// firma HMAC del webhook de WhatsApp (Meta firma sobre el body sin parsear).
+app.use(express.json({
+  limit: '5mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Passport ──────────────────────────────────────────────────
