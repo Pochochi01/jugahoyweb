@@ -112,19 +112,37 @@ function isPast(fecha, hora, apertura = '08:00') {
   return dt < new Date();
 }
 
-/** ID compacto para WhatsApp (sin guiones): "20260617_1_0800" */
-function buildSlotId(fecha, fieldId, hora) {
-  return `${fecha.replace(/-/g, '')}_${fieldId}_${hora.replace(':', '')}`;
+/** ID compacto para WhatsApp: "20260617_1_0800_60" (fecha_cancha_hora_duración) */
+function buildSlotId(fecha, fieldId, hora, duracion = 60) {
+  return `${fecha.replace(/-/g, '')}_${fieldId}_${hora.replace(':', '')}_${duracion}`;
 }
 
-/** Descompone el ID compacto → { fecha, fieldId, hora } */
+/** Descompone el ID compacto → { fecha, fieldId, hora, duracion } */
 function parseSlotId(raw) {
-  const [fc, fid, hc] = raw.split('_');
+  const [fc, fid, hc, dur] = raw.split('_');
   return {
-    fecha:   `${fc.slice(0,4)}-${fc.slice(4,6)}-${fc.slice(6,8)}`,
-    fieldId: parseInt(fid),
-    hora:    `${hc.slice(0,2)}:${hc.slice(2)}`,
+    fecha:    `${fc.slice(0,4)}-${fc.slice(4,6)}-${fc.slice(6,8)}`,
+    fieldId:  parseInt(fid),
+    hora:     `${hc.slice(0,2)}:${hc.slice(2)}`,
+    duracion: dur ? parseInt(dur) : 60,
   };
+}
+
+// Duraciones ofrecidas y sus etiquetas
+const DURACIONES = [
+  { min: 60,  label: '1 hora' },
+  { min: 90,  label: '1 h 30 min' },
+  { min: 120, label: '2 horas' },
+];
+const duracionLabel = (min) => (DURACIONES.find(d => d.min === min)?.label || `${min} min`);
+
+// Estado en memoria: número → { slotRaw, name } mientras se pide el nombre.
+// (PM2 fork = 1 instancia; si se reinicia mid-flujo, el usuario reintenta.)
+const pendingName = new Map();
+function setPending(from, data) {
+  pendingName.set(from, { ...data, ts: Date.now() });
+  // limpieza simple de entradas viejas (> 15 min)
+  for (const [k, v] of pendingName) if (Date.now() - v.ts > 15 * 60 * 1000) pendingName.delete(k);
 }
 
 /** Obtiene el complex_id configurado para este chatbot */
@@ -204,18 +222,25 @@ function formatCanchas(names) {
 }
 
 /**
- * Horarios en punto con al menos una cancha libre para reservar 1 hora.
- * Solo incluye la hora si el turno completo (HH:00 + HH:30) está libre.
+ * Horarios en punto con al menos una cancha libre para reservar `duracion` minutos.
+ * Solo incluye la hora si TODOS los slots del turno están libres, dentro del
+ * horario de la cancha, no pasados, y la cancha permite esa duración.
  * @returns {Object} { '09:00': [{ fieldId, nombre, deporte, precio }], ... }
  */
-async function getAvailableByHour(fecha, complexId) {
+async function getAvailableByHour(fecha, complexId, duracion = 60) {
   const fields = await Field.findAll({
     where: { complex_id: complexId, activa: true },
     order: [['nombre', 'ASC']],
   });
 
+  const slotsNecesarios = Math.max(1, Math.ceil(duracion / 30));
   const byHour = {};
+
   for (const field of fields) {
+    // La cancha debe permitir esta duración
+    const permitidas = field.duraciones_permitidas?.length ? field.duraciones_permitidas : [60];
+    if (!permitidas.includes(duracion)) continue;
+
     const apertura = field.hora_apertura || '08:00';
     const cierre   = field.hora_cierre   || '22:00';
     const allHoras = generateSlots(apertura, cierre);
@@ -229,10 +254,11 @@ async function getAvailableByHour(fecha, complexId) {
 
     for (const hora of allHoras) {
       if (!hora.endsWith(':00')) continue;
-      const media = addMinutes(hora, 30);                    // turno de 1h = 2 slots de 30'
-      if (!horasSet.has(media)) continue;                    // debe caber en el horario
-      if (ocupadosSet.has(hora) || ocupadosSet.has(media)) continue;
-      if (isPast(fecha, hora, apertura)) continue;
+      // Todos los slots de 30' que ocupa el turno
+      const chunk = Array.from({ length: slotsNecesarios }, (_, i) => addMinutes(hora, i * 30));
+      const cabe   = chunk.every(h => horasSet.has(h));       // dentro del horario
+      const libre  = chunk.every(h => !ocupadosSet.has(h));   // sin ocupar
+      if (!cabe || !libre || isPast(fecha, hora, apertura)) continue;
       (byHour[hora] ??= []).push({
         fieldId: field.id, nombre: field.nombre, deporte: field.deporte, precio: field.precio_base,
       });
@@ -525,25 +551,55 @@ async function handleWebhook(req, res) {
 
     // ── Mensaje de texto ───────────────────────────────────────
     if (msgType === 'text') {
-      const text = (msg.text?.body || '').toLowerCase().trim();
+      const raw  = msg.text?.body || '';
+      const text = raw.toLowerCase().trim();
 
       // Cancelar reserva por texto: "cancelar #123"
       const cancelMatch = text.match(/^cancelar\s+#(\d+)$/i);
       if (cancelMatch) {
+        pendingName.delete(from);
         await _handleTextCancel(from, parseInt(cancelMatch[1]));
         return;
       }
 
-      // Cualquier saludo o "reservar" → menú de días
-      if (['hola', 'hi', 'buenas', 'reservar', 'turno', '1', 'inicio', 'menu', 'menú'].includes(text)) {
+      // Palabras que reinician el flujo
+      const resetWords = ['hola', 'hi', 'buenas', 'reservar', 'turno', '1', 'inicio', 'menu', 'menú'];
+      if (resetWords.includes(text)) {
+        pendingName.delete(from);
         await _sendDaysMenu(from);
-      } else {
-        await wa.sendMessage({
-          to:   from,
-          type: 'text',
-          text: { body: '👋 ¡Hola! Escribí *hola* o *reservar* para elegir tu turno.' },
-        });
+        return;
       }
+
+      // ¿Estábamos esperando el nombre del titular? → armar la confirmación
+      if (pendingName.has(from)) {
+        const nombre = raw.trim().replace(/\s+/g, ' ').slice(0, 80);
+        if (nombre.length < 2) {
+          await wa.sendMessage({ to: from, type: 'text', text: { body: '⚠️ Escribí un nombre válido (nombre y apellido).' } });
+          return;
+        }
+        const pend = pendingName.get(from);
+        pend.name = nombre;
+        pendingName.set(from, pend);
+
+        const { fecha, fieldId, hora, duracion } = parseSlotId(pend.slotRaw);
+        const field = await Field.findByPk(fieldId);
+        await wa.sendMessage(wa.buildConfirmMessage(from, {
+          slotId:        pend.slotRaw,
+          fechaLabel:    formatFechaLabel(fecha),
+          hora,
+          cancha:        field?.nombre || `Cancha ${fieldId}`,
+          nombre,
+          duracionLabel: duracionLabel(duracion),
+        }));
+        return;
+      }
+
+      // Fallback
+      await wa.sendMessage({
+        to:   from,
+        type: 'text',
+        text: { body: '👋 ¡Hola! Escribí *hola* o *reservar* para elegir tu turno.' },
+      });
       return;
     }
 
@@ -559,30 +615,35 @@ async function handleWebhook(req, res) {
       }
 
       if (replyId.startsWith('grp_')) {
-        // Eligió una franja → mostrar las horas libres con sus canchas
+        // Eligió una franja → mostrar el menú de duración
         const [fc, group] = replyId.replace('grp_', '').split('_');
-        await _sendHoursMenu(from, fechaFromCompact(fc), group, complexId);
+        await _sendDurationMenu(from, fechaFromCompact(fc), group);
+        return;
+      }
+
+      if (replyId.startsWith('dur_')) {
+        // Eligió la duración → mostrar horas libres (franja + duración) con sus canchas
+        const [fc, group, dur] = replyId.replace('dur_', '').split('_');
+        await _sendHoursMenu(from, fechaFromCompact(fc), group, parseInt(dur), complexId);
         return;
       }
 
       if (replyId.startsWith('hr_')) {
-        // Eligió una hora → mostrar las canchas disponibles en ese horario
-        const [fc, hc] = replyId.replace('hr_', '').split('_');
+        // Eligió una hora → mostrar las canchas disponibles para esa hora + duración
+        const [fc, dur, hc] = replyId.replace('hr_', '').split('_');
         const hora = `${hc.slice(0, 2)}:${hc.slice(2)}`;
-        await _sendCourtsMenu(from, fechaFromCompact(fc), hora, complexId);
+        await _sendCourtsMenu(from, fechaFromCompact(fc), hora, parseInt(dur), complexId);
         return;
       }
 
       if (replyId.startsWith('slot_')) {
-        // Eligió un slot → pedir confirmación
-        const { fecha, fieldId, hora } = parseSlotId(replyId.replace('slot_', ''));
-        const field = await Field.findByPk(fieldId);
-        await wa.sendMessage(wa.buildConfirmMessage(from, {
-          slotId:     replyId.replace('slot_', ''),
-          fechaLabel: formatFechaLabel(fecha),
-          hora,
-          cancha:     field?.nombre || `Cancha ${fieldId}`,
-        }));
+        // Eligió la cancha → pedir el nombre del titular antes de confirmar
+        const slotRaw = replyId.replace('slot_', '');
+        setPending(from, { slotRaw });
+        await wa.sendMessage({
+          to: from, type: 'text',
+          text: { body: '✍️ ¿A nombre de quién ponemos el turno?\nEscribí el *nombre y apellido* del titular.' },
+        });
         return;
       }
     }
@@ -597,6 +658,7 @@ async function handleWebhook(req, res) {
       }
 
       if (btnId.startsWith('discard_')) {
+        pendingName.delete(from);
         await wa.sendMessage({
           to: from, type: 'text',
           text: { body: '❌ Reserva no realizada.\nEscribí *reservar* cuando quieras intentarlo de nuevo.' },
@@ -623,12 +685,31 @@ async function _sendGroupsMenu(to, fecha) {
   await wa.sendMessage(wa.buildGroupsListMessage(to, formatFechaLabel(fecha), fechaCompact(fecha)));
 }
 
-/** Menú de horas libres dentro de una franja, indicando las canchas de cada hora */
-async function _sendHoursMenu(to, fecha, group, complexId) {
+/** Menú de duración del turno (1 h / 1½ h / 2 h) para una franja */
+async function _sendDurationMenu(to, fecha, group) {
+  const franja = FRANJAS[group];
+  const fc = fechaCompact(fecha);
+  const rows = DURACIONES.map(d => ({
+    id:          `dur_${fc}_${group}_${d.min}`,
+    title:       d.label,
+    description: `${d.min} minutos`,
+  }));
+  await wa.sendMessage(wa.buildRowsListMessage(to, {
+    headerText:   `⏱️ ${formatFechaLabel(fecha)} · ${franja?.label || ''}`,
+    bodyText:     '¿Cuánto tiempo querés jugar?',
+    footerText:   'Elegí la duración del turno',
+    button:       'Ver duraciones',
+    sectionTitle: 'Duración del turno',
+    rows,
+  }));
+}
+
+/** Menú de horas libres dentro de una franja+duración, indicando las canchas de cada hora */
+async function _sendHoursMenu(to, fecha, group, duracion, complexId) {
   const franja = FRANJAS[group];
   if (!franja) return _sendGroupsMenu(to, fecha);
 
-  const byHour = await getAvailableByHour(fecha, complexId);
+  const byHour = await getAvailableByHour(fecha, complexId, duracion);
   const horas  = Object.keys(byHour)
     .filter(h => franja.test(parseInt(h)))
     .sort((a, b) => horaSortKey(a) - horaSortKey(b));
@@ -636,52 +717,53 @@ async function _sendHoursMenu(to, fecha, group, complexId) {
   if (!horas.length) {
     await wa.sendMessage({
       to, type: 'text',
-      text: { body: `😔 No hay horarios libres en la franja ${franja.label} para el ${formatFechaLabel(fecha)}.\nElegí otra franja:` },
+      text: { body: `😔 No hay horarios de ${duracionLabel(duracion)} libres en la franja ${franja.label} para el ${formatFechaLabel(fecha)}.\nProbá con otra duración:` },
     });
-    await _sendGroupsMenu(to, fecha);
+    await _sendDurationMenu(to, fecha, group);
     return;
   }
 
+  const fc = fechaCompact(fecha);
   const rows = horas.map(hora => ({
-    id:          `hr_${fechaCompact(fecha)}_${hora.replace(':', '')}`,
+    id:          `hr_${fc}_${duracion}_${hora.replace(':', '')}`,
     title:       `${hora} hs`,
     description: formatCanchas(byHour[hora].map(f => f.nombre)),
   }));
 
   await wa.sendMessage(wa.buildRowsListMessage(to, {
     headerText:   `⏰ ${formatFechaLabel(fecha)} · ${franja.label}`,
-    bodyText:     'Elegí un horario. Se indican las canchas libres en cada uno:',
-    footerText:   'Turnos de 1 hora',
+    bodyText:     `Turnos de ${duracionLabel(duracion)}. Elegí un horario (se indican las canchas libres):`,
+    footerText:   `Duración: ${duracionLabel(duracion)}`,
     button:       'Ver horarios',
     sectionTitle: 'Horarios disponibles',
     rows,
   }));
 }
 
-/** Menú de canchas disponibles para una hora concreta */
-async function _sendCourtsMenu(to, fecha, hora, complexId) {
-  const byHour = await getAvailableByHour(fecha, complexId);
+/** Menú de canchas disponibles para una hora + duración concretas */
+async function _sendCourtsMenu(to, fecha, hora, duracion, complexId) {
+  const byHour = await getAvailableByHour(fecha, complexId, duracion);
   const courts = byHour[hora] || [];
 
   if (!courts.length) {
     await wa.sendMessage({
       to, type: 'text',
-      text: { body: `⚠️ El horario ${hora} hs ya no tiene canchas libres. Elegí otro:` },
+      text: { body: `⚠️ El horario ${hora} hs ya no tiene canchas libres para ${duracionLabel(duracion)}. Elegí otro:` },
     });
     await _sendGroupsMenu(to, fecha);
     return;
   }
 
   const rows = courts.map(c => ({
-    id:          `slot_${buildSlotId(fecha, c.fieldId, hora)}`,
+    id:          `slot_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
     title:       c.nombre,
     description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${c.deporte || ''}`,
   }));
 
   await wa.sendMessage(wa.buildRowsListMessage(to, {
-    headerText:   `🏟️ ${formatFechaLabel(fecha)} · ${hora} hs`,
+    headerText:   `🏟️ ${formatFechaLabel(fecha)} · ${hora} hs (${duracionLabel(duracion)})`,
     bodyText:     'Elegí la cancha para tu turno:',
-    footerText:   'Confirmación inmediata',
+    footerText:   'Después te pido el nombre',
     button:       'Ver canchas',
     sectionTitle: 'Canchas disponibles',
     rows,
@@ -709,8 +791,10 @@ async function _sendSchedulesMenu(to, fecha, complexId) {
 }
 
 async function _handleConfirm(from, slotRaw) {
-  const { fecha, fieldId, hora } = parseSlotId(slotRaw);
-  const duracion  = 60;
+  const { fecha, fieldId, hora, duracion } = parseSlotId(slotRaw);
+  // Nombre del titular ingresado por el usuario (fallback si se perdió el estado)
+  const pend = pendingName.get(from);
+  const nombreTitular = pend?.name || `WhatsApp ${from.slice(-4)}`;
 
   const t = await sequelize.transaction();
   try {
@@ -721,7 +805,7 @@ async function _handleConfirm(from, slotRaw) {
       return;
     }
 
-    // Slots que ocupa la reserva (duracion / 30 min = 2 slots)
+    // Slots que ocupa la reserva (duracion / 30 min)
     const slotsNecesarios = Math.ceil(duracion / 30);
     const horasAReservar  = Array.from({ length: slotsNecesarios }, (_, i) =>
       addMinutes(hora, i * 30)
@@ -750,16 +834,22 @@ async function _handleConfirm(from, slotRaw) {
       return;
     }
 
+    // Monto según duración: precios_por_duracion o precio_base proporcional
+    const precios = field.precios_por_duracion || {};
+    const monto = precios[String(duracion)] != null
+      ? parseFloat(precios[String(duracion)])
+      : parseFloat(field.precio_base || 0) * (duracion / 60);
+
     const booking = await Booking.create({
       field_id:         fieldId,
       fecha,
       hora_inicio:      hora,
       hora_fin,
       duracion,
-      nombre_cliente:   `WhatsApp ${from.slice(-4)}`,
+      nombre_cliente:   nombreTitular,
       telefono_cliente: from,
       metodo_pago:      'efectivo',
-      monto:            field.precio_base,
+      monto,
       estado:           'confirmado',
       notas:            'Reserva por WhatsApp',
       created_by:       null,
@@ -773,14 +863,16 @@ async function _handleConfirm(from, slotRaw) {
     }
 
     await t.commit();
+    pendingName.delete(from);   // limpiar el estado de "esperando nombre"
 
     await wa.sendMessage({
       to: from, type: 'text',
       text: {
         body: `✅ ¡Turno confirmado!\n\n` +
               `📅 ${formatFechaLabel(fecha)}\n` +
-              `⏰ ${hora} hs\n` +
-              `🏟️ ${field.nombre}\n\n` +
+              `⏰ ${hora} hs (${duracionLabel(duracion)})\n` +
+              `🏟️ ${field.nombre}\n` +
+              `👤 ${nombreTitular}\n\n` +
               `ID de reserva: *#${booking.id}*\n` +
               `Para cancelar escribí: *cancelar #${booking.id}*`,
       },

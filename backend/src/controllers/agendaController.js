@@ -1,7 +1,13 @@
 const { Op } = require('sequelize');
 const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, sequelize } = require('../models');
 const notifService = require('./../services/notification.service');
+const wa = require('../services/whatsappService');
 const { todayAR } = require('../utils/time');
+
+// Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
+function esReservaWhatsApp(booking) {
+  return Boolean(booking?.telefono_cliente) && /whatsapp/i.test(booking?.notas || '');
+}
 
 // ── utilidades ────────────────────────────────────────────────────────────────
 
@@ -185,9 +191,13 @@ async function cancelBooking(req, res) {
   const t = await sequelize.transaction();
   try {
     const { complexId, bookingId } = req.params;
+    const { motivo } = req.body || {};
 
     const booking = await Booking.findByPk(bookingId, {
-      include: [{ model: TimeSlot, as: 'timeSlots' }],
+      include: [
+        { model: TimeSlot, as: 'timeSlots' },
+        { model: Field, as: 'field', attributes: ['nombre'] },
+      ],
       transaction: t,
     });
     if (!booking) {
@@ -220,6 +230,17 @@ async function cancelBooking(req, res) {
     }
 
     await t.commit();
+
+    // Aviso por WhatsApp si la reserva se hizo por el bot (best-effort, no bloquea)
+    if (esReservaWhatsApp(booking)) {
+      wa.sendCancellationNotice(booking.telefono_cliente, {
+        fecha:  booking.fecha,
+        hora:   booking.hora_inicio,
+        cancha: booking.field?.nombre || 'la cancha',
+        motivo,
+      }).catch(err => console.error('[WhatsApp] aviso cancelación:', err.message));
+    }
+
     res.json({ message: 'Reserva cancelada', booking });
   } catch (err) {
     await t.rollback();

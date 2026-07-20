@@ -196,7 +196,14 @@ function buildRowsListMessage(to, { headerText, bodyText, footerText, button, se
  * @param {string} to      — número destino
  * @param {object} info    — { slotId, fechaLabel, hora, cancha }
  */
-function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha }) {
+function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha, nombre, duracionLabel }) {
+  const lineas = [
+    `📅 ${fechaLabel}`,
+    `⏰ ${hora} hs${duracionLabel ? ` (${duracionLabel})` : ''}`,
+    `🏟️ ${cancha}`,
+    nombre ? `👤 ${nombre}` : null,
+  ].filter(Boolean).join('\n');
+
   return {
     recipient_type: 'individual',
     to,
@@ -204,9 +211,7 @@ function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha }) {
     interactive: {
       type:   'button',
       header: { type: 'text', text: '✅ Confirmar reserva' },
-      body: {
-        text: `¿Confirmamos este turno?\n\n📅 ${fechaLabel}\n⏰ ${hora} hs\n🏟️ ${cancha}`,
-      },
+      body: { text: `¿Confirmamos este turno?\n\n${lineas}` },
       footer: { text: 'Esta acción reserva el turno de forma definitiva' },
       action: {
         buttons: [
@@ -216,6 +221,27 @@ function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha }) {
       },
     },
   };
+}
+
+/**
+ * Aviso de cancelación (business-initiated). Se envía cuando el complejo cancela
+ * un turno reservado por WhatsApp. ⚠️ Fuera de la ventana de 24 h, WhatsApp exige
+ * una plantilla aprobada; como texto libre solo llega dentro de las 24 h.
+ * @param {string} to
+ * @param {object} info — { fecha, hora, cancha, motivo }
+ */
+async function sendCancellationNotice(to, { fecha, hora, cancha, motivo }) {
+  if (!to) return { ok: false, skipped: true };
+  const motivoTxt = motivo?.trim() ? `\n📝 Motivo: ${motivo.trim()}` : '';
+  return sendMessage({
+    to,
+    type: 'text',
+    text: {
+      body: `❌ *Turno cancelado*\n\nTu reserva fue cancelada por el complejo.\n\n` +
+            `📅 ${fecha}\n⏰ ${hora} hs\n🏟️ ${cancha}${motivoTxt}\n\n` +
+            `Escribí *reservar* para elegir otro horario.`,
+    },
+  });
 }
 
 /**
@@ -271,4 +297,5 @@ module.exports = {
   buildRowsListMessage,
   buildConfirmMessage,
   buildExtrasMessages,
+  sendCancellationNotice,
 };
