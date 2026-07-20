@@ -37,22 +37,31 @@ async function sendMessage(payload) {
   const body = { messaging_product: 'whatsapp', ...payload };
 
   if (!isConfigured()) {
-    console.log('[WhatsApp DEV] Mensaje que se enviaría:');
+    console.log('[WhatsApp DEV] Faltan credenciales — mensaje NO enviado. Payload que se enviaría:');
     console.log(JSON.stringify(body, null, 2));
     return { ok: true, dev: true };
   }
 
-  const { data } = await axios.post(
-    `${GRAPH_URL}/${process.env.META_PHONE_NUMBER_ID}/messages`,
-    body,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-  return data;
+  try {
+    const { data } = await axios.post(
+      `${GRAPH_URL}/${process.env.META_PHONE_NUMBER_ID}/messages`,
+      body,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    console.log(`[WhatsApp] → enviado a ${payload.to} (id: ${data?.messages?.[0]?.id || '?'})`);
+    return data;
+  } catch (err) {
+    // Meta devuelve el motivo EXACTO del fallo en err.response.data.error
+    const metaErr = err.response?.data?.error;
+    console.error('[WhatsApp] ✗ Error al enviar a', payload.to, '→ HTTP', err.response?.status,
+      '·', JSON.stringify(metaErr || err.message));
+    throw err;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -117,6 +126,66 @@ function buildSchedulesListMessage(to, fechaLabel, sections) {
             description: `$${Number(r.precio || 0).toLocaleString('es-AR')}/hr · ${r.tipo || ''}`.substring(0, 72),
           })),
         })),
+      },
+    },
+  };
+}
+
+/**
+ * List message con las 3 franjas horarias (mañana / tarde / noche).
+ * @param {string} to           — número destino
+ * @param {string} fechaLabel   — "Sábado 20 jul"
+ * @param {string} fechaCompact — "20260720" (para armar los IDs)
+ */
+function buildGroupsListMessage(to, fechaLabel, fechaCompact) {
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type:   'list',
+      header: { type: 'text', text: `🕐 ${fechaLabel}` },
+      body:   { text: '¿En qué franja horaria querés jugar?' },
+      footer: { text: 'JugaHoy — Reservas deportivas' },
+      action: {
+        button: 'Ver franjas',
+        sections: [{
+          title: 'Franjas horarias',
+          rows: [
+            { id: `grp_${fechaCompact}_manana`, title: '🌅 Mañana', description: '09 a 13 hs' },
+            { id: `grp_${fechaCompact}_tarde`,  title: '☀️ Tarde',  description: '14 a 18 hs' },
+            { id: `grp_${fechaCompact}_noche`,  title: '🌙 Noche',  description: '19 a 02 hs' },
+          ],
+        }],
+      },
+    },
+  };
+}
+
+/**
+ * List message genérico con filas ya armadas [{ id, title, description }].
+ * Se usa para: horarios disponibles y canchas de un horario.
+ */
+function buildRowsListMessage(to, { headerText, bodyText, footerText, button, sectionTitle, rows }) {
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type:   'list',
+      header: { type: 'text', text: headerText.substring(0, 60) },
+      body:   { text: bodyText },
+      footer: { text: footerText },
+      action: {
+        button,
+        sections: [{
+          title: (sectionTitle || '').substring(0, 24),
+          rows: rows.slice(0, 10).map(r => ({
+            id:          r.id,
+            title:       String(r.title).substring(0, 24),
+            description: String(r.description || '').substring(0, 72),
+          })),
+        }],
       },
     },
   };
@@ -198,6 +267,8 @@ module.exports = {
   sendMessage,
   buildDaysListMessage,
   buildSchedulesListMessage,
+  buildGroupsListMessage,
+  buildRowsListMessage,
   buildConfirmMessage,
   buildExtrasMessages,
 };
