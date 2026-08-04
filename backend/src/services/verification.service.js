@@ -35,16 +35,20 @@ function shouldUseTemplate() {
   return !isDev;
 }
 
-/** Construye el payload del OTP (plantilla o texto libre) para WhatsApp. */
-function buildOtpPayload(telefono, otp) {
-  if (shouldUseTemplate()) {
-    return wa.buildOtpTemplate(telefono, otp);
-  }
+/** Payload de OTP como texto libre (dev / dentro de la ventana de 24 h). */
+function buildTextOtpPayload(telefono, otp) {
   return {
     to: telefono,
     type: 'text',
     text: { body: `🔐 Tu código de verificación JugaHoy es *${otp}*.\nVence en ${OTP_TTL_MIN} minutos. No lo compartas con nadie.` },
   };
+}
+
+/** Construye el payload del OTP (plantilla o texto libre) para WhatsApp. */
+function buildOtpPayload(telefono, otp) {
+  return shouldUseTemplate()
+    ? wa.buildOtpTemplate(telefono, otp)
+    : buildTextOtpPayload(telefono, otp);
 }
 
 /** Normaliza un teléfono a solo dígitos (formato que espera WhatsApp: 549...) */
@@ -85,7 +89,20 @@ async function sendPhoneOtp(user) {
 
   // Plantilla de autenticación en producción (obligatoria fuera de la ventana
   // de 24 h) o texto libre en desarrollo. Ver shouldUseTemplate().
-  await wa.sendMessage(buildOtpPayload(telefono, otp), creds);
+  try {
+    await wa.sendMessage(buildOtpPayload(telefono, otp), creds);
+  } catch (err) {
+    // Respaldo: si la plantilla no existe/está sin aprobar (#132001) u otro
+    // fallo, reintentar como texto libre (llega dentro de la ventana de 24 h).
+    // No hace que el OTP salga fuera de las 24 h, pero evita el fallo duro.
+    if (shouldUseTemplate()) {
+      const metaMsg = err.response?.data?.error?.message || err.message;
+      console.warn(`[verify] Falló envío por plantilla (${metaMsg}); reintentando como texto libre.`);
+      await wa.sendMessage(buildTextOtpPayload(telefono, otp), creds);
+    } else {
+      throw err;
+    }
+  }
 
   console.log(`[verify] OTP enviado a ${telefono} (user ${user.id})` + (isDev ? ` → ${otp}` : ''));
 

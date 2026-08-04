@@ -19,8 +19,12 @@ export const authService = {
   // ── googleAuthSkill: URL de inicio de sesión con Google ──
   // Redirigir directamente (no es llamada AJAX):
   //   window.location.href = authService.googleLoginUrl()
+  // Igual que api.js: si VITE_API_URL está vacío se usa una ruta RELATIVA
+  // (mismo origen). En dev el proxy de Vite reenvía /api → localhost:3001;
+  // en producción nginx reenvía /api al backend. Así nunca queda "localhost"
+  // hardcodeado en el build de producción.
   googleLoginUrl: () =>
-    `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/auth/google`,
+    `${import.meta.env.VITE_API_URL || ''}/api/auth/google`,
 
   // ── phoneAuthSkill: OTP por SMS/WhatsApp ─────────────────
   sendOTP:   (telefono)      => api.post('/auth/phone/send',   { telefono }),

@@ -311,16 +311,18 @@ function buildOtpTemplate(to, code, opts = {}) {
  * @param {string} to — número destino
  */
 function buildExtrasMessages(to) {
+  // ⚠️ WhatsApp limita display_text del CTA a 20 caracteres (error #131009).
+  // Mantener cada label ≤ 20 chars.
   const entries = [
     {
       body:    '🌐 Visitá nuestra web para ver toda la info del club.',
-      label:   'Visitar la web del club',
+      label:   'Nuestra web',
       urlEnv:  'CLUB_WEB_URL',
       urlFallback: 'https://jugahoy.com.ar',
     },
     {
       body:    '📋 Conocé las reglas antes de jugar.',
-      label:   'Ver reglamento de uso',
+      label:   'Ver reglamento',
       urlEnv:  'CLUB_REGLAMENTO_URL',
       urlFallback: 'https://jugahoy.com.ar/reglamento',
     },
@@ -342,7 +344,7 @@ function buildExtrasMessages(to) {
       action: {
         name: 'cta_url',
         parameters: {
-          display_text: e.label,
+          display_text: e.label.substring(0, 20), // límite duro de WhatsApp
           url: process.env[e.urlEnv] || e.urlFallback,
         },
       },

@@ -849,8 +849,9 @@ async function _handleConfirm(ctx, from, slotRaw) {
   const nombreTitular = pend?.name || `WhatsApp ${from.slice(-4)}`;
 
   const t = await sequelize.transaction();
+  let booking, field;
   try {
-    const field = await Field.findByPk(fieldId, { transaction: t });
+    field = await Field.findByPk(fieldId, { transaction: t });
     if (!field) {
       await t.rollback();
       await send({ to: from, type: 'text', text: { body: '⚠️ Cancha no encontrada.' } });
@@ -892,7 +893,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
       ? parseFloat(precios[String(duracion)])
       : parseFloat(field.precio_base || 0) * (duracion / 60);
 
-    const booking = await Booking.create({
+    booking = await Booking.create({
       field_id:         fieldId,
       fecha,
       hora_inicio:      hora,
@@ -917,6 +918,22 @@ async function _handleConfirm(ctx, from, slotRaw) {
     await t.commit();
     pendingName.delete(from);   // limpiar el estado de "esperando nombre"
 
+  } catch (err) {
+    // Solo revertir si la transacción sigue activa (evita el error engañoso
+    // "cannot be rolled back ... state: commit" cuando falla algo post-commit).
+    if (!t.finished) await t.rollback();
+    console.error('[chatbot._handleConfirm]', err);
+    await send({
+      to: from, type: 'text',
+      text: { body: '⚠️ Hubo un error al confirmar. Intentalo de nuevo.' },
+    });
+    return;
+  }
+
+  // ── Post-commit: mensajería (FUERA de la transacción) ──────────────────
+  // La reserva ya está confirmada en la DB. Si un envío de WhatsApp falla,
+  // NO debe revertir nada: solo se loguea para no romper el flujo del bot.
+  try {
     await send({
       to: from, type: 'text',
       text: {
@@ -930,18 +947,11 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
-    const extras = wa.buildExtrasMessages(from);
-    for (const extra of extras) {
+    for (const extra of wa.buildExtrasMessages(from)) {
       await send(extra);
     }
-
   } catch (err) {
-    await t.rollback();
-    console.error('[chatbot._handleConfirm]', err);
-    await send({
-      to: from, type: 'text',
-      text: { body: '⚠️ Hubo un error al confirmar. Intentalo de nuevo.' },
-    });
+    console.error('[chatbot._handleConfirm] aviso post-confirmación falló (la reserva SÍ se guardó):', err.message);
   }
 }
 
