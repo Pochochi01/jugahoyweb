@@ -17,8 +17,11 @@
  *   4. Confirma         → booking creado + extras CTA
  *   5. "cancelar #ID"   → cancela la reserva
  *
- * Variable de entorno extra requerida:
- *   CHATBOT_COMPLEX_ID  → ID del complejo que atiende este chatbot
+ * MULTI-TENANT:
+ *   El webhook entrante se enruta al club por `metadata.phone_number_id` (el número
+ *   de WhatsApp que recibió el mensaje) usando la tabla `club_integrations`.
+ *   Todas las respuestas se envían con las credenciales de ESE club.
+ *   `CHATBOT_COMPLEX_ID` queda solo como fallback legacy de los endpoints REST.
  *
  * Endpoints REST (para cualquier frontend):
  *   GET  /api/chatbot/days
@@ -31,8 +34,9 @@
  */
 const crypto       = require('crypto');
 const { Op }       = require('sequelize');
-const { Field, TimeSlot, Booking, sequelize } = require('../models');
+const { Field, TimeSlot, Booking, ClubIntegration, sequelize } = require('../models');
 const wa           = require('../services/whatsappService');
+const integrations = require('../services/integrations.service');
 const { todayAR }  = require('../utils/time');
 
 // ─────────────────────────────────────────────────────────────
@@ -478,8 +482,7 @@ async function getExtras(_req, res) {
  *
  * Si META_APP_SECRET no está configurado (ej. desarrollo), no se valida.
  */
-function isValidSignature(req) {
-  const appSecret = process.env.META_APP_SECRET;
+function isValidSignature(req, appSecret) {
   if (!appSecret) return true;                     // sin secret → no validar (dev)
 
   const signature = req.get('x-hub-signature-256');
@@ -503,16 +506,37 @@ function isValidSignature(req) {
 /**
  * GET /api/chatbot/webhook
  * Meta envía una petición GET para verificar el endpoint antes de activarlo.
+ *
+ * MULTI-TENANT: acepta el verify token de PLATAFORMA (.env) o el de CUALQUIER
+ * club, para que cada club pueda dar de alta el mismo webhook con su token propio.
  */
-function verifyWebhook(req, res) {
+async function verifyWebhook(req, res) {
   const mode      = req.query['hub.mode'];
   const token     = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode === 'subscribe' && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
-    console.log('[WhatsApp] Webhook verificado por Meta ✓');
+  if (mode !== 'subscribe' || !token) return res.sendStatus(403);
+
+  // 1) Token de plataforma
+  if (process.env.META_WEBHOOK_VERIFY_TOKEN && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
+    console.log('[WhatsApp] Webhook verificado (token de plataforma) ✓');
     return res.status(200).send(challenge);
   }
+
+  // 2) Token propio de algún club
+  try {
+    const row = await ClubIntegration.findOne({
+      where: { meta_webhook_verify_token: token, activo: true },
+      attributes: ['club_id'],
+    });
+    if (row) {
+      console.log(`[WhatsApp] Webhook verificado (club ${row.club_id}) ✓`);
+      return res.status(200).send(challenge);
+    }
+  } catch (err) {
+    console.error('[WhatsApp] verifyWebhook:', err.message);
+  }
+
   return res.sendStatus(403);
 }
 
@@ -522,19 +546,27 @@ function verifyWebhook(req, res) {
  * Responde 200 inmediatamente (Meta requiere respuesta en < 5 s).
  */
 async function handleWebhook(req, res) {
-  // Rechazar requests que no vengan realmente de Meta (firma inválida)
-  if (!isValidSignature(req)) {
+  const body  = req.body;
+  const value = body?.entry?.[0]?.changes?.[0]?.value;
+
+  // ── MULTI-TENANT: el número destino identifica al club ──
+  // Meta incluye metadata.phone_number_id = el número del CLUB que recibió el mensaje.
+  const phoneNumberId = value?.metadata?.phone_number_id;
+  const clubId = await integrations.findClubIdByPhoneNumberId(phoneNumberId);
+  const creds  = await integrations.getMetaCredentials(clubId);
+
+  // Firma validada con el App Secret del club (o el de plataforma como fallback)
+  if (!isValidSignature(req, creds.appSecret)) {
     console.warn('[WhatsApp] Webhook con firma inválida — rechazado.');
     return res.sendStatus(403);
   }
 
-  res.sendStatus(200);
+  res.sendStatus(200);   // ACK inmediato (Meta exige < 5 s)
 
   try {
-    const body = req.body;
     if (body.object !== 'whatsapp_business_account') return;
 
-    const entry = body.entry?.[0]?.changes?.[0]?.value;
+    const entry = value;
     const msg   = entry?.messages?.[0];
     // Meta también envía webhooks de "statuses" (entregado/leído) sin `messages`.
     if (!msg) {
@@ -542,11 +574,24 @@ async function handleWebhook(req, res) {
       return;
     }
 
+    if (!clubId) {
+      console.warn(`[WhatsApp] Mensaje de un número sin club asociado (phone_number_id=${phoneNumberId}). ` +
+        'Cargá la integración en club_integrations.');
+      return;
+    }
+    if (creds.expired) {
+      console.warn(`[WhatsApp] Token vencido para el club ${clubId} — no se responde.`);
+      return;
+    }
+
+    // Contexto del tenant que se pasa a todos los helpers
+    const ctx = { clubId, creds };
+    const send = p => wa.sendMessage(p, ctx.creds);
+
     const from    = msg.from;   // número WhatsApp del remitente
     const msgType = msg.type;
-    const complexId = getChatbotComplexId();
 
-    console.log(`[WhatsApp] ← mensaje de ${from} · tipo=${msgType}` +
+    console.log(`[WhatsApp] ← club ${clubId} · mensaje de ${from} · tipo=${msgType}` +
       (msgType === 'text' ? ` · texto="${msg.text?.body}"` : ''));
 
     // ── Mensaje de texto ───────────────────────────────────────
@@ -558,7 +603,7 @@ async function handleWebhook(req, res) {
       const cancelMatch = text.match(/^cancelar\s+#(\d+)$/i);
       if (cancelMatch) {
         pendingName.delete(from);
-        await _handleTextCancel(from, parseInt(cancelMatch[1]));
+        await _handleTextCancel(ctx, from, parseInt(cancelMatch[1]));
         return;
       }
 
@@ -566,7 +611,7 @@ async function handleWebhook(req, res) {
       const resetWords = ['hola', 'hi', 'buenas', 'reservar', 'turno', '1', 'inicio', 'menu', 'menú'];
       if (resetWords.includes(text)) {
         pendingName.delete(from);
-        await _sendDaysMenu(from);
+        await _sendDaysMenu(ctx, from);
         return;
       }
 
@@ -574,7 +619,7 @@ async function handleWebhook(req, res) {
       if (pendingName.has(from)) {
         const nombre = raw.trim().replace(/\s+/g, ' ').slice(0, 80);
         if (nombre.length < 2) {
-          await wa.sendMessage({ to: from, type: 'text', text: { body: '⚠️ Escribí un nombre válido (nombre y apellido).' } });
+          await send({ to: from, type: 'text', text: { body: '⚠️ Escribí un nombre válido (nombre y apellido).' } });
           return;
         }
         const pend = pendingName.get(from);
@@ -583,7 +628,7 @@ async function handleWebhook(req, res) {
 
         const { fecha, fieldId, hora, duracion } = parseSlotId(pend.slotRaw);
         const field = await Field.findByPk(fieldId);
-        await wa.sendMessage(wa.buildConfirmMessage(from, {
+        await send(wa.buildConfirmMessage(from, {
           slotId:        pend.slotRaw,
           fechaLabel:    formatFechaLabel(fecha),
           hora,
@@ -595,7 +640,7 @@ async function handleWebhook(req, res) {
       }
 
       // Fallback
-      await wa.sendMessage({
+      await send({
         to:   from,
         type: 'text',
         text: { body: '👋 ¡Hola! Escribí *hola* o *reservar* para elegir tu turno.' },
@@ -610,21 +655,21 @@ async function handleWebhook(req, res) {
       if (replyId.startsWith('day_')) {
         // Eligió un día → mostrar las franjas horarias (mañana/tarde/noche)
         const fecha = replyId.replace('day_', '');
-        await _sendGroupsMenu(from, fecha);
+        await _sendGroupsMenu(ctx, from, fecha);
         return;
       }
 
       if (replyId.startsWith('grp_')) {
         // Eligió una franja → mostrar el menú de duración
         const [fc, group] = replyId.replace('grp_', '').split('_');
-        await _sendDurationMenu(from, fechaFromCompact(fc), group);
+        await _sendDurationMenu(ctx, from, fechaFromCompact(fc), group);
         return;
       }
 
       if (replyId.startsWith('dur_')) {
         // Eligió la duración → mostrar horas libres (franja + duración) con sus canchas
         const [fc, group, dur] = replyId.replace('dur_', '').split('_');
-        await _sendHoursMenu(from, fechaFromCompact(fc), group, parseInt(dur), complexId);
+        await _sendHoursMenu(ctx, from, fechaFromCompact(fc), group, parseInt(dur));
         return;
       }
 
@@ -632,7 +677,7 @@ async function handleWebhook(req, res) {
         // Eligió una hora → mostrar las canchas disponibles para esa hora + duración
         const [fc, dur, hc] = replyId.replace('hr_', '').split('_');
         const hora = `${hc.slice(0, 2)}:${hc.slice(2)}`;
-        await _sendCourtsMenu(from, fechaFromCompact(fc), hora, parseInt(dur), complexId);
+        await _sendCourtsMenu(ctx, from, fechaFromCompact(fc), hora, parseInt(dur));
         return;
       }
 
@@ -640,7 +685,7 @@ async function handleWebhook(req, res) {
         // Eligió la cancha → pedir el nombre del titular antes de confirmar
         const slotRaw = replyId.replace('slot_', '');
         setPending(from, { slotRaw });
-        await wa.sendMessage({
+        await send({
           to: from, type: 'text',
           text: { body: '✍️ ¿A nombre de quién ponemos el turno?\nEscribí el *nombre y apellido* del titular.' },
         });
@@ -653,13 +698,13 @@ async function handleWebhook(req, res) {
       const btnId = msg.interactive.button_reply.id;
 
       if (btnId.startsWith('confirm_')) {
-        await _handleConfirm(from, btnId.replace('confirm_', ''));
+        await _handleConfirm(ctx, from, btnId.replace('confirm_', ''));
         return;
       }
 
       if (btnId.startsWith('discard_')) {
         pendingName.delete(from);
-        await wa.sendMessage({
+        await send({
           to: from, type: 'text',
           text: { body: '❌ Reserva no realizada.\nEscribí *reservar* cuando quieras intentarlo de nuevo.' },
         });
@@ -676,17 +721,20 @@ async function handleWebhook(req, res) {
 //  Helpers internos del webhook
 // ─────────────────────────────────────────────────────────────
 
-async function _sendDaysMenu(to) {
-  await wa.sendMessage(wa.buildDaysListMessage(to, getNext8Days()));
+async function _sendDaysMenu(ctx, to) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  await send(wa.buildDaysListMessage(to, getNext8Days()));
 }
 
 /** Menú de franjas horarias (mañana / tarde / noche) para una fecha */
-async function _sendGroupsMenu(to, fecha) {
-  await wa.sendMessage(wa.buildGroupsListMessage(to, formatFechaLabel(fecha), fechaCompact(fecha)));
+async function _sendGroupsMenu(ctx, to, fecha) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  await send(wa.buildGroupsListMessage(to, formatFechaLabel(fecha), fechaCompact(fecha)));
 }
 
 /** Menú de duración del turno (1 h / 1½ h / 2 h) para una franja */
-async function _sendDurationMenu(to, fecha, group) {
+async function _sendDurationMenu(ctx, to, fecha, group) {
+  const send = p => wa.sendMessage(p, ctx.creds);
   const franja = FRANJAS[group];
   const fc = fechaCompact(fecha);
   const rows = DURACIONES.map(d => ({
@@ -694,7 +742,7 @@ async function _sendDurationMenu(to, fecha, group) {
     title:       d.label,
     description: `${d.min} minutos`,
   }));
-  await wa.sendMessage(wa.buildRowsListMessage(to, {
+  await send(wa.buildRowsListMessage(to, {
     headerText:   `⏱️ ${formatFechaLabel(fecha)} · ${franja?.label || ''}`,
     bodyText:     '¿Cuánto tiempo querés jugar?',
     footerText:   'Elegí la duración del turno',
@@ -705,21 +753,22 @@ async function _sendDurationMenu(to, fecha, group) {
 }
 
 /** Menú de horas libres dentro de una franja+duración, indicando las canchas de cada hora */
-async function _sendHoursMenu(to, fecha, group, duracion, complexId) {
+async function _sendHoursMenu(ctx, to, fecha, group, duracion) {
+  const send = p => wa.sendMessage(p, ctx.creds);
   const franja = FRANJAS[group];
-  if (!franja) return _sendGroupsMenu(to, fecha);
+  if (!franja) return _sendGroupsMenu(ctx, to, fecha);
 
-  const byHour = await getAvailableByHour(fecha, complexId, duracion);
+  const byHour = await getAvailableByHour(fecha, ctx.clubId, duracion);
   const horas  = Object.keys(byHour)
     .filter(h => franja.test(parseInt(h)))
     .sort((a, b) => horaSortKey(a) - horaSortKey(b));
 
   if (!horas.length) {
-    await wa.sendMessage({
+    await send({
       to, type: 'text',
       text: { body: `😔 No hay horarios de ${duracionLabel(duracion)} libres en la franja ${franja.label} para el ${formatFechaLabel(fecha)}.\nProbá con otra duración:` },
     });
-    await _sendDurationMenu(to, fecha, group);
+    await _sendDurationMenu(ctx, to, fecha, group);
     return;
   }
 
@@ -730,7 +779,7 @@ async function _sendHoursMenu(to, fecha, group, duracion, complexId) {
     description: formatCanchas(byHour[hora].map(f => f.nombre)),
   }));
 
-  await wa.sendMessage(wa.buildRowsListMessage(to, {
+  await send(wa.buildRowsListMessage(to, {
     headerText:   `⏰ ${formatFechaLabel(fecha)} · ${franja.label}`,
     bodyText:     `Turnos de ${duracionLabel(duracion)}. Elegí un horario (se indican las canchas libres):`,
     footerText:   `Duración: ${duracionLabel(duracion)}`,
@@ -741,16 +790,17 @@ async function _sendHoursMenu(to, fecha, group, duracion, complexId) {
 }
 
 /** Menú de canchas disponibles para una hora + duración concretas */
-async function _sendCourtsMenu(to, fecha, hora, duracion, complexId) {
-  const byHour = await getAvailableByHour(fecha, complexId, duracion);
+async function _sendCourtsMenu(ctx, to, fecha, hora, duracion) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const byHour = await getAvailableByHour(fecha, ctx.clubId, duracion);
   const courts = byHour[hora] || [];
 
   if (!courts.length) {
-    await wa.sendMessage({
+    await send({
       to, type: 'text',
       text: { body: `⚠️ El horario ${hora} hs ya no tiene canchas libres para ${duracionLabel(duracion)}. Elegí otro:` },
     });
-    await _sendGroupsMenu(to, fecha);
+    await _sendGroupsMenu(ctx, to, fecha);
     return;
   }
 
@@ -760,7 +810,7 @@ async function _sendCourtsMenu(to, fecha, hora, duracion, complexId) {
     description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${c.deporte || ''}`,
   }));
 
-  await wa.sendMessage(wa.buildRowsListMessage(to, {
+  await send(wa.buildRowsListMessage(to, {
     headerText:   `🏟️ ${formatFechaLabel(fecha)} · ${hora} hs (${duracionLabel(duracion)})`,
     bodyText:     'Elegí la cancha para tu turno:',
     footerText:   'Después te pido el nombre',
@@ -770,15 +820,16 @@ async function _sendCourtsMenu(to, fecha, hora, duracion, complexId) {
   }));
 }
 
-async function _sendSchedulesMenu(to, fecha, complexId) {
-  const groups = await getAvailableSlotsGrouped(fecha, complexId);
+async function _sendSchedulesMenu(ctx, to, fecha) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const groups = await getAvailableSlotsGrouped(fecha, ctx.clubId);
 
   if (!groups.length) {
-    await wa.sendMessage({
+    await send({
       to, type: 'text',
       text: { body: `😔 No hay horarios disponibles para el ${formatFechaLabel(fecha)}.\nElegí otro día:` },
     });
-    await _sendDaysMenu(to);
+    await _sendDaysMenu(ctx, to);
     return;
   }
 
@@ -787,10 +838,11 @@ async function _sendSchedulesMenu(to, fecha, complexId) {
     rows:  g.slots,
   }));
 
-  await wa.sendMessage(wa.buildSchedulesListMessage(to, formatFechaLabel(fecha), sections));
+  await send(wa.buildSchedulesListMessage(to, formatFechaLabel(fecha), sections));
 }
 
-async function _handleConfirm(from, slotRaw) {
+async function _handleConfirm(ctx, from, slotRaw) {
+  const send = p => wa.sendMessage(p, ctx.creds);
   const { fecha, fieldId, hora, duracion } = parseSlotId(slotRaw);
   // Nombre del titular ingresado por el usuario (fallback si se perdió el estado)
   const pend = pendingName.get(from);
@@ -801,7 +853,7 @@ async function _handleConfirm(from, slotRaw) {
     const field = await Field.findByPk(fieldId, { transaction: t });
     if (!field) {
       await t.rollback();
-      await wa.sendMessage({ to: from, type: 'text', text: { body: '⚠️ Cancha no encontrada.' } });
+      await send({ to: from, type: 'text', text: { body: '⚠️ Cancha no encontrada.' } });
       return;
     }
 
@@ -826,11 +878,11 @@ async function _handleConfirm(from, slotRaw) {
 
     if (ocupados.length > 0) {
       await t.rollback();
-      await wa.sendMessage({
+      await send({
         to: from, type: 'text',
         text: { body: '⚠️ Ese horario acaba de ser reservado. Elegí otro:' },
       });
-      await _sendGroupsMenu(from, fecha);
+      await _sendGroupsMenu(ctx, from, fecha);
       return;
     }
 
@@ -865,7 +917,7 @@ async function _handleConfirm(from, slotRaw) {
     await t.commit();
     pendingName.delete(from);   // limpiar el estado de "esperando nombre"
 
-    await wa.sendMessage({
+    await send({
       to: from, type: 'text',
       text: {
         body: `✅ ¡Turno confirmado!\n\n` +
@@ -880,20 +932,21 @@ async function _handleConfirm(from, slotRaw) {
 
     const extras = wa.buildExtrasMessages(from);
     for (const extra of extras) {
-      await wa.sendMessage(extra);
+      await send(extra);
     }
 
   } catch (err) {
     await t.rollback();
     console.error('[chatbot._handleConfirm]', err);
-    await wa.sendMessage({
+    await send({
       to: from, type: 'text',
       text: { body: '⚠️ Hubo un error al confirmar. Intentalo de nuevo.' },
     });
   }
 }
 
-async function _handleTextCancel(from, bookingId) {
+async function _handleTextCancel(ctx, from, bookingId) {
+  const send = p => wa.sendMessage(p, ctx.creds);
   const t = await sequelize.transaction();
   try {
     const booking = await Booking.findByPk(bookingId, {
@@ -903,7 +956,7 @@ async function _handleTextCancel(from, bookingId) {
 
     if (!booking || booking.telefono_cliente !== from) {
       await t.rollback();
-      await wa.sendMessage({
+      await send({
         to: from, type: 'text',
         text: { body: `⚠️ No encontramos la reserva *#${bookingId}* asociada a tu número.` },
       });
@@ -912,7 +965,7 @@ async function _handleTextCancel(from, bookingId) {
 
     if (booking.estado === 'cancelado') {
       await t.rollback();
-      await wa.sendMessage({
+      await send({
         to: from, type: 'text',
         text: { body: `ℹ️ La reserva *#${bookingId}* ya estaba cancelada.` },
       });
@@ -927,7 +980,7 @@ async function _handleTextCancel(from, bookingId) {
     await booking.update({ estado: 'cancelado' }, { transaction: t });
     await t.commit();
 
-    await wa.sendMessage({
+    await send({
       to: from, type: 'text',
       text: { body: `✅ Reserva *#${bookingId}* cancelada.\n\nEscribí *reservar* para hacer un nuevo turno.` },
     });

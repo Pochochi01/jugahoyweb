@@ -11,7 +11,8 @@
     "migrate:undo": "sequelize db:migrate:undo",
     "migrate:undo:all": "sequelize db:migrate:undo:all",
     "migrate:status": "sequelize db:migrate:status",
-    "seed:localidades": "node scripts/seed-localidades.js"
+    "seed:localidades": "node scripts/seed-localidades.js",
+    "check:tokens": "node scripts/check-expiring-tokens.js"
   },
   "dependencies": {
     "axios": "^1.18.0",

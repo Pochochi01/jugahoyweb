@@ -12,6 +12,7 @@ router.post('/:complexId/reservar',           requireComplexAccess, requirePermi
 router.put('/:complexId/cancelar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.cancelBooking);
 router.put('/:complexId/confirmar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.confirmBooking);
 router.put('/:complexId/rechazar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.rejectBooking);
+router.patch('/:complexId/no-asistido/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.markNoShow);
 
 // Legacy
 router.get('/:complexId',        requireComplexAccess, requirePermission('agenda'), ctrl.getByComplex);

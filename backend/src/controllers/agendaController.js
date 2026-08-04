@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, sequelize } = require('../models');
 const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
+const integrations = require('../services/integrations.service');
 const { todayAR } = require('../utils/time');
 
 // Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
@@ -231,14 +232,17 @@ async function cancelBooking(req, res) {
 
     await t.commit();
 
-    // Aviso por WhatsApp si la reserva se hizo por el bot (best-effort, no bloquea)
+    // Aviso por WhatsApp si la reserva se hizo por el bot (best-effort, no bloquea).
+    // MULTI-TENANT: se envía con las credenciales del club dueño de la reserva.
     if (esReservaWhatsApp(booking)) {
-      wa.sendCancellationNotice(booking.telefono_cliente, {
-        fecha:  booking.fecha,
-        hora:   booking.hora_inicio,
-        cancha: booking.field?.nombre || 'la cancha',
-        motivo,
-      }).catch(err => console.error('[WhatsApp] aviso cancelación:', err.message));
+      integrations.getMetaCredentials(complexId)
+        .then(creds => wa.sendCancellationNotice(booking.telefono_cliente, {
+          fecha:  booking.fecha,
+          hora:   booking.hora_inicio,
+          cancha: booking.field?.nombre || 'la cancha',
+          motivo,
+        }, creds))
+        .catch(err => console.error('[WhatsApp] aviso cancelación:', err.message));
     }
 
     res.json({ message: 'Reserva cancelada', booking });
@@ -457,4 +461,50 @@ async function rejectBooking(req, res) {
   }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, getByComplex, create, update, remove };
+// ── PATCH /:complexId/no-asistido/:bookingId ──────────────────
+// Marca un turno como "no asistido" (ausencia). Solo si YA pasó su hora de inicio.
+async function markNoShow(req, res) {
+  try {
+    const { complexId, bookingId } = req.params;
+
+    const booking = await Booking.findByPk(bookingId, {
+      include: [{ model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id'] }],
+    });
+    if (!booking) return res.status(404).json({ message: 'Reserva no encontrada.' });
+
+    // Pertenencia al complejo (defensa extra sobre requireComplexAccess)
+    if (String(booking.field?.complex_id) !== String(complexId)) {
+      return res.status(403).json({ message: 'La reserva no pertenece a este complejo.' });
+    }
+
+    // Solo turnos confirmados (no ya cancelados/rechazados/marcados)
+    if (booking.estado !== 'confirmado') {
+      return res.status(409).json({ message: `No se puede marcar ausencia: el turno está "${booking.estado}".` });
+    }
+
+    // La hora de inicio DEBE haber pasado (madrugada = día siguiente del calendario)
+    const [h] = booking.hora_inicio.split(':').map(Number);
+    const inicio = new Date(`${booking.fecha}T${booking.hora_inicio}:00`);
+    if (h < 8) inicio.setDate(inicio.getDate() + 1);
+    if (inicio.getTime() > Date.now()) {
+      return res.status(400).json({
+        message: 'El turno todavía no comenzó. La ausencia solo puede marcarse después de la hora de inicio.',
+      });
+    }
+
+    await booking.update({ estado: 'no_asistido' });
+
+    await Operation.create({
+      complex_id:  complexId,
+      tipo:        'cancelacion',
+      descripcion: `No asistió: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio}-${booking.hora_fin}`,
+      usuario_id:  req.user.id,
+    });
+
+    res.json({ message: 'Turno marcado como no asistido.', booking });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, getByComplex, create, update, remove };

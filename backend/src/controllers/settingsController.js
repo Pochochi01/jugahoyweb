@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Complex, Field, Booking } = require('../models');
+const integrations = require('../services/integrations.service');
 
 async function getSettings(req, res) {
   try {
@@ -18,6 +19,16 @@ async function updateSettings(req, res) {
     const complex = await Complex.findByPk(req.params.complexId);
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
     await complex.update(req.body);
+
+    // Multi-tenant: si el panel guardó el token de MercadoPago, replicarlo en
+    // club_integrations (fuente de verdad) para que el frontend actual siga
+    // funcionando sin cambios y las credenciales queden centralizadas.
+    if (req.body?.mercadopago_token !== undefined) {
+      await integrations.upsertIntegration(complex.id, {
+        mercadopago_access_token: req.body.mercadopago_token || null,
+      });
+    }
+
     res.json(complex);
   } catch (err) {
     res.status(500).json({ message: err.message });

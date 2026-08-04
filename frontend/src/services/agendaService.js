@@ -7,6 +7,7 @@ export const agendaService = {
   cancelar:      (complexId, bookingId)          => api.put(`/agenda/${complexId}/cancelar/${bookingId}`),
   confirmar:     (complexId, bookingId)          => api.put(`/agenda/${complexId}/confirmar/${bookingId}`),
   rechazar:      (complexId, bookingId, motivo)  => api.put(`/agenda/${complexId}/rechazar/${bookingId}`, { motivo }),
+  noAsistido:    (complexId, bookingId)          => api.patch(`/agenda/${complexId}/no-asistido/${bookingId}`),
   getByComplex:  (complexId, params)             => api.get(`/agenda/${complexId}`, { params }),
   create:        (complexId, data)               => api.post(`/agenda/${complexId}`, data),
   update:        (complexId, id, data)           => api.put(`/agenda/${complexId}/${id}`, data),

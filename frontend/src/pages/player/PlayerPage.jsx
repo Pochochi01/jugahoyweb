@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Star, Search, Building2, Dumbbell, ArrowRight } from 'lucide-react';
+import { MapPin, Star, Search, Building2, Dumbbell, ArrowRight, MessageCircle, X } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import SearchableSelect from '../../components/SearchableSelect';
+import PhoneVerification from '../../components/PhoneVerification';
 import { publicService } from '../../services/publicService';
 import { favoritesService } from '../../services/favoritesService';
 import { useAuth } from '../../context/AuthContext';
@@ -34,6 +35,11 @@ export default function PlayerPage() {
   const favIds = useMemo(() => new Set(favComplexes.map(c => c.id)), [favComplexes]);
 
   const [error, setError] = useState('');
+
+  // Verificación de teléfono por WhatsApp
+  const [verifiedNow, setVerifiedNow] = useState(false);
+  const [showVerify,  setShowVerify]  = useState(false);
+  const needsVerify = user && user.telefono && user.phone_verified === false && !verifiedNow;
 
   // ── Carga inicial: provincias, favoritos y complejos ───────
   useEffect(() => {
@@ -128,6 +134,37 @@ export default function PlayerPage() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-4">
               {error}
+            </div>
+          )}
+
+          {/* Banner de verificación de WhatsApp */}
+          {needsVerify && (
+            <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4" data-aos="fade-up">
+              {!showVerify ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <MessageCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white">Verificá tu WhatsApp</p>
+                    <p className="text-xs text-white/60">Confirmá tu número para reservar sin problemas.</p>
+                  </div>
+                  <button onClick={() => setShowVerify(true)}
+                    className="btn-primary text-sm py-1.5 px-4 shrink-0">Verificar ahora</button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-white">Verificá tu WhatsApp</span>
+                    <button onClick={() => setShowVerify(false)} className="p-1 text-white/50 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <PhoneVerification
+                    telefono={user.telefono}
+                    compact
+                    onVerified={() => { setVerifiedNow(true); setShowVerify(false); }}
+                  />
+                </div>
+              )}
             </div>
           )}
 

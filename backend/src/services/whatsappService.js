@@ -19,47 +19,56 @@ const axios = require('axios');
 
 const GRAPH_URL = 'https://graph.facebook.com/v20.0';
 
-/** Devuelve true si las credenciales de Meta están configuradas */
-function isConfigured() {
-  return Boolean(
-    process.env.META_PHONE_NUMBER_ID &&
-    process.env.META_ACCESS_TOKEN   &&
-    process.env.META_PHONE_NUMBER_ID !== '' &&
-    process.env.META_ACCESS_TOKEN   !== ''
-  );
+/**
+ * Credenciales efectivas a usar.
+ * MULTI-TENANT: lo normal es recibirlas del club (integrations.service).
+ * Si no se pasan, cae al .env (compatibilidad dev / instalación single-tenant).
+ * @param {{phoneNumberId?:string, accessToken?:string}} [creds]
+ */
+function resolveCreds(creds) {
+  const phoneNumberId = creds?.phoneNumberId || process.env.META_PHONE_NUMBER_ID || null;
+  const accessToken   = creds?.accessToken   || process.env.META_ACCESS_TOKEN   || null;
+  return { phoneNumberId, accessToken, configured: Boolean(phoneNumberId && accessToken) };
+}
+
+/** true si hay credenciales usables (con o sin las del club) */
+function isConfigured(creds) {
+  return resolveCreds(creds).configured;
 }
 
 /**
  * Envía cualquier payload de mensaje a la Cloud API.
  * @param {object} payload — cuerpo del mensaje (sin messaging_product)
+ * @param {{phoneNumberId:string, accessToken:string}} [creds] — credenciales DEL CLUB
  */
-async function sendMessage(payload) {
+async function sendMessage(payload, creds) {
   const body = { messaging_product: 'whatsapp', ...payload };
+  const { phoneNumberId, accessToken, configured } = resolveCreds(creds);
 
-  if (!isConfigured()) {
-    console.log('[WhatsApp DEV] Faltan credenciales — mensaje NO enviado. Payload que se enviaría:');
+  if (!configured) {
+    console.log('[WhatsApp DEV] Sin credenciales para este club — mensaje NO enviado. Payload:');
     console.log(JSON.stringify(body, null, 2));
     return { ok: true, dev: true };
   }
 
   try {
     const { data } = await axios.post(
-      `${GRAPH_URL}/${process.env.META_PHONE_NUMBER_ID}/messages`,
+      `${GRAPH_URL}/${phoneNumberId}/messages`,
       body,
       {
         headers: {
-          Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       }
     );
-    console.log(`[WhatsApp] → enviado a ${payload.to} (id: ${data?.messages?.[0]?.id || '?'})`);
+    console.log(`[WhatsApp] → enviado a ${payload.to} desde ${phoneNumberId} (id: ${data?.messages?.[0]?.id || '?'})`);
     return data;
   } catch (err) {
     // Meta devuelve el motivo EXACTO del fallo en err.response.data.error
     const metaErr = err.response?.data?.error;
-    console.error('[WhatsApp] ✗ Error al enviar a', payload.to, '→ HTTP', err.response?.status,
-      '·', JSON.stringify(metaErr || err.message));
+    console.error('[WhatsApp] ✗ Error al enviar a', payload.to, 'desde', phoneNumberId,
+      '→ HTTP', err.response?.status, '·', JSON.stringify(metaErr || err.message));
     throw err;
   }
 }
@@ -230,7 +239,7 @@ function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha, nombre, dur
  * @param {string} to
  * @param {object} info — { fecha, hora, cancha, motivo }
  */
-async function sendCancellationNotice(to, { fecha, hora, cancha, motivo }) {
+async function sendCancellationNotice(to, { fecha, hora, cancha, motivo }, creds) {
   if (!to) return { ok: false, skipped: true };
   const motivoTxt = motivo?.trim() ? `\n📝 Motivo: ${motivo.trim()}` : '';
   return sendMessage({
@@ -241,7 +250,59 @@ async function sendCancellationNotice(to, { fecha, hora, cancha, motivo }) {
             `📅 ${fecha}\n⏰ ${hora} hs\n🏟️ ${cancha}${motivoTxt}\n\n` +
             `Escribí *reservar* para elegir otro horario.`,
     },
-  });
+  }, creds);
+}
+
+/**
+ * Plantilla de AUTENTICACIÓN (business-initiated) para enviar un OTP.
+ *
+ * Meta exige una plantilla aprobada para entregar un código a un número que NO
+ * escribió en las últimas 24 h. La plantilla debe estar creada y aprobada en
+ * Meta Business (categoría "Authentication") con el mismo nombre/idioma que se
+ * configura por variables de entorno.
+ *
+ * Estructura estándar de una plantilla de autenticación:
+ *   - body: 1 parámetro de texto  → el código
+ *   - (opcional) botón "copy code" → recibe el mismo código como parámetro
+ *
+ * Variables de entorno:
+ *   META_OTP_TEMPLATE_NAME    nombre de la plantilla aprobada (ej. "otp_jugahoy")
+ *   META_OTP_TEMPLATE_LANG    idioma de la plantilla (ej. "es_AR" | "es")
+ *   META_OTP_TEMPLATE_BUTTON  "false" para omitir el botón copy-code
+ *
+ * @param {string} to    número destino (solo dígitos, ej. "5491100000000")
+ * @param {string} code  OTP de 6 dígitos
+ * @param {{name?:string, lang?:string, withButton?:boolean}} [opts]
+ */
+function buildOtpTemplate(to, code, opts = {}) {
+  const name = opts.name || process.env.META_OTP_TEMPLATE_NAME || 'otp_jugahoy';
+  const lang = opts.lang || process.env.META_OTP_TEMPLATE_LANG || 'es_AR';
+  const withButton = opts.withButton ?? (process.env.META_OTP_TEMPLATE_BUTTON !== 'false');
+
+  const components = [
+    { type: 'body', parameters: [{ type: 'text', text: String(code) }] },
+  ];
+  // Botón copy-code: en las plantillas de autenticación el parámetro del botón
+  // es el mismo código, para que WhatsApp muestre el botón "Copiar código".
+  if (withButton) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: String(code) }],
+    });
+  }
+
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'template',
+    template: {
+      name,
+      language: { code: lang },
+      components,
+    },
+  };
 }
 
 /**
@@ -298,4 +359,5 @@ module.exports = {
   buildConfirmMessage,
   buildExtrasMessages,
   sendCancellationNotice,
+  buildOtpTemplate,
 };

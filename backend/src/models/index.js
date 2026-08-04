@@ -21,6 +21,7 @@ const Invite          = require('./Invite');
 const Localidad       = require('./Localidad');
 const Favorite        = require('./Favorite');
 const PushSubscription = require('./PushSubscription');
+const ClubIntegration  = require('./ClubIntegration');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -115,6 +116,10 @@ Favorite.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
 User.hasMany(PushSubscription,   { foreignKey: 'user_id', as: 'pushSubscriptions' });
 PushSubscription.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// ── Integraciones por club (multi-tenant) ─────────────────────
+Complex.hasOne(ClubIntegration,    { foreignKey: 'club_id', as: 'integrations' });
+ClubIntegration.belongsTo(Complex, { foreignKey: 'club_id', as: 'club' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -130,4 +135,6 @@ module.exports = {
   Favorite,
   // Push
   PushSubscription,
+  // Integraciones por club (multi-tenant)
+  ClubIntegration,
 };

@@ -12,6 +12,7 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const { User, Collaborator, Complex, Token } = require('../models');
 const { sendMail } = require('../config/mailer');
+const verification = require('../services/verification.service');
 
 function generateToken(user) {
   return jwt.sign(
@@ -40,6 +41,13 @@ async function register(req, res) {
     const user = await User.create({ nombre, apellido, email, password: hash, telefono });
 
     const token = generateToken(user);
+
+    // Enviar OTP de verificación por WhatsApp (best-effort, no bloquea el registro).
+    // Si no hay teléfono o WhatsApp no está configurado, simplemente no se envía.
+    if (telefono) {
+      verification.sendPhoneOtp(user).catch(err =>
+        console.error('[register] OTP verificación:', err.message));
+    }
 
     // Correo de bienvenida (no bloqueante)
     sendMail({

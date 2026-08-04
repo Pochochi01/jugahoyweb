@@ -192,6 +192,17 @@ export default function AgendaTab({ complexId }) {
     } catch { showToast('error', 'No se pudo cancelar.'); }
   };
 
+  const handleNoShow = async (bookingId) => {
+    if (!window.confirm('¿Marcar este turno como "no asistido"? El cliente no se presentó.')) return;
+    try {
+      await agendaService.noAsistido(complexId, bookingId);
+      showToast('success', 'Turno marcado como no asistido.');
+      loadSlots();
+    } catch (err) {
+      showToast('error', err?.response?.data?.message || 'No se pudo marcar.');
+    }
+  };
+
   const showToast = (type, msg) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
@@ -295,6 +306,7 @@ export default function AgendaTab({ complexId }) {
           loading={loading}
           onSelect={setSelectedSlot}
           onCancel={handleCancel}
+          onNoShow={handleNoShow}
         />
       )}
 

@@ -5,7 +5,8 @@ const Notification = sequelize.define('Notification', {
   id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   user_id:    { type: DataTypes.INTEGER, allowNull: false },
   tipo: {
-    type: DataTypes.ENUM('nueva_reserva', 'reserva_confirmada', 'reserva_rechazada'),
+    // 'token_por_vencer' → aviso al dueño del club (credenciales Meta/MP a renovar)
+    type: DataTypes.ENUM('nueva_reserva', 'reserva_confirmada', 'reserva_rechazada', 'token_por_vencer'),
     allowNull: false,
   },
   titulo:     { type: DataTypes.STRING(200), allowNull: false },

@@ -12,6 +12,9 @@ const User = sequelize.define('User', {
   // allowNull: true → usuarios registrados con Google no tienen contraseña local
   password:   { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
   telefono:   { type: DataTypes.STRING(20)  },
+  // Verificación del teléfono por OTP de WhatsApp
+  phone_verified:    { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  phone_verified_at: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
   google_id:  { type: DataTypes.STRING(120), allowNull: true, defaultValue: null },
   avatar_url: { type: DataTypes.STRING(500), allowNull: true, defaultValue: null },
   rol: {

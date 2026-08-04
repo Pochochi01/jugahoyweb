@@ -15,15 +15,15 @@
 const { Op } = require('sequelize');
 const { Booking, Field, Complex, TimeSlot, sequelize } = require('../models');
 const paymentService = require('../services/payment.service');
-const { resolveAccessToken } = require('../config/mp.config');
+const integrations = require('../services/integrations.service');
 
 const PUBLIC_URL     = process.env.PUBLIC_URL     || 'http://localhost:5173';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://localhost:3001';
 
 // ── helpers de token ──────────────────────────────────────────
+// Token de MercadoPago del club (cascada: club_integrations → complexes → env)
 async function tokenForComplexId(complexId) {
-  const complex = await Complex.findByPk(complexId, { attributes: ['id', 'mercadopago_token'] });
-  return resolveAccessToken(complex?.mercadopago_token);
+  return integrations.getMercadoPagoToken(complexId);
 }
 
 // Carga la reserva con su cancha y complejo (para token + montos)
@@ -66,7 +66,7 @@ async function initMp(req, res) {
 
     const field   = booking.field;
     const complex = field?.complex;
-    const accessToken = resolveAccessToken(complex?.mercadopago_token);
+    const accessToken = await integrations.getMercadoPagoToken(complex?.id);
     if (!accessToken) {
       return res.status(400).json({ message: 'El complejo no tiene MercadoPago configurado.' });
     }
@@ -128,9 +128,9 @@ async function sync(req, res) {
     let accessToken = null;
     if (reservaId) {
       const booking = await loadBookingFull(reservaId);
-      accessToken = resolveAccessToken(booking?.field?.complex?.mercadopago_token);
+      accessToken = await integrations.getMercadoPagoToken(booking?.field?.complex?.id);
     } else {
-      accessToken = resolveAccessToken(null); // plataforma
+      accessToken = await integrations.getMercadoPagoToken(null); // plataforma
     }
 
     const result = await _syncFromMercadoPago(paymentId, accessToken);

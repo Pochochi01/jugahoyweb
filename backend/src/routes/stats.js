@@ -6,5 +6,6 @@ const { requireComplexAccess, requirePermission } = require('../middlewares/role
 router.get('/global', ctrl.getGlobalStats);
 router.use(authenticate);
 router.get('/:complexId', requireComplexAccess, requirePermission('estadisticas'), ctrl.getStats);
+router.get('/:complexId/asistencias', requireComplexAccess, requirePermission('estadisticas'), ctrl.getAttendanceStats);
 
 module.exports = router;

@@ -3,7 +3,7 @@ import { settingsService } from '../../services/settingsService';
 import {
   Save, Plus, X, Wind, Home, Pencil, Trash2, Check,
   Eye, EyeOff, Power, PowerOff, Clock, ChevronDown, ChevronUp,
-  CreditCard, ShieldCheck, ExternalLink,
+  CreditCard, ShieldCheck, ExternalLink, MessageCircle, AlertTriangle, Copy,
 } from 'lucide-react';
 
 // Detecta el ambiente del token de MercadoPago por su prefijo
@@ -115,6 +115,163 @@ const CANCHA_INICIAL = {
   precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
   sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
 };
+
+// ── Tarjeta de WhatsApp / Meta (credenciales propias del club) ───────────────
+function WhatsAppCard({ complexId }) {
+  const [estado, setEstado] = useState(null);   // respuesta de getIntegrations
+  const [form,   setForm]   = useState({
+    meta_phone_number_id: '', meta_access_token: '',
+    meta_webhook_verify_token: '', meta_app_secret: '',
+  });
+  const [show,   setShow]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [ok,     setOk]     = useState(false);
+  const [err,    setErr]    = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // URL que hay que cargar en Meta (la misma para todos los clubes)
+  const apiBase = import.meta.env.VITE_API_URL || window.location.origin;
+  const webhookUrl = `${apiBase}/api/chatbot/webhook`;
+
+  const cargar = () => {
+    settingsService.getIntegrations(complexId)
+      .then(d => {
+        setEstado(d);
+        setForm(f => ({ ...f, meta_phone_number_id: d?.whatsapp?.phone_number_id || '' }));
+      })
+      .catch(() => setEstado(null));
+  };
+  useEffect(() => { cargar(); }, [complexId]);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const guardar = async () => {
+    setSaving(true); setErr('');
+    try {
+      // Solo se envían los campos completados: los secretos vacíos NO se pisan
+      const payload = {};
+      if (form.meta_phone_number_id.trim())      payload.meta_phone_number_id      = form.meta_phone_number_id.trim();
+      if (form.meta_access_token.trim())         payload.meta_access_token         = form.meta_access_token.trim();
+      if (form.meta_webhook_verify_token.trim()) payload.meta_webhook_verify_token = form.meta_webhook_verify_token.trim();
+      if (form.meta_app_secret.trim())           payload.meta_app_secret           = form.meta_app_secret.trim();
+
+      if (!Object.keys(payload).length) { setErr('Completá al menos un campo para guardar.'); return; }
+
+      await settingsService.updateIntegrations(complexId, payload);
+      setForm(f => ({ ...f, meta_access_token: '', meta_webhook_verify_token: '', meta_app_secret: '' }));
+      setOk(true); setTimeout(() => setOk(false), 2500);
+      cargar();
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message || 'Error al guardar las credenciales.');
+    } finally { setSaving(false); }
+  };
+
+  const copiar = () => {
+    navigator.clipboard.writeText(webhookUrl).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const wa = estado?.whatsapp;
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <MessageCircle className="w-5 h-5 text-primary" />
+        <h3 className="font-semibold">WhatsApp (Meta)</h3>
+        {wa?.configurado
+          ? <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-0.5 rounded-full">Configurado</span>
+          : <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-full">Sin configurar</span>}
+        {wa?.origen === 'env' && (
+          <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full">
+            Usando credenciales globales
+          </span>
+        )}
+        {wa?.vencido && (
+          <span className="flex items-center gap-1 text-xs bg-red-100 text-red-600 font-medium px-2 py-0.5 rounded-full">
+            <AlertTriangle className="w-3 h-3" /> Token vencido
+          </span>
+        )}
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Cargá el número de WhatsApp Business de <strong>este club</strong>. Cada club responde
+        con su propio número: los mensajes entrantes se enrutan por el <em>Phone Number ID</em>.
+      </p>
+
+      {/* URL del webhook para cargar en Meta */}
+      <div>
+        <label className="label !text-slate-600">URL del webhook (cargala en Meta)</label>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 min-w-0 text-xs bg-white border rounded-lg px-3 py-2 truncate select-all">
+            {webhookUrl}
+          </code>
+          <button type="button" onClick={copiar}
+            className="shrink-0 p-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+            title="Copiar">
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="label">Phone Number ID</label>
+          <input className="input font-mono text-sm" placeholder="Ej: 123456789012345"
+            value={form.meta_phone_number_id}
+            onChange={e => set('meta_phone_number_id', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Access Token {wa?.access_token && <span className="text-xs text-muted-foreground">(actual: {wa.access_token})</span>}</label>
+          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
+            placeholder={wa?.access_token ? 'Dejar vacío para no cambiarlo' : 'EAAG...'}
+            value={form.meta_access_token}
+            onChange={e => set('meta_access_token', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Verify Token {wa?.verify_token_set && <span className="text-xs text-green-600">(cargado)</span>}</label>
+          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
+            placeholder="El que pongas en Meta"
+            value={form.meta_webhook_verify_token}
+            onChange={e => set('meta_webhook_verify_token', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">App Secret {wa?.app_secret_set && <span className="text-xs text-green-600">(cargado)</span>}</label>
+          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
+            placeholder="Valida la firma del webhook"
+            value={form.meta_app_secret}
+            onChange={e => set('meta_app_secret', e.target.value)} />
+        </div>
+      </div>
+
+      <button type="button" onClick={() => setShow(s => !s)}
+        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+        {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+        {show ? 'Ocultar' : 'Ver'} los valores que escribo
+      </button>
+
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3">
+        <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <span>
+          Los tokens se guardan en el servidor y nunca se devuelven completos (solo los últimos 4). Dejá
+          un campo vacío para conservar el valor actual.{' '}
+          <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-0.5">
+            Obtener credenciales <ExternalLink className="w-3 h-3" />
+          </a>
+        </span>
+      </div>
+
+      {err && <p className="text-sm text-red-500">{err}</p>}
+
+      <button onClick={guardar} disabled={saving}
+        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-600 text-white' : 'btn-primary'}`}>
+        <Save className="w-4 h-4" />
+        {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar credenciales'}
+      </button>
+    </div>
+  );
+}
 
 // ── formulario crear/editar ───────────────────────────────────────────────────
 function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit = false }) {
@@ -615,6 +772,9 @@ export default function SettingsTab({ complexId, onUpdate }) {
 
       {/* MercadoPago */}
       <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
+
+      {/* WhatsApp / Meta (credenciales propias del club) */}
+      <WhatsAppCard complexId={complexId} />
 
       {/* canchas */}
       <div className="card">

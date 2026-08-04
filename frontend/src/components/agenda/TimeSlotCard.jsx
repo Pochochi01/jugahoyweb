@@ -1,4 +1,4 @@
-import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle } from 'lucide-react';
+import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
 
 const METODO_LABELS = {
@@ -44,12 +44,16 @@ const STYLES = {
   },
 };
 
-export default function TimeSlotCard({ slot, onSelect, onCancel, index }) {
+export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, index }) {
   const isLibre     = slot.estado === 'libre';
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
   const isSecondary = isOcupado && !slot.isFirstOfBooking;
   const isPendiente = isOcupado && slot.booking?.estado === 'pendiente';
+  const isNoAsistido = isOcupado && slot.booking?.estado === 'no_asistido';
+  // Se puede marcar ausencia solo si el turno ya empezó y está confirmado
+  const puedeMarcarAusencia = isOcupado && slot.isFirstOfBooking && slot.past
+    && slot.booking?.estado === 'confirmado';
 
   // Estilo base según estado
   let baseStyle;
@@ -101,27 +105,51 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, index }) {
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {isPendiente ? (
+              {isNoAsistido ? (
                 <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.30)' }}>
-                  <AlertCircle className="w-3 h-3" /> Pendiente
+                  style={{ background: 'rgba(148,163,184,0.18)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.3)' }}>
+                  <UserX className="w-3 h-3" /> No asistió
                 </span>
               ) : (
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.28)' }}>
-                  Confirmado
-                </span>
+                <>
+                  {isPendiente ? (
+                    <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.30)' }}>
+                      <AlertCircle className="w-3 h-3" /> Pendiente
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.28)' }}>
+                      Confirmado
+                    </span>
+                  )}
+
+                  {/* Marcar como no asistido — solo si el turno ya expiró */}
+                  {puedeMarcarAusencia && onNoShow && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onNoShow(slot.booking_id); }}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
+                      style={{ background: 'rgba(148,163,184,0.14)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.28)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(148,163,184,0.24)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(148,163,184,0.14)'}
+                      title="Marcar como no asistido"
+                    >
+                      <UserX className="w-3.5 h-3.5" /> No asistió
+                    </button>
+                  )}
+
+                  <button
+                    onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
+                    className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                    title="Cancelar esta reserva"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Cancelar
+                  </button>
+                </>
               )}
-              <button
-                onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
-                className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
-                title="Cancelar esta reserva"
-              >
-                <XCircle className="w-3.5 h-3.5" /> Cancelar
-              </button>
             </div>
           </div>
 

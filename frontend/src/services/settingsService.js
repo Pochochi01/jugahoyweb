@@ -8,4 +8,10 @@ export const settingsService = {
   updateField:  (complexId, id, data)   => api.put(`/settings/${complexId}/fields/${id}`, data),
   toggleField:  (complexId, id)         => api.patch(`/settings/${complexId}/fields/${id}/toggle`),
   deleteField:  (complexId, id)         => api.delete(`/settings/${complexId}/fields/${id}`),
+
+  // ── Integraciones por club (multi-tenant) ──
+  // getIntegrations devuelve los tokens ENMASCARADOS (nunca completos).
+  getIntegrations:    (complexId)       => api.get(`/settings/${complexId}/integrations`),
+  updateIntegrations: (complexId, data) => api.put(`/settings/${complexId}/integrations`, data),
+  renewMetaToken:     (complexId)       => api.post(`/settings/${complexId}/integrations/renew-meta`),
 };

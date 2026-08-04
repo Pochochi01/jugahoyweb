@@ -23,7 +23,8 @@ const Booking = sequelize.define('Booking', {
   //  - pendiente      : creada, a pagar en el complejo (offline) o a confirmar por admin
   //  - confirmado     : pago aprobado / turno confirmado
   //  - cancelado / rechazado : liberó el slot
-  estado:     { type: DataTypes.ENUM('pendiente_pago', 'pendiente', 'confirmado', 'cancelado', 'rechazado'), defaultValue: 'confirmado' },
+  //  - no_asistido    : el cliente no se presentó (solo si el turno ya expiró)
+  estado:     { type: DataTypes.ENUM('pendiente_pago', 'pendiente', 'confirmado', 'cancelado', 'rechazado', 'no_asistido'), defaultValue: 'confirmado' },
 
   // ── MercadoPago ──────────────────────────────────────────────
   // Tipo de pago elegido por el jugador al reservar.

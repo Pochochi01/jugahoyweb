@@ -1,4 +1,4 @@
-const { Agenda, CashTransaction, CashRegister, Field, sequelize } = require('../models');
+const { Agenda, CashTransaction, CashRegister, Field, Booking, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 async function getStats(req, res) {
@@ -55,4 +55,55 @@ async function getGlobalStats(req, res) {
   }
 }
 
-module.exports = { getStats, getGlobalStats };
+/**
+ * GET /api/stats/:complexId/asistencias?desde=&hasta=
+ * Estadísticas de asistencia basadas en `bookings` (turnos reales):
+ * confirmados, no asistidos, cancelados/rechazados y % de ausencias.
+ */
+async function getAttendanceStats(req, res) {
+  try {
+    const { complexId } = req.params;
+    const { desde, hasta } = req.query;
+
+    const fields = await Field.findAll({ where: { complex_id: complexId }, attributes: ['id'] });
+    const fieldIds = fields.map(f => f.id);
+    if (fieldIds.length === 0) {
+      return res.json({ confirmados: 0, no_asistidos: 0, cancelados: 0, total: 0, porcentaje_ausencias: 0 });
+    }
+
+    const where = { field_id: { [Op.in]: fieldIds } };
+    if (desde || hasta) {
+      where.fecha = {};
+      if (desde) where.fecha[Op.gte] = desde;
+      if (hasta) where.fecha[Op.lte] = hasta;
+    }
+
+    // Conteo agrupado por estado en una sola query
+    const filas = await Booking.findAll({
+      where,
+      attributes: ['estado', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+      group: ['estado'],
+      raw: true,
+    });
+    const porEstado = filas.reduce((acc, f) => (acc[f.estado] = parseInt(f.n), acc), {});
+
+    const confirmados = porEstado.confirmado || 0;
+    const noAsistidos = porEstado.no_asistido || 0;
+    const cancelados  = (porEstado.cancelado || 0) + (porEstado.rechazado || 0);
+    // Base para el % de ausencias: turnos que debían cumplirse (confirmados + ausencias)
+    const base = confirmados + noAsistidos;
+
+    res.json({
+      confirmados,
+      no_asistidos: noAsistidos,
+      cancelados,
+      total: filas.reduce((s, f) => s + parseInt(f.n), 0),
+      porcentaje_ausencias: base > 0 ? Math.round((noAsistidos / base) * 100) : 0,
+      por_estado: porEstado,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getStats, getGlobalStats, getAttendanceStats };

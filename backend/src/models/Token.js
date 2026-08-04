@@ -24,6 +24,9 @@ const Token = sequelize.define('Token', {
 
   usado: { type: DataTypes.BOOLEAN, defaultValue: false },
 
+  // Intentos fallidos de validación (para limitar reintentos de OTP)
+  intentos: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+
 }, { tableName: 'tokens' });
 
 // ── Métodos de clase ──────────────────────────────────────────
@@ -92,6 +95,35 @@ Token.verifyToken = async function (rawToken, tipo) {
       expira_en: { [Op.gt]: new Date() },
     },
   });
+};
+
+/**
+ * OTP activo (no usado, no expirado) de un usuario. Se usa para el flujo de
+ * verificación por WhatsApp, donde hay que contar reintestos aunque el código
+ * ingresado sea incorrecto (no matchea el hash).
+ * @returns {Token|null}
+ */
+Token.getActiveOTP = async function (usuarioId, tipo = 'otp_phone') {
+  return Token.findOne({
+    where: {
+      usuario_id: usuarioId,
+      tipo,
+      usado:      false,
+      expira_en:  { [Op.gt]: new Date() },
+    },
+    order: [['id', 'DESC']],
+  });
+};
+
+/** Compara un código en claro contra el hash guardado (tiempo constante). */
+Token.matches = function (rawToken, record) {
+  if (!record) return false;
+  const hash = crypto.createHash('sha256').update(String(rawToken)).digest('hex');
+  try {
+    const a = Buffer.from(hash);
+    const b = Buffer.from(record.token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch { return false; }
 };
 
 module.exports = Token;
