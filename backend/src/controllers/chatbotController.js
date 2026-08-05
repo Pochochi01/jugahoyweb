@@ -38,6 +38,7 @@ const { Field, TimeSlot, Booking, ClubIntegration, sequelize } = require('../mod
 const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR }  = require('../utils/time');
+const { frontendUrl } = require('../config/urls');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -132,10 +133,10 @@ function parseSlotId(raw) {
   };
 }
 
-// Duraciones ofrecidas y sus etiquetas
+// Duraciones ofrecidas y sus etiquetas.
+// Solo turnos de hora completa: 1 h y 2 h (sin 30 min, sin 1½ h).
 const DURACIONES = [
   { min: 60,  label: '1 hora' },
-  { min: 90,  label: '1 h 30 min' },
   { min: 120, label: '2 horas' },
 ];
 const duracionLabel = (min) => (DURACIONES.find(d => d.min === min)?.label || `${min} min`);
@@ -206,10 +207,31 @@ async function getAvailableSlotsGrouped(fecha, complexId) {
 // ─────────────────────────────────────────────────────────────
 
 const FRANJAS = {
-  manana: { label: '🌅 Mañana (09–13 hs)', test: h => h >= 9  && h <= 13 },
-  tarde:  { label: '☀️ Tarde (14–18 hs)',  test: h => h >= 14 && h <= 18 },
-  noche:  { label: '🌙 Noche (19–02 hs)',  test: h => h >= 19 || h <= 2  },
+  manana: {
+    title: '🌅 Mañana', rango: '09 a 13 hs', label: '🌅 Mañana (09–13 hs)',
+    test: h => h >= 9 && h <= 13,
+    horas: ['09:00', '10:00', '11:00', '12:00', '13:00'],
+  },
+  tarde: {
+    title: '☀️ Tarde', rango: '14 a 18 hs', label: '☀️ Tarde (14–18 hs)',
+    test: h => h >= 14 && h <= 18,
+    horas: ['14:00', '15:00', '16:00', '17:00', '18:00'],
+  },
+  noche: {
+    title: '🌙 Noche', rango: '19 a 02 hs', label: '🌙 Noche (19–02 hs)',
+    test: h => h >= 19 || h <= 2,
+    horas: ['19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00'],
+  },
 };
+
+/**
+ * Una franja sigue disponible si tiene al menos una hora de inicio que NO pasó.
+ * Para un día futuro siempre da true; para HOY descarta las franjas ya vencidas
+ * según la hora del sistema (isPast trata la madrugada 00–02 como día siguiente).
+ */
+function franjaTieneFuturo(fecha, franja) {
+  return franja.horas.some(h => !isPast(fecha, h));
+}
 
 const fechaCompact     = (fecha) => fecha.replace(/-/g, '');
 const fechaFromCompact = (fc)    => `${fc.slice(0, 4)}-${fc.slice(4, 6)}-${fc.slice(6, 8)}`;
@@ -726,10 +748,41 @@ async function _sendDaysMenu(ctx, to) {
   await send(wa.buildDaysListMessage(to, getNext8Days()));
 }
 
-/** Menú de franjas horarias (mañana / tarde / noche) para una fecha */
+/**
+ * Menú de franjas horarias (mañana / tarde / noche) para una fecha.
+ * Si la fecha es HOY, se deshabilitan automáticamente las franjas ya pasadas
+ * (solo se muestran las que todavía tienen horarios futuros).
+ */
 async function _sendGroupsMenu(ctx, to, fecha) {
   const send = p => wa.sendMessage(p, ctx.creds);
-  await send(wa.buildGroupsListMessage(to, formatFechaLabel(fecha), fechaCompact(fecha)));
+  const fc = fechaCompact(fecha);
+
+  const rows = Object.entries(FRANJAS)
+    .filter(([, franja]) => franjaTieneFuturo(fecha, franja))
+    .map(([key, franja]) => ({
+      id:          `grp_${fc}_${key}`,
+      title:       franja.title,
+      description: franja.rango,
+    }));
+
+  // Todas las franjas del día ya pasaron → ofrecer elegir otro día.
+  if (!rows.length) {
+    await send({
+      to, type: 'text',
+      text: { body: `😔 Ya no quedan horarios disponibles para el ${formatFechaLabel(fecha)}.\nElegí otro día:` },
+    });
+    await _sendDaysMenu(ctx, to);
+    return;
+  }
+
+  await send(wa.buildRowsListMessage(to, {
+    headerText:   `🕐 ${formatFechaLabel(fecha)}`,
+    bodyText:     '¿En qué franja horaria querés jugar?',
+    footerText:   'JugaHoy — Reservas deportivas',
+    button:       'Ver franjas',
+    sectionTitle: 'Franjas horarias',
+    rows,
+  }));
 }
 
 /** Menú de duración del turno (1 h / 1½ h / 2 h) para una franja */
@@ -947,9 +1000,11 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
-    for (const extra of wa.buildExtrasMessages(from)) {
-      await send(extra);
-    }
+    // Un único botón, claro y sin opciones adicionales, hacia la web del complejo.
+    // Se puede sobreescribir con CHATBOT_COMPLEX_WEB_URL; por defecto apunta a la
+    // página pública del complejo en la plataforma.
+    const webUrl = process.env.CHATBOT_COMPLEX_WEB_URL || frontendUrl(`canchas/${ctx.clubId}`);
+    await send(wa.buildComplexWebMessage(from, webUrl));
   } catch (err) {
     console.error('[chatbot._handleConfirm] aviso post-confirmación falló (la reserva SÍ se guardó):', err.message);
   }

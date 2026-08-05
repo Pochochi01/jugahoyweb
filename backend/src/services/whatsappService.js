@@ -306,9 +306,36 @@ function buildOtpTemplate(to, code, opts = {}) {
 }
 
 /**
+ * Un ÚNICO botón CTA que lleva a la web del complejo. Se envía al finalizar
+ * la reserva: mensaje claro y único, sin opciones adicionales.
+ * @param {string} to    número destino
+ * @param {string} url   URL de la web del complejo
+ * @param {string} label texto del botón (≤ 20 chars por límite de WhatsApp)
+ */
+function buildComplexWebMessage(to, url, label = 'Ver la web') {
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      body: { text: '🌐 Visitá la web del complejo para ver más info y gestionar tus reservas.' },
+      action: {
+        name: 'cta_url',
+        parameters: {
+          display_text: String(label).substring(0, 20), // límite duro de WhatsApp (#131009)
+          url,
+        },
+      },
+    },
+  };
+}
+
+/**
  * Tres mensajes CTA (Call-to-Action URL) para enviar tras confirmar.
  * WhatsApp solo permite 1 URL por mensaje interactivo → se envían 3 separados.
  * @param {string} to — número destino
+ * @deprecated El flujo del chatbot ahora envía un único botón (buildComplexWebMessage).
  */
 function buildExtrasMessages(to) {
   // ⚠️ WhatsApp limita display_text del CTA a 20 caracteres (error #131009).
@@ -360,6 +387,7 @@ module.exports = {
   buildRowsListMessage,
   buildConfirmMessage,
   buildExtrasMessages,
+  buildComplexWebMessage,
   sendCancellationNotice,
   buildOtpTemplate,
 };
