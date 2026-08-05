@@ -37,30 +37,49 @@ passport.use(
       async (_accessToken, _refreshToken, profile, done) => {
         try {
           const User      = getUser();
-          const email     = profile.emails?.[0]?.value;
+          const email     = profile.emails?.[0]?.value?.trim().toLowerCase();
           const nombre    = profile.name?.givenName  || profile.displayName || 'Usuario';
           const apellido  = profile.name?.familyName || '';
           const googleId  = profile.id;
           const avatarUrl = profile.photos?.[0]?.value || null;
 
-          if (!email) return done(new Error('Google no proporcionó email'), null);
+          // Sin email no podemos identificar ni crear la cuenta.
+          // done(null, false, info) → Passport dispara el failureRedirect.
+          if (!email) return done(null, false, { message: 'Google no proporcionó email' });
 
+          // 1) ¿Ya existe una cuenta vinculada a este google_id?
           let user = await User.findOne({ where: { google_id: googleId } });
+
+          // 2) Si no, buscar/crear por email (findOrCreate atómico).
           if (!user) {
-            user = await User.findOne({ where: { email } });
-            if (user) {
-              await user.update({ google_id: googleId, avatar_url: avatarUrl });
-            } else {
-              user = await User.create({
+            const [record, created] = await User.findOrCreate({
+              where:    { email },
+              defaults: {
                 nombre, apellido, email,
                 password:   null,
                 google_id:  googleId,
                 avatar_url: avatarUrl,
                 rol:        'player',
                 activo:     true,
+              },
+            });
+            user = record;
+
+            // Cuenta local preexistente (email/password) sin google_id →
+            // vincular la identidad de Google a esa cuenta.
+            if (!created && !user.google_id) {
+              await user.update({
+                google_id:  googleId,
+                avatar_url: user.avatar_url || avatarUrl,
               });
             }
           }
+
+          // Cuenta desactivada: bloquear el ingreso.
+          if (user.activo === false) {
+            return done(null, false, { message: 'La cuenta está desactivada' });
+          }
+
           return done(null, user);
         } catch (err) {
           return done(err, null);

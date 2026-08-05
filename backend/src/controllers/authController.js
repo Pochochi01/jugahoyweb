@@ -12,6 +12,7 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const { User, Collaborator, Complex, Token } = require('../models');
 const { sendMail } = require('../config/mailer');
+const { frontendUrl } = require('../config/urls');
 const verification = require('../services/verification.service');
 
 function generateToken(user) {
@@ -135,7 +136,8 @@ async function requestPasswordReset(req, res) {
     }
 
     const rawToken  = await Token.createResetToken(user.id, 60);
-    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${rawToken}`;
+    // frontendUrl() toma el primer origen de FRONTEND_URL (que puede ser multi-origen).
+    const resetLink = frontendUrl(`reset-password?token=${rawToken}`);
 
     await sendMail({
       to:      user.email,
