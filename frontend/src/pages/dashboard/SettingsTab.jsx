@@ -452,9 +452,9 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
                 </button>
                 {sel && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-muted-foreground">$</span>
+                    <span className="text-sm font-semibold text-foreground">$</span>
                     <input type="number" min="0" step="1" placeholder="Precio"
-                      className="w-24 text-sm border border-border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="input w-28 text-sm font-semibold px-2 py-1.5"
                       value={form.precios_por_duracion?.[d.value] || ''}
                       onChange={e => setPrice(d.value, e.target.value)}
                       onClick={e => e.stopPropagation()} />

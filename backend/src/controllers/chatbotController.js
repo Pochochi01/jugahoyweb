@@ -238,13 +238,39 @@ const fechaFromCompact = (fc)    => `${fc.slice(0, 4)}-${fc.slice(4, 6)}-${fc.sl
 // Ordena horas con la madrugada (00–02) después de las 23
 const horaSortKey      = (hora)  => { const h = parseInt(hora); return h <= 3 ? h + 24 : h; };
 
-/** "Cancha 1, Cancha 2 y Cancha 3" (o "N canchas" si excede el límite) */
+/**
+ * Abrevia el nombre de una cancha para que quepan todas en la fila de WhatsApp.
+ * - "Cancha 3" → "C3", "Pista 12" → "P12", "Fútbol 5" → "F5"
+ * - Sin número: primeras 4 letras sin espacios ("Central" → "Cent").
+ */
+function abreviarCancha(nombre) {
+  const n = String(nombre).trim();
+  const m = n.match(/^(.*?)(\d+)\s*$/);      // texto opcional + número al final
+  if (m) {
+    const prefix = m[1].trim();
+    const inicial = prefix ? prefix[0].toUpperCase() : 'C';
+    return `${inicial}${m[2]}`;
+  }
+  return n.replace(/\s+/g, '').slice(0, 4) || n;
+}
+
+/**
+ * Lista de canchas para la descripción de la fila (máx. 72 chars en WhatsApp).
+ * 1) Nombres completos si entran (legible cuando son pocas).
+ * 2) Abreviadas separadas por coma → TODAS visibles ("C1, C2, C3, C4").
+ * 3) Último recurso: "N canchas".
+ */
 function formatCanchas(names) {
   if (!names.length) return '';
-  const joined = names.length === 1
+  const full = names.length === 1
     ? names[0]
     : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
-  return joined.length <= 72 ? joined : `${names.length} canchas`;
+  if (full.length <= 72) return full;
+
+  const abbr = names.map(abreviarCancha).join(', ');
+  if (abbr.length <= 72) return abbr;
+
+  return `${names.length} canchas`;
 }
 
 /**
