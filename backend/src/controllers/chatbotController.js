@@ -39,6 +39,7 @@ const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
+const { abbrDeporte, abbrSuperficie } = require('../utils/canchas');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -274,6 +275,27 @@ function formatCanchas(names) {
 }
 
 /**
+ * Agrupa las canchas disponibles por Deporte + Superficie y lista sus
+ * identificadores. Formato (una línea, máx. 72 chars):
+ *   "Futb Sint C1 C3 C5, Futb Natu C2 C4, Pade Sint C1 C2"
+ * Cada cancha ya viene filtrada por disponibilidad.
+ * @param {Array<{deporte,superficie,identificador,nombre}>} courts
+ */
+function formatCanchasAgrupadas(courts) {
+  if (!courts.length) return '';
+  const grupos = new Map();  // "Futb Sint" → ['C1','C3']
+  for (const c of courts) {
+    const sup = abbrSuperficie(c.superficie);
+    const key = `${abbrDeporte(c.deporte)}${sup ? ' ' + sup : ''}`;
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key).push(c.identificador || abreviarCancha(c.nombre));
+  }
+  const partes = [...grupos.entries()].map(([k, ids]) => `${k} ${ids.join(' ')}`);
+  const joined = partes.join(', ');
+  return joined.length <= 72 ? joined : `${courts.length} canchas`;
+}
+
+/**
  * Horarios en punto con al menos una cancha libre para reservar `duracion` minutos.
  * Solo incluye la hora si TODOS los slots del turno están libres, dentro del
  * horario de la cancha, no pasados, y la cancha permite esa duración.
@@ -312,7 +334,9 @@ async function getAvailableByHour(fecha, complexId, duracion = 60) {
       const libre  = chunk.every(h => !ocupadosSet.has(h));   // sin ocupar
       if (!cabe || !libre || isPast(fecha, hora, apertura)) continue;
       (byHour[hora] ??= []).push({
-        fieldId: field.id, nombre: field.nombre, deporte: field.deporte, precio: field.precio_base,
+        fieldId: field.id, nombre: field.nombre, deporte: field.deporte,
+        superficie: field.superficie, identificador: field.identificador,
+        precio: field.precio_base,
       });
     }
   }
@@ -855,7 +879,8 @@ async function _sendHoursMenu(ctx, to, fecha, group, duracion) {
   const rows = horas.map(hora => ({
     id:          `hr_${fc}_${duracion}_${hora.replace(':', '')}`,
     title:       `${hora} hs`,
-    description: formatCanchas(byHour[hora].map(f => f.nombre)),
+    // Canchas libres agrupadas por deporte + superficie (ej. "Futb Sint C1 C3")
+    description: formatCanchasAgrupadas(byHour[hora]),
   }));
 
   await send(wa.buildRowsListMessage(to, {
@@ -883,11 +908,15 @@ async function _sendCourtsMenu(ctx, to, fecha, hora, duracion) {
     return;
   }
 
-  const rows = courts.map(c => ({
-    id:          `slot_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
-    title:       c.nombre,
-    description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${c.deporte || ''}`,
-  }));
+  const rows = courts.map(c => {
+    const sup = abbrSuperficie(c.superficie);
+    const tipo = `${abbrDeporte(c.deporte)}${sup ? ' ' + sup : ''}`;
+    return {
+      id:          `slot_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
+      title:       `${c.identificador ? c.identificador + ' · ' : ''}${c.nombre}`.substring(0, 24),
+      description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${tipo}`,
+    };
+  });
 
   await send(wa.buildRowsListMessage(to, {
     headerText:   `🏟️ ${formatFechaLabel(fecha)} · ${hora} hs (${duracionLabel(duracion)})`,

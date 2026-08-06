@@ -2,6 +2,22 @@ const { Op } = require('sequelize');
 const { Complex, Field, Booking } = require('../models');
 const integrations = require('../services/integrations.service');
 const { normalizeWaContacto, isValidWaContacto } = require('../utils/waPhone');
+const { superficiesValidas } = require('../utils/canchas');
+
+/**
+ * Normaliza/valida la superficie según el deporte.
+ * Devuelve { superficie } o lanza un Error con .status=400.
+ * basket/squash → superficie null (no aplica).
+ */
+function resolveSuperficie(deporte, superficie) {
+  const validas = superficiesValidas(deporte);
+  if (validas.length === 0) return null;               // basket/squash → sin superficie
+  if (superficie && !validas.includes(superficie)) {
+    const e = new Error(`Superficie inválida para ${deporte}. Opciones: ${validas.join(', ')}.`);
+    e.status = 400; throw e;
+  }
+  return superficie || null;
+}
 
 /** URL http/https válida. */
 function isValidUrl(s) {
@@ -90,10 +106,25 @@ async function getFields(req, res) {
 
 async function createField(req, res) {
   try {
-    const field = await Field.create({ ...req.body, complex_id: req.params.complexId });
+    const complex_id = req.params.complexId;
+    const body = { ...req.body };
+
+    // Superficie válida según deporte (basket/squash → null)
+    body.superficie = resolveSuperficie(body.deporte, body.superficie);
+
+    // Identificador incremental "C<n>" por complejo (siguiente al mayor existente)
+    const existentes = await Field.findAll({ where: { complex_id }, attributes: ['identificador'] });
+    let max = 0;
+    for (const f of existentes) {
+      const m = /^C(\d+)$/.exec(f.identificador || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    body.identificador = `C${max + 1}`;
+
+    const field = await Field.create({ ...body, complex_id });
     res.status(201).json(field);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message });
   }
 }
 
@@ -101,10 +132,18 @@ async function updateField(req, res) {
   try {
     const field = await Field.findByPk(req.params.fieldId);
     if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
-    await field.update(req.body);
+
+    const body = { ...req.body };
+    // Validar superficie según el deporte (el actual o el que venga en el body)
+    const deporte = body.deporte || field.deporte;
+    body.superficie = resolveSuperficie(deporte, body.superficie ?? field.superficie);
+    // El identificador se asigna al crear y no se cambia desde la edición
+    delete body.identificador;
+
+    await field.update(body);
     res.json(field);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message });
   }
 }
 

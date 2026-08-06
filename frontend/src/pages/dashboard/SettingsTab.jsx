@@ -119,10 +119,23 @@ function MercadoPagoCard({ complexId, initialToken }) {
 }
 
 const DEPORTES = [
-  { value: 'futbol', label: 'Fútbol',  emoji: '⚽' },
-  { value: 'tenis',  label: 'Tenis',   emoji: '🎾' },
-  { value: 'padel',  label: 'Pádel',   emoji: '🏓' },
+  { value: 'futbol',  label: 'Fútbol',  emoji: '⚽' },
+  { value: 'tenis',   label: 'Tenis',   emoji: '🎾' },
+  { value: 'padel',   label: 'Pádel',   emoji: '🏓' },
+  { value: 'basquet', label: 'Basket',  emoji: '🏀' },
+  { value: 'squash',  label: 'Squash',  emoji: '🥎' },
 ];
+
+// Superficies por deporte (misma tabla que backend utils/canchas.js).
+// Basket y Squash: sin superficie (dropdown deshabilitado).
+const SUPERFICIES = {
+  futbol:  [{ value: 'cemento', label: 'Cemento' }, { value: 'sintetico', label: 'Sintético' }, { value: 'natural', label: 'Natural' }],
+  tenis:   [{ value: 'dura', label: 'Dura' }, { value: 'arcilla', label: 'Arcilla' }, { value: 'cesped', label: 'Césped' }],
+  padel:   [{ value: 'dura', label: 'Dura' }, { value: 'cesped', label: 'Césped' }],
+  basquet: [],
+  squash:  [],
+};
+const superficiesDe = (dep) => SUPERFICIES[dep] || [];
 const DURACIONES = [
   { value: 30,  label: '30 min',     short: '½ h' },
   { value: 60,  label: '1 hora',     short: '1 h' },
@@ -131,7 +144,7 @@ const DURACIONES = [
 ];
 
 const CANCHA_INICIAL = {
-  nombre: '', deporte: 'futbol', dimensiones: '', techada: false,
+  nombre: '', deporte: 'futbol', superficie: 'cemento', dimensiones: '', techada: false,
   duraciones_permitidas: [60], precios_por_duracion: { 60: '' },
   precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
   sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
@@ -316,6 +329,8 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.nombre.trim()) return setError('El nombre es obligatorio.');
+    const superficiesDep = superficiesDe(form.deporte);
+    if (superficiesDep.length > 0 && !form.superficie) return setError('Elegí una superficie.');
     if (form.duraciones_permitidas.length === 0) return setError('Seleccioná al menos una duración.');
     if (!form.hora_apertura || !form.hora_cierre) return setError('Indicá horario de apertura y cierre.');
     setError('');
@@ -333,6 +348,8 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
 
     onSave({
       ...form, duracion_turno,
+      // basket/squash → sin superficie
+      superficie: superficiesDep.length > 0 ? form.superficie : null,
       precio_base: base,
       precios_por_duracion: precios,
       sena_monto: sena,
@@ -360,15 +377,37 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
       {/* Deporte */}
       <div>
         <label className="label">Deporte <span className="text-red-500">*</span></label>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {DEPORTES.map(d => (
-            <button key={d.value} type="button" onClick={() => setForm(f => ({ ...f, deporte: d.value }))}
-              className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors flex items-center justify-center gap-1.5
+            <button key={d.value} type="button"
+              onClick={() => setForm(f => {
+                // Al cambiar de deporte, resetear la superficie si ya no aplica.
+                const validas = superficiesDe(d.value).map(s => s.value);
+                return { ...f, deporte: d.value, superficie: validas.includes(f.superficie) ? f.superficie : (validas[0] || '') };
+              })}
+              className={`py-2 rounded-lg border text-sm font-medium transition-colors flex items-center justify-center gap-1.5
                 ${form.deporte === d.value ? 'bg-primary text-white border-primary' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
               {d.emoji} {d.label}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Superficie (según el deporte; deshabilitada para basket/squash) */}
+      <div>
+        <label className="label">Superficie{superficiesDe(form.deporte).length > 0 && <span className="text-red-500"> *</span>}</label>
+        <select
+          className="input disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={superficiesDe(form.deporte).length === 0}
+          value={form.superficie || ''}
+          onChange={e => setForm(f => ({ ...f, superficie: e.target.value }))}>
+          {superficiesDe(form.deporte).length === 0
+            ? <option value="">No aplica para este deporte</option>
+            : <>
+                <option value="">Elegí una superficie</option>
+                {superficiesDe(form.deporte).map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </>}
+        </select>
       </div>
 
       {/* Medidas + precio */}
@@ -591,6 +630,11 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
         {/* info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {field.identificador && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
+                {field.identificador}
+              </span>
+            )}
             <span className="text-sm font-semibold">{field.nombre}</span>
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${field.activa ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
               {field.activa ? 'Habilitada' : 'Inhabilitada'}
@@ -598,6 +642,7 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0 mt-0.5 text-xs text-muted-foreground">
             <span className="capitalize">{deporte?.label || field.deporte}</span>
+            {field.superficie && <span className="capitalize">· {field.superficie}</span>}
             {field.dimensiones && <span>· {field.dimensiones}</span>}
             <span>· {field.techada ? '🏠 Techada' : '🌤 Aire libre'}</span>
             <span className="flex items-center gap-0.5">

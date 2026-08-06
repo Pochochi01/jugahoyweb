@@ -6,9 +6,13 @@ const Field = sequelize.define('Field', {
   complex_id:  { type: DataTypes.INTEGER, allowNull: false },
   nombre:      { type: DataTypes.STRING(100), allowNull: false },
   deporte: {
-    type: DataTypes.ENUM('futbol', 'padel', 'tenis', 'basquet', 'voley', 'otro'),
+    type: DataTypes.ENUM('futbol', 'padel', 'tenis', 'basquet', 'voley', 'squash', 'otro'),
     allowNull: false,
   },
+  // Superficie según el deporte (NULL para basket/squash). Ver utils/canchas.js.
+  superficie:  { type: DataTypes.STRING(30), allowNull: true, defaultValue: null },
+  // Identificador incremental por complejo: "C1", "C2"... Se asigna al crear.
+  identificador: { type: DataTypes.STRING(10), allowNull: true, defaultValue: null },
   piso:        { type: DataTypes.ENUM('cesped_sintetico', 'cemento', 'parquet', 'tierra', 'otro') },
   dimensiones: { type: DataTypes.STRING(50) },
   duracion_turno: { type: DataTypes.INTEGER, defaultValue: 60 },
