@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
-import { resolvePostAuthRoute, storePendingInvite } from '../utils/authRedirect';
+import { resolvePostAuthRoute, storePendingInvite, storeChatbotContext, getChatbotContext } from '../utils/authRedirect';
 import { ArrowRight } from 'lucide-react';
 import BrandLogo from '../components/BrandLogo';
 
@@ -25,10 +25,19 @@ export default function RegisterPage() {
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Si se llega con ?invite=token, guardar la invitación pendiente
+  // Guardar contexto de llegada (invite / complejo del chatbot) y prefill teléfono.
   useEffect(() => {
     const invite = searchParams.get('invite');
     if (invite) storePendingInvite(invite);
+
+    const complex = searchParams.get('complex');
+    const tel     = searchParams.get('tel');
+    if (complex) storeChatbotContext({ complexId: parseInt(complex, 10), tel });
+
+    // El teléfono puede venir en la URL o en el contexto guardado desde /login.
+    const ctx = getChatbotContext();
+    const prefTel = tel || ctx?.tel;
+    if (prefTel) setForm(f => (f.telefono ? f : { ...f, telefono: prefTel }));
   }, [searchParams]);
 
   const handleSubmit = async (e) => {

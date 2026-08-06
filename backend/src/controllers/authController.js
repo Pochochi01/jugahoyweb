@@ -117,6 +117,42 @@ async function me(req, res) {
   }
 }
 
+// ── linkComplex ───────────────────────────────────────────────
+/**
+ * POST /api/auth/link-complex — requiere auth.
+ * Vincula al usuario autenticado con un complejo (default_complex_id) para que
+ * al ingresar entre directo a él. Se usa cuando el jugador llega desde el
+ * chatbot de WhatsApp de un complejo concreto.
+ *
+ * Body: { complexId:number, telefono?:string }
+ *   - complexId: complejo al que quedará asociado el jugador.
+ *   - telefono : número de WhatsApp del chatbot; se guarda SOLO si el usuario
+ *     todavía no tiene uno (no pisa un teléfono cargado a mano).
+ *
+ * Idempotente: llamarlo varias veces deja el mismo estado.
+ */
+async function linkComplex(req, res) {
+  try {
+    const complexId = parseInt(req.body.complexId, 10);
+    const telefono  = req.body.telefono;
+    if (!complexId) return res.status(400).json({ message: 'complexId requerido' });
+
+    const complex = await Complex.findByPk(complexId);
+    if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+
+    const updates = { default_complex_id: complexId };
+    // Guardar el teléfono del chatbot solo si el usuario no tiene uno cargado.
+    if (telefono && !req.user.telefono) {
+      updates.telefono = String(telefono).replace(/\D/g, '');
+    }
+
+    await req.user.update(updates);
+    res.json({ ok: true, complex_id: complexId, user: sanitize(req.user) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
 // ── requestPasswordReset ──────────────────────────────────────
 async function requestPasswordReset(req, res) {
   try {
@@ -197,4 +233,4 @@ function sanitize(user) {
   return safe;
 }
 
-module.exports = { register, login, me, requestPasswordReset, confirmPasswordReset };
+module.exports = { register, login, me, linkComplex, requestPasswordReset, confirmPasswordReset };

@@ -34,7 +34,7 @@
  */
 const crypto       = require('crypto');
 const { Op }       = require('sequelize');
-const { Field, TimeSlot, Booking, ClubIntegration, sequelize } = require('../models');
+const { Field, TimeSlot, Booking, Complex, ClubIntegration, sequelize } = require('../models');
 const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR }  = require('../utils/time');
@@ -1000,11 +1000,21 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
-    // Un único botón, claro y sin opciones adicionales, hacia la web del complejo.
-    // Se puede sobreescribir con CHATBOT_COMPLEX_WEB_URL; por defecto apunta a la
-    // página pública del complejo en la plataforma.
-    const webUrl = process.env.CHATBOT_COMPLEX_WEB_URL || frontendUrl(`canchas/${ctx.clubId}`);
+    // Un único botón, claro y sin opciones adicionales, hacia la web.
+    // Lleva el id del complejo del chatbot y el teléfono de WhatsApp: al iniciar
+    // sesión/registrarse el jugador queda vinculado a ESE complejo (entra directo)
+    // y se guarda su teléfono para mostrarlo en el turno del panel del admin.
+    // Se puede sobreescribir con CHATBOT_COMPLEX_WEB_URL.
+    const webUrl = process.env.CHATBOT_COMPLEX_WEB_URL
+      || frontendUrl(`login?complex=${ctx.clubId}&tel=${encodeURIComponent(from)}`);
     await send(wa.buildComplexWebMessage(from, webUrl));
+
+    // Segundo botón OPCIONAL: "Comunicate con la cancha".
+    // Solo se envía si el complejo tiene un número de WhatsApp configurado.
+    const complex = await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] });
+    if (complex?.whatsapp_contacto) {
+      await send(wa.buildContactCanchaMessage(from, complex.whatsapp_contacto));
+    }
   } catch (err) {
     console.error('[chatbot._handleConfirm] aviso post-confirmación falló (la reserva SÍ se guardó):', err.message);
   }

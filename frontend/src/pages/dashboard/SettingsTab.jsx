@@ -6,6 +6,19 @@ import {
   CreditCard, ShieldCheck, ExternalLink, MessageCircle, AlertTriangle, Copy,
 } from 'lucide-react';
 
+// ── WhatsApp de contacto (chatbot) — misma validación que el backend ──────────
+// Formato: +549 + código de área (sin 0) + número (sin 15). Ej: +549381800459
+function normalizeWa(input) {
+  if (input == null) return '';
+  const digits = String(input).replace(/\D/g, '');
+  return digits ? `+${digits}` : '';
+}
+function isValidWa(norm) {
+  if (!/^\+549\d{8,11}$/.test(norm)) return false;
+  const rest = norm.slice(4);
+  return !rest.startsWith('0') && !rest.startsWith('15');
+}
+
 // Detecta el ambiente del token de MercadoPago por su prefijo
 function mpEnv(t) {
   if (!t) return null;
@@ -679,6 +692,7 @@ export default function SettingsTab({ complexId, onUpdate }) {
   const [showFieldForm, setShowFieldForm] = useState(false);
   const [savingField,   setSavingField]   = useState(false);
   const [saveOk,        setSaveOk]        = useState(false);
+  const [waError,       setWaError]       = useState('');
 
   useEffect(() => {
     settingsService.get(complexId).then(data => {
@@ -689,6 +703,20 @@ export default function SettingsTab({ complexId, onUpdate }) {
 
   const saveComplex = async (e) => {
     e.preventDefault();
+
+    // Validar el WhatsApp de contacto: vacío = eliminar; con valor debe cumplir formato.
+    const rawWa = (form.whatsapp_contacto || '').trim();
+    let whatsapp_contacto = null;
+    if (rawWa) {
+      const norm = normalizeWa(rawWa);
+      if (!isValidWa(norm)) {
+        setWaError('Formato inválido. Debe ser +549 + área (sin 0) + número (sin 15). Ej: +549381800459');
+        return;
+      }
+      whatsapp_contacto = norm;
+    }
+    setWaError('');
+
     setSaving(true);
     try {
       // Enviar solo los campos generales (no pisar mercadopago_token, que se guarda
@@ -700,11 +728,15 @@ export default function SettingsTab({ complexId, onUpdate }) {
         ciudad:      form.ciudad,
         direccion:   form.direccion,
         descripcion: form.descripcion,
+        whatsapp_contacto,   // null = eliminar (el botón deja de mostrarse)
       };
       const updated = await settingsService.update(complexId, payload);
+      setForm(f => ({ ...f, whatsapp_contacto: updated.whatsapp_contacto || '' }));
       onUpdate?.(updated);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
+    } catch (err) {
+      setWaError(err.response?.data?.message || err.message || 'No se pudo guardar.');
     } finally {
       setSaving(false);
     }
@@ -763,6 +795,27 @@ export default function SettingsTab({ complexId, onUpdate }) {
           <textarea className="input h-20 resize-none" value={form.descripcion || ''}
             onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} />
         </div>
+
+        {/* WhatsApp de contacto — botón "Comunicate con la cancha" del chatbot */}
+        <div>
+          <label className="label flex items-center gap-1.5">
+            <MessageCircle className="w-4 h-4 text-primary" />
+            WhatsApp de contacto (botón del chatbot)
+          </label>
+          <input
+            className={`input ${waError ? 'border-red-500' : ''}`}
+            placeholder="+549381800459"
+            value={form.whatsapp_contacto || ''}
+            onChange={e => { setForm(f => ({ ...f, whatsapp_contacto: e.target.value })); if (waError) setWaError(''); }}
+          />
+          {waError
+            ? <p className="text-xs text-red-500 mt-1">{waError}</p>
+            : <p className="text-xs text-muted-foreground mt-1">
+                Formato: <b>+549</b> + código de área <b>sin 0</b> (ej. 381) + número <b>sin 15</b> (ej. 800459) → <b>+549381800459</b>.
+                Dejalo vacío para no mostrar el botón.
+              </p>}
+        </div>
+
         <button type="submit" disabled={saving}
           className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${saveOk ? 'bg-green-600 text-white' : 'btn-primary'}`}>
           <Save className="w-4 h-4" />

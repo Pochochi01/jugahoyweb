@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
-import { resolvePostAuthRoute, storePendingInvite } from '../utils/authRedirect';
+import { resolvePostAuthRoute, storePendingInvite, storeChatbotContext } from '../utils/authRedirect';
 import { Eye, EyeOff, ArrowRight, Phone, RotateCcw } from 'lucide-react';
 import BrandLogo from '../components/BrandLogo';
 
@@ -19,7 +19,7 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
-  const { login }         = useAuth();
+  const { login, user }   = useAuth();
   const navigate          = useNavigate();
   const [searchParams]    = useSearchParams();
 
@@ -41,11 +41,25 @@ export default function LoginPage() {
   const [resetSent,    setResetSent]    = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
-  // Si se llega con ?invite=token (link directo), guardar la invitación pendiente
+  // Guardar contexto de llegada: invitación y/o complejo del chatbot de WhatsApp.
   useEffect(() => {
     const invite = searchParams.get('invite');
     if (invite) storePendingInvite(invite);
+
+    const complex = searchParams.get('complex');
+    const tel     = searchParams.get('tel');
+    if (complex) {
+      storeChatbotContext({ complexId: parseInt(complex, 10), tel });
+      if (tel) setPhone(tel);   // prefill para login por teléfono
+    }
   }, [searchParams]);
+
+  // Si el usuario YA tiene sesión y llega con ?complex=.., entrar directo al complejo.
+  useEffect(() => {
+    if (user && searchParams.get('complex')) {
+      (async () => navigate(await resolvePostAuthRoute(user), { replace: true }))();
+    }
+  }, [user, searchParams, navigate]);
 
   // ── Login con email/password ──────────────────────────────
   const handleSubmit = async (e) => {

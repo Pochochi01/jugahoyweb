@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { Complex, Field, Booking } = require('../models');
 const integrations = require('../services/integrations.service');
+const { normalizeWaContacto, isValidWaContacto } = require('../utils/waPhone');
 
 async function getSettings(req, res) {
   try {
@@ -18,6 +19,24 @@ async function updateSettings(req, res) {
   try {
     const complex = await Complex.findByPk(req.params.complexId);
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+
+    // Validar/normalizar el WhatsApp de contacto de la cancha si viene en el body.
+    // Vacío/null → eliminar el número (el botón deja de mostrarse en el chatbot).
+    if (req.body.whatsapp_contacto !== undefined) {
+      const raw = req.body.whatsapp_contacto;
+      if (raw === null || String(raw).trim() === '') {
+        req.body.whatsapp_contacto = null;
+      } else {
+        const norm = normalizeWaContacto(raw);
+        if (!isValidWaContacto(norm)) {
+          return res.status(400).json({
+            message: 'Número de WhatsApp inválido. Debe ser +549 + código de área (sin 0) + número (sin 15). Ej: +549381800459',
+          });
+        }
+        req.body.whatsapp_contacto = norm;
+      }
+    }
+
     await complex.update(req.body);
 
     // Multi-tenant: si el panel guardó el token de MercadoPago, replicarlo en

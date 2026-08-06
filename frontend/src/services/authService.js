@@ -10,6 +10,11 @@ export const authService = {
   register: (data)            => api.post('/auth/register', data),
   me:       ()                => api.get('/auth/me'),
 
+  // Vincula al jugador con un complejo (llegada desde el chatbot de WhatsApp).
+  // telefono es opcional: se guarda solo si el usuario no tiene uno cargado.
+  linkComplex: (complexId, telefono) =>
+    api.post('/auth/link-complex', { complexId, telefono }),
+
   // ── authSkill: recuperación de contraseña ────────────────
   requestPasswordReset:  (email)                 =>
     api.post('/auth/reset-password',         { email }),

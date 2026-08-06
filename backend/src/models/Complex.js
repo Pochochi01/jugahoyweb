@@ -9,6 +9,9 @@ const Complex = sequelize.define('Complex', {
   ciudad: { type: DataTypes.STRING(100) },
   provincia: { type: DataTypes.STRING(100) },
   telefono: { type: DataTypes.STRING(20) },
+  // Número de WhatsApp del botón "Comunicate con la cancha" del chatbot.
+  // Formato: +549 + área (sin 0) + número (sin 15). NULL = sin botón.
+  whatsapp_contacto: { type: DataTypes.STRING(20), allowNull: true, defaultValue: null },
   email: { type: DataTypes.STRING(150) },
   prestaciones: { type: DataTypes.JSON },
   logo_url: { type: DataTypes.STRING(255) },

@@ -332,6 +332,36 @@ function buildComplexWebMessage(to, url, label = 'Ver la web') {
 }
 
 /**
+ * Botón CTA "Comunicate con la cancha": abre un chat de WhatsApp con el número
+ * de contacto del complejo (wa.me). Se envía como segundo botón tras confirmar,
+ * solo si el complejo tiene un número configurado.
+ *
+ * Nota: WhatsApp limita display_text del CTA a 20 caracteres (#131009), por eso
+ * el botón dice "Comunicate cancha" y la frase completa va en el cuerpo.
+ * @param {string} to    número destino
+ * @param {string} phone número de contacto (se usa solo con dígitos para wa.me)
+ */
+function buildContactCanchaMessage(to, phone) {
+  const num = String(phone).replace(/\D/g, ''); // wa.me usa solo dígitos
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      body: { text: '💬 Comunicate con la cancha para cualquier consulta.' },
+      action: {
+        name: 'cta_url',
+        parameters: {
+          display_text: 'Comunicate cancha'.substring(0, 20),
+          url: `https://wa.me/${num}`,
+        },
+      },
+    },
+  };
+}
+
+/**
  * Tres mensajes CTA (Call-to-Action URL) para enviar tras confirmar.
  * WhatsApp solo permite 1 URL por mensaje interactivo → se envían 3 separados.
  * @param {string} to — número destino
@@ -388,6 +418,7 @@ module.exports = {
   buildConfirmMessage,
   buildExtrasMessages,
   buildComplexWebMessage,
+  buildContactCanchaMessage,
   sendCancellationNotice,
   buildOtpTemplate,
 };
