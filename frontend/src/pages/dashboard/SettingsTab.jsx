@@ -136,6 +136,16 @@ const SUPERFICIES = {
   squash:  [],
 };
 const superficiesDe = (dep) => SUPERFICIES[dep] || [];
+
+// Próximo identificador "C<n>" a partir de las canchas existentes del complejo.
+function nextFieldId(fields = []) {
+  let max = 0;
+  for (const f of fields) {
+    const m = /^C(\d+)$/.exec(f.identificador || '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `C${max + 1}`;
+}
 const DURACIONES = [
   { value: 30,  label: '30 min',     short: '½ h' },
   { value: 60,  label: '1 hora',     short: '1 h' },
@@ -308,7 +318,7 @@ function WhatsAppCard({ complexId }) {
 }
 
 // ── formulario crear/editar ───────────────────────────────────────────────────
-function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit = false }) {
+function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit = false, nextId = '' }) {
   const [form, setForm] = useState({ ...CANCHA_INICIAL, ...initial });
   const [error, setError] = useState('');
 
@@ -328,7 +338,6 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.nombre.trim()) return setError('El nombre es obligatorio.');
     const superficiesDep = superficiesDe(form.deporte);
     if (superficiesDep.length > 0 && !form.superficie) return setError('Elegí una superficie.');
     if (form.duraciones_permitidas.length === 0) return setError('Seleccioná al menos una duración.');
@@ -348,6 +357,8 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
 
     onSave({
       ...form, duracion_turno,
+      // El nombre es el identificador (C1, C2, ...); en alta se usa el próximo.
+      nombre: isEdit ? form.nombre : nextId,
       // basket/squash → sin superficie
       superficie: superficiesDep.length > 0 ? form.superficie : null,
       precio_base: base,
@@ -367,11 +378,16 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
         </div>
       )}
 
-      {/* Nombre */}
+      {/* Nombre = identificador auto-asignado (C1, C2, C3…) */}
       <div>
-        <label className="label">Nombre <span className="text-red-500">*</span></label>
-        <input className="input" placeholder="Ej: Cancha 1, Pádel Central..." required
-          value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
+        <label className="label">Nombre de la cancha</label>
+        <input className="input opacity-70 cursor-not-allowed font-semibold" readOnly
+          value={isEdit ? form.nombre : nextId} />
+        <p className="text-xs text-muted-foreground mt-1">
+          {isEdit
+            ? 'El identificador de la cancha no se modifica.'
+            : 'Se asigna automáticamente e incremental (C1, C2, C3…).'}
+        </p>
       </div>
 
       {/* Deporte */}
@@ -716,7 +732,9 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
           <FieldForm
             initial={{
               nombre:                field.nombre,
+              identificador:         field.identificador,
               deporte:               field.deporte,
+              superficie:            field.superficie ?? '',
               dimensiones:           field.dimensiones || '',
               techada:               field.techada,
               precio_base:           field.precio_base || '',
@@ -953,6 +971,7 @@ export default function SettingsTab({ complexId, onUpdate }) {
 
         {showFieldForm && (
           <FieldForm
+            nextId={nextFieldId(fields)}
             onSave={handleCreateField}
             onCancel={() => setShowFieldForm(false)}
             saving={savingField}

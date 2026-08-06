@@ -120,6 +120,8 @@ async function createField(req, res) {
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     body.identificador = `C${max + 1}`;
+    // El nombre de la cancha ES su identificador (C1, C2, ...).
+    body.nombre = body.identificador;
 
     const field = await Field.create({ ...body, complex_id });
     res.status(201).json(field);
