@@ -2,12 +2,19 @@ import { inviteService } from '../services/inviteService';
 import { authService } from '../services/authService';
 
 const PENDING_INVITE_KEY = 'pendingInvite';
+const PENDING_TEL_KEY    = 'pendingTel';
 const CHATBOT_CTX_KEY    = 'chatbotComplexCtx';
 
 // Guarda el token de invitación para reclamarlo después de autenticarse.
 // Se usa cuando un usuario abre un link /invite/:token sin estar logueado.
 export function storePendingInvite(token) {
   if (token) sessionStorage.setItem(PENDING_INVITE_KEY, token);
+}
+
+// Teléfono de WhatsApp que viaja en el link (?tel=..). Se guarda en la cuenta
+// del jugador tras autenticarse (junto con la invitación o el contexto del chatbot).
+export function storePendingTel(tel) {
+  if (tel) sessionStorage.setItem(PENDING_TEL_KEY, tel);
 }
 
 // Contexto de llegada desde el chatbot de WhatsApp: complejo + teléfono.
@@ -40,6 +47,12 @@ export async function resolvePostAuthRoute(user) {
     sessionStorage.removeItem(PENDING_INVITE_KEY);
     try {
       const { complex_id } = await inviteService.claim(pending);
+      // Si el link traía teléfono (?tel=..), guardarlo en la cuenta del jugador.
+      const tel = sessionStorage.getItem(PENDING_TEL_KEY);
+      if (tel) {
+        sessionStorage.removeItem(PENDING_TEL_KEY);
+        try { await authService.linkComplex(complex_id, tel); } catch { /* no bloquear */ }
+      }
       return `/canchas/${complex_id}`;
     } catch {
       // Invitación inválida o revocada → continuar con el flujo normal

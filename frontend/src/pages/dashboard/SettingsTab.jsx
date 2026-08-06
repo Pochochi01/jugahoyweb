@@ -19,6 +19,14 @@ function isValidWa(norm) {
   return !rest.startsWith('0') && !rest.startsWith('15');
 }
 
+// URL http/https válida (link de invitación del botón "Ver la web" del chatbot)
+function isValidUrl(s) {
+  try {
+    const u = new URL(String(s).trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch { return false; }
+}
+
 // Detecta el ambiente del token de MercadoPago por su prefijo
 function mpEnv(t) {
   if (!t) return null;
@@ -693,6 +701,7 @@ export default function SettingsTab({ complexId, onUpdate }) {
   const [savingField,   setSavingField]   = useState(false);
   const [saveOk,        setSaveOk]        = useState(false);
   const [waError,       setWaError]       = useState('');
+  const [linkError,     setLinkError]     = useState('');
 
   useEffect(() => {
     settingsService.get(complexId).then(data => {
@@ -717,6 +726,15 @@ export default function SettingsTab({ complexId, onUpdate }) {
     }
     setWaError('');
 
+    // Validar el link de invitación: vacío = eliminar; con valor debe ser URL válida.
+    const rawLink = (form.link_invitacion || '').trim();
+    if (rawLink && !isValidUrl(rawLink)) {
+      setLinkError('Ingresá una URL válida (debe empezar con http:// o https://).');
+      return;
+    }
+    setLinkError('');
+    const link_invitacion = rawLink || null;
+
     setSaving(true);
     try {
       // Enviar solo los campos generales (no pisar mercadopago_token, que se guarda
@@ -729,9 +747,14 @@ export default function SettingsTab({ complexId, onUpdate }) {
         direccion:   form.direccion,
         descripcion: form.descripcion,
         whatsapp_contacto,   // null = eliminar (el botón deja de mostrarse)
+        link_invitacion,     // null = eliminar (el chatbot usa la home por defecto)
       };
       const updated = await settingsService.update(complexId, payload);
-      setForm(f => ({ ...f, whatsapp_contacto: updated.whatsapp_contacto || '' }));
+      setForm(f => ({
+        ...f,
+        whatsapp_contacto: updated.whatsapp_contacto || '',
+        link_invitacion:   updated.link_invitacion || '',
+      }));
       onUpdate?.(updated);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
@@ -813,6 +836,25 @@ export default function SettingsTab({ complexId, onUpdate }) {
             : <p className="text-xs text-muted-foreground mt-1">
                 Formato: <b>+549</b> + código de área <b>sin 0</b> (ej. 381) + número <b>sin 15</b> (ej. 800459) → <b>+549381800459</b>.
                 Dejalo vacío para no mostrar el botón.
+              </p>}
+        </div>
+
+        {/* Link de invitación — botón "Ver la web" del chatbot */}
+        <div>
+          <label className="label flex items-center gap-1.5">
+            <ExternalLink className="w-4 h-4 text-primary" />
+            Link de invitación (botón "Ver la web" del chatbot)
+          </label>
+          <input
+            className={`input ${linkError ? 'border-red-500' : ''}`}
+            placeholder="https://www.jugahoyweb.com/invite/xxxxx"
+            value={form.link_invitacion || ''}
+            onChange={e => { setForm(f => ({ ...f, link_invitacion: e.target.value })); if (linkError) setLinkError(''); }}
+          />
+          {linkError
+            ? <p className="text-xs text-red-500 mt-1">{linkError}</p>
+            : <p className="text-xs text-muted-foreground mt-1">
+                Pegá el link de invitación del complejo. Si lo dejás vacío, el botón vincula al jugador con este complejo y guarda su teléfono automáticamente.
               </p>}
         </div>
 

@@ -3,6 +3,16 @@ const { Complex, Field, Booking } = require('../models');
 const integrations = require('../services/integrations.service');
 const { normalizeWaContacto, isValidWaContacto } = require('../utils/waPhone');
 
+/** URL http/https válida. */
+function isValidUrl(s) {
+  try {
+    const u = new URL(String(s).trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 async function getSettings(req, res) {
   try {
     const complex = await Complex.findByPk(req.params.complexId, {
@@ -34,6 +44,21 @@ async function updateSettings(req, res) {
           });
         }
         req.body.whatsapp_contacto = norm;
+      }
+    }
+
+    // Validar el link de invitación (botón "Ver la web" del chatbot).
+    // Vacío/null → eliminar (el chatbot usará la home por defecto).
+    if (req.body.link_invitacion !== undefined) {
+      const raw = req.body.link_invitacion;
+      if (raw === null || String(raw).trim() === '') {
+        req.body.link_invitacion = null;
+      } else if (!isValidUrl(raw)) {
+        return res.status(400).json({
+          message: 'El link de invitación debe ser una URL válida (empezando con http:// o https://).',
+        });
+      } else {
+        req.body.link_invitacion = String(raw).trim();
       }
     }
 

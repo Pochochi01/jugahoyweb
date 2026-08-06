@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { MapPin, AlertTriangle, CheckCircle, Loader2, Building2 } from 'lucide-react';
 import { inviteService } from '../services/inviteService';
+import { authService } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
-import { storePendingInvite } from '../utils/authRedirect';
+import { storePendingInvite, storePendingTel } from '../utils/authRedirect';
 
 export default function InvitePage() {
-  const { token }    = useParams();
-  const navigate     = useNavigate();
-  const { user }     = useAuth();
+  const { token }      = useParams();
+  const navigate       = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { user }       = useAuth();
+  const tel            = searchParams.get('tel');   // teléfono desde el chatbot (?tel=..)
   const [state, setState]     = useState('loading'); // loading | valid | invalid
   const [data,  setData]      = useState(null);
   const [claiming, setClaiming] = useState(false);
@@ -19,11 +22,15 @@ export default function InvitePage() {
       .catch(() => setState('invalid'));
   }, [token]);
 
+  // Guardar el teléfono del link para persistirlo tras autenticarse.
+  useEffect(() => { if (tel) storePendingTel(tel); }, [tel]);
+
   const handleIngresar = async () => {
-    // Usuario sin sesión → guardar invitación pendiente y mandar a login.
+    // Usuario sin sesión → guardar invitación (+ teléfono) pendiente y mandar a login.
     // La relación player ↔ complejo recién se crea al loguearse (claim).
     if (!user) {
       storePendingInvite(token);
+      if (tel) storePendingTel(tel);
       navigate(`/login?invite=${token}`);
       return;
     }
@@ -32,6 +39,8 @@ export default function InvitePage() {
     setClaiming(true);
     try {
       await inviteService.claim(token);
+      // Si el link traía teléfono, guardarlo en la cuenta del jugador.
+      if (tel) { try { await authService.linkComplex(data.complex.id, tel); } catch { /* no bloquear */ } }
     } catch {
       // Si el claim falla igual entramos al complejo (no bloqueante)
     } finally {

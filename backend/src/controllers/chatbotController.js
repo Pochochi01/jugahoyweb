@@ -1000,18 +1000,23 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
-    // Un único botón, claro y sin opciones adicionales, hacia la web.
-    // Lleva el id del complejo del chatbot y el teléfono de WhatsApp: al iniciar
-    // sesión/registrarse el jugador queda vinculado a ESE complejo (entra directo)
-    // y se guarda su teléfono para mostrarlo en el turno del panel del admin.
-    // Se puede sobreescribir con CHATBOT_COMPLEX_WEB_URL.
-    const webUrl = process.env.CHATBOT_COMPLEX_WEB_URL
-      || frontendUrl(`login?complex=${ctx.clubId}&tel=${encodeURIComponent(from)}`);
+    // Config del complejo (link de invitación + WhatsApp de contacto).
+    const complex = await Complex.findByPk(ctx.clubId, {
+      attributes: ['link_invitacion', 'whatsapp_contacto'],
+    });
+
+    // Botón "Ver la web". En ambos casos viaja el teléfono de WhatsApp (tel) para
+    // guardarlo en la cuenta del jugador al iniciar sesión/registrarse:
+    //   1) Con link de invitación del admin → se usa ese link + tel anexado.
+    //   2) Sin link → login?complex=<id>&tel=<tel> (auto-vínculo al complejo + teléfono).
+    const telParam = encodeURIComponent(from);
+    const webUrl = complex?.link_invitacion
+      ? `${complex.link_invitacion}${complex.link_invitacion.includes('?') ? '&' : '?'}tel=${telParam}`
+      : frontendUrl(`login?complex=${ctx.clubId}&tel=${telParam}`);
     await send(wa.buildComplexWebMessage(from, webUrl));
 
     // Segundo botón OPCIONAL: "Comunicate con la cancha".
     // Solo se envía si el complejo tiene un número de WhatsApp configurado.
-    const complex = await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] });
     if (complex?.whatsapp_contacto) {
       await send(wa.buildContactCanchaMessage(from, complex.whatsapp_contacto));
     }
