@@ -39,4 +39,34 @@ function abbrSuperficie(s) {
   return ABBR_SUPERFICIE[s] || (s[0].toUpperCase() + s.slice(1, 4));
 }
 
-module.exports = { SUPERFICIES_POR_DEPORTE, superficiesValidas, abbrDeporte, abbrSuperficie };
+// ── Etiquetas COMPLETAS (sin abreviar) para mostrar al usuario ──
+const LABEL_DEPORTE = {
+  futbol: 'Fútbol', padel: 'Pádel', tenis: 'Tenis',
+  basquet: 'Basket', squash: 'Squash', voley: 'Vóley', otro: 'Otro',
+};
+const LABEL_SUPERFICIE = {
+  sintetico: 'Sintético', natural: 'Natural', cemento: 'Cemento',
+  dura: 'Dura', arcilla: 'Arcilla', cesped: 'Césped',
+};
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+
+function labelDeporte(d)    { return LABEL_DEPORTE[d]    || cap(d); }
+function labelSuperficie(s) { return s ? (LABEL_SUPERFICIE[s] || cap(s)) : ''; }
+
+/** "C1" → "Cancha 1". Si no matchea, usa el fallback (nombre) o el identificador. */
+function nombreCancha(identificador, fallback) {
+  const m = /^C(\d+)$/.exec(identificador || '');
+  return m ? `Cancha ${m[1]}` : (fallback || identificador || 'Cancha');
+}
+
+/** "Fútbol Sintético" (deporte + superficie completos). */
+function tipoCanchaCompleto(deporte, superficie) {
+  const sup = labelSuperficie(superficie);
+  return `${labelDeporte(deporte)}${sup ? ' ' + sup : ''}`;
+}
+
+module.exports = {
+  SUPERFICIES_POR_DEPORTE, superficiesValidas,
+  abbrDeporte, abbrSuperficie,
+  labelDeporte, labelSuperficie, nombreCancha, tipoCanchaCompleto,
+};

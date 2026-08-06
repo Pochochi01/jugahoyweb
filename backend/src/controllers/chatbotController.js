@@ -39,7 +39,7 @@ const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
-const { abbrDeporte, abbrSuperficie } = require('../utils/canchas');
+const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto } = require('../utils/canchas');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -704,7 +704,7 @@ async function handleWebhook(req, res) {
           slotId:        pend.slotRaw,
           fechaLabel:    formatFechaLabel(fecha),
           hora,
-          cancha:        field?.nombre || `Cancha ${fieldId}`,
+          cancha:        nombreCancha(field?.identificador, field?.nombre) || `Cancha ${fieldId}`,
           nombre,
           duracionLabel: duracionLabel(duracion),
         }));
@@ -908,15 +908,13 @@ async function _sendCourtsMenu(ctx, to, fecha, hora, duracion) {
     return;
   }
 
-  const rows = courts.map(c => {
-    const sup = abbrSuperficie(c.superficie);
-    const tipo = `${abbrDeporte(c.deporte)}${sup ? ' ' + sup : ''}`;
-    return {
-      id:          `slot_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
-      title:       `${c.identificador ? c.identificador + ' · ' : ''}${c.nombre}`.substring(0, 24),
-      description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${tipo}`,
-    };
-  });
+  const rows = courts.map(c => ({
+    id:          `slot_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
+    // "Cancha 1" (un solo nombre, sin abreviar ni duplicar)
+    title:       nombreCancha(c.identificador, c.nombre).substring(0, 24),
+    // Descripción completa: "$4.000/hr · Fútbol Sintético"
+    description: `$${Number(c.precio || 0).toLocaleString('es-AR')}/hr · ${tipoCanchaCompleto(c.deporte, c.superficie)}`,
+  }));
 
   await send(wa.buildRowsListMessage(to, {
     headerText:   `🏟️ ${formatFechaLabel(fecha)} · ${hora} hs (${duracionLabel(duracion)})`,
@@ -1048,7 +1046,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
         body: `✅ ¡Turno confirmado!\n\n` +
               `📅 ${formatFechaLabel(fecha)}\n` +
               `⏰ ${hora} hs (${duracionLabel(duracion)})\n` +
-              `🏟️ ${field.nombre}\n` +
+              `🏟️ ${nombreCancha(field.identificador, field.nombre)} · ${tipoCanchaCompleto(field.deporte, field.superficie)}\n` +
               `👤 ${nombreTitular}\n\n` +
               `ID de reserva: *#${booking.id}*\n` +
               `Para cancelar escribí: *cancelar #${booking.id}*`,
