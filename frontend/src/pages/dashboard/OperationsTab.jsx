@@ -4,6 +4,14 @@ import { List } from 'lucide-react';
 
 const TIPO_BADGE = { reserva: 'badge-blue', cancelacion: 'badge-red', confirmacion: 'badge-green', pago: 'badge-green', ajuste: 'badge-yellow' };
 
+// Origen del movimiento (canal). 'chatbot' = WhatsApp; el resto se muestra como "Web".
+const ORIGEN = {
+  chatbot: { label: '💬 WhatsApp', cls: 'bg-green-100 text-green-700' },
+  pwa:     { label: 'Web',         cls: 'bg-slate-100 text-slate-600' },
+  web:     { label: 'Web',         cls: 'bg-slate-100 text-slate-600' },
+};
+const origenDe = (o) => ORIGEN[o] || ORIGEN.pwa;
+
 export default function OperationsTab({ complexId }) {
   const [ops, setOps] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +51,12 @@ export default function OperationsTab({ complexId }) {
             <div key={op.id} className="card py-3 flex items-start gap-4">
               <div className="shrink-0 pt-0.5"><span className={`${TIPO_BADGE[op.tipo]} capitalize`}>{op.tipo}</span></div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm">{op.descripcion}</div>
+                <div className="text-sm flex items-center gap-2 flex-wrap">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${origenDe(op.origen).cls}`}>
+                    {origenDe(op.origen).label}
+                  </span>
+                  <span>{op.descripcion}</span>
+                </div>
                 {op.usuario && <div className="text-xs text-muted-foreground">{op.usuario.nombre} {op.usuario.apellido}</div>}
               </div>
               <div className="shrink-0 text-right">

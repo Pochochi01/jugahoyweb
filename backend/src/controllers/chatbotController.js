@@ -34,9 +34,10 @@
  */
 const crypto       = require('crypto');
 const { Op }       = require('sequelize');
-const { Field, TimeSlot, Booking, Complex, ClubIntegration, sequelize } = require('../models');
+const { Field, TimeSlot, Booking, Complex, Operation, Notification, ClubIntegration, sequelize } = require('../models');
 const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
+const notifService = require('../services/notification.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto } = require('../utils/canchas');
@@ -955,7 +956,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
   const nombreTitular = pend?.name || `WhatsApp ${from.slice(-4)}`;
 
   const t = await sequelize.transaction();
-  let booking, field;
+  let booking, field, complex, hora_fin, monto;
   try {
     field = await Field.findByPk(fieldId, { transaction: t });
     if (!field) {
@@ -969,7 +970,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
     const horasAReservar  = Array.from({ length: slotsNecesarios }, (_, i) =>
       addMinutes(hora, i * 30)
     );
-    const hora_fin = addMinutes(hora, duracion);
+    hora_fin = addMinutes(hora, duracion);
 
     // Verificar disponibilidad en tiempo real (con lock anti-race)
     const ocupados = await TimeSlot.findAll({
@@ -995,7 +996,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
 
     // Monto según duración: precios_por_duracion o precio_base proporcional
     const precios = field.precios_por_duracion || {};
-    const monto = precios[String(duracion)] != null
+    monto = precios[String(duracion)] != null
       ? parseFloat(precios[String(duracion)])
       : parseFloat(field.precio_base || 0) * (duracion / 60);
 
@@ -1021,8 +1022,38 @@ async function _handleConfirm(ctx, from, slotRaw) {
       );
     }
 
+    // ── Traza en "Operaciones" (mismo mecanismo que la PWA, origen 'chatbot') ──
+    // La fecha/hora exacta la guarda Operation.fecha (defaultValue NOW).
+    const canchaLbl = nombreCancha(field.identificador, field.nombre);
+    await Operation.create({
+      complex_id:  ctx.clubId,
+      tipo:        'reserva',
+      origen:      'chatbot',
+      descripcion: `Reserva por WhatsApp: ${nombreTitular} — ${fecha} ${hora}→${hora_fin} (${duracion}min) · ${canchaLbl}`,
+      agenda_id:   booking.id,
+      monto:       monto || 0,
+    }, { transaction: t });
+
+    // ── Notificación in-app al dueño del complejo (como la PWA) ──
+    complex = await Complex.findByPk(ctx.clubId, {
+      attributes: ['owner_id', 'nombre', 'link_invitacion', 'whatsapp_contacto'],
+      transaction: t,
+    });
+    if (complex?.owner_id) {
+      await Notification.create({
+        user_id:    complex.owner_id,
+        tipo:       'nueva_reserva',
+        titulo:     '🔔 Nueva reserva por WhatsApp',
+        mensaje:    `${nombreTitular} reservó ${canchaLbl} el ${fecha} de ${hora} a ${hora_fin} (${duracion} min) desde el chatbot.`,
+        booking_id: booking.id,
+      }, { transaction: t });
+    }
+
     await t.commit();
     pendingName.delete(from);   // limpiar el estado de "esperando nombre"
+
+    // Log de auditoría de la acción crítica
+    console.log(`[audit] chatbot RESERVA booking#${booking.id} complejo=${ctx.clubId} cancha=${field.identificador || field.nombre} ${fecha} ${hora}-${hora_fin} tel=${from} @ ${new Date().toISOString()}`);
 
   } catch (err) {
     // Solo revertir si la transacción sigue activa (evita el error engañoso
@@ -1034,6 +1065,18 @@ async function _handleConfirm(ctx, from, slotRaw) {
       text: { body: '⚠️ Hubo un error al confirmar. Intentalo de nuevo.' },
     });
     return;
+  }
+
+  // ── Push al dueño del complejo (best-effort, mismo mecanismo que la PWA) ──
+  if (complex?.owner_id) {
+    notifService.sendToUserAsync(complex.owner_id, {
+      tipo:   'reserva',
+      titulo: '🔔 Nueva reserva por WhatsApp',
+      body:   `${nombreTitular} reservó ${nombreCancha(field.identificador, field.nombre)} el ${fecha} ${hora}–${hora_fin}.`,
+      url:    '/dashboard',
+      data:   { cancha_id: field.id, cancha_nombre: field.nombre, fecha, hora, booking_id: booking.id },
+    });
+    console.log(`[audit] chatbot NOTIFICACION push→owner#${complex.owner_id} booking#${booking.id} @ ${new Date().toISOString()}`);
   }
 
   // ── Post-commit: mensajería (FUERA de la transacción) ──────────────────
@@ -1053,11 +1096,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
-    // Config del complejo (link de invitación + WhatsApp de contacto).
-    const complex = await Complex.findByPk(ctx.clubId, {
-      attributes: ['link_invitacion', 'whatsapp_contacto'],
-    });
-
+    // Config del complejo ya cargada dentro de la transacción (link + WhatsApp).
     // Botón "Ver la web". En ambos casos viaja el teléfono de WhatsApp (tel) para
     // guardarlo en la cuenta del jugador al iniciar sesión/registrarse:
     //   1) Con link de invitación del admin → se usa ese link + tel anexado.
@@ -1111,15 +1150,51 @@ async function _handleTextCancel(ctx, from, bookingId) {
       )
     );
     await booking.update({ estado: 'cancelado' }, { transaction: t });
+
+    // ── Traza en "Operaciones" (origen 'chatbot'); fecha exacta = Operation.fecha ──
+    await Operation.create({
+      complex_id:  ctx.clubId,
+      tipo:        'cancelacion',
+      origen:      'chatbot',
+      descripcion: `Cancelación por WhatsApp: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} (reserva #${booking.id})`,
+      agenda_id:   booking.id,
+    }, { transaction: t });
+
     await t.commit();
+
+    console.log(`[audit] chatbot CANCELACION booking#${booking.id} complejo=${ctx.clubId} ${booking.fecha} ${booking.hora_inicio} tel=${from} @ ${new Date().toISOString()}`);
 
     await send({
       to: from, type: 'text',
       text: { body: `✅ Reserva *#${bookingId}* cancelada.\n\nEscribí *reservar* para hacer un nuevo turno.` },
     });
 
+    // ── Notificación + push al dueño del complejo (mismo mecanismo que la PWA) ──
+    try {
+      const complex = await Complex.findByPk(ctx.clubId, { attributes: ['owner_id'] });
+      if (complex?.owner_id) {
+        await Notification.create({
+          user_id:    complex.owner_id,
+          tipo:       'reserva_cancelada',
+          titulo:     '🚫 Turno cancelado por WhatsApp',
+          mensaje:    `${booking.nombre_cliente} canceló su turno del ${booking.fecha} a las ${booking.hora_inicio} (reserva #${booking.id}) desde el chatbot.`,
+          booking_id: booking.id,
+        });
+        notifService.sendToUserAsync(complex.owner_id, {
+          tipo:   'cancelacion',
+          titulo: '🚫 Turno cancelado por WhatsApp',
+          body:   `${booking.nombre_cliente} canceló el ${booking.fecha} ${booking.hora_inicio}.`,
+          url:    '/dashboard',
+          data:   { booking_id: booking.id },
+        });
+        console.log(`[audit] chatbot NOTIFICACION push→owner#${complex.owner_id} cancelacion booking#${booking.id} @ ${new Date().toISOString()}`);
+      }
+    } catch (e) {
+      console.error('[chatbot._handleTextCancel] traza/notif falló (la cancelación SÍ se guardó):', e.message);
+    }
+
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
     console.error('[chatbot._handleTextCancel]', err);
   }
 }

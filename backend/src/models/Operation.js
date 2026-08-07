@@ -8,6 +8,8 @@ const Operation = sequelize.define('Operation', {
     type: DataTypes.ENUM('reserva', 'cancelacion', 'confirmacion', 'pago', 'ajuste'),
     allowNull: false,
   },
+  // Canal que originó la operación: 'pwa' | 'chatbot' | 'web'. Para trazabilidad.
+  origen: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pwa' },
   descripcion: { type: DataTypes.TEXT },
   agenda_id: { type: DataTypes.INTEGER },
   usuario_id: { type: DataTypes.INTEGER },
