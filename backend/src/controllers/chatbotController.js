@@ -680,11 +680,16 @@ async function handleWebhook(req, res) {
         return;
       }
 
-      // Palabras que reinician el flujo
-      const resetWords = ['hola', 'hi', 'buenas', 'reservar', 'turno', '1', 'inicio', 'menu', 'menú'];
+      // Saludos / palabras de menú → mostrar el menú de bienvenida.
+      // OJO: NO arranca el flujo de turnos (eso solo pasa con "Turnos por WhatsApp").
+      const resetWords = [
+        'hola', 'hi', 'hello', 'buenas', 'buen dia', 'buen día', 'buenos dias', 'buenos días',
+        'buenas tardes', 'buenas noches', 'reservar', 'reserva', 'turno', 'turnos',
+        'inicio', 'menu', 'menú', 'volver', 'ola',
+      ];
       if (resetWords.includes(text)) {
         pendingName.delete(from);
-        await _sendDaysMenu(ctx, from);
+        await _sendWelcome(ctx, from);
         return;
       }
 
@@ -712,18 +717,30 @@ async function handleWebhook(req, res) {
         return;
       }
 
-      // Fallback
-      await send({
-        to:   from,
-        type: 'text',
-        text: { body: '👋 ¡Hola! Escribí *hola* o *reservar* para elegir tu turno.' },
-      });
+      // Cualquier otro texto no relacionado con turnos → saludo + menú
+      await _sendWelcome(ctx, from);
       return;
     }
 
     // ── Respuesta de lista (eligió día o slot) ─────────────────
     if (msgType === 'interactive' && msg.interactive?.type === 'list_reply') {
       const replyId = msg.interactive.list_reply.id;
+
+      // ── Opciones del menú de bienvenida ──
+      if (replyId === 'menu_turnos') {
+        // Única vía para arrancar el flujo de turnos por WhatsApp
+        pendingName.delete(from);
+        await _sendDaysMenu(ctx, from);
+        return;
+      }
+      if (replyId === 'menu_web') {
+        await _sendWebButton(ctx, from);
+        return;
+      }
+      if (replyId === 'menu_contacto') {
+        await _sendContactButton(ctx, from);
+        return;
+      }
 
       if (replyId.startsWith('day_')) {
         // Eligió un día → mostrar las franjas horarias (mañana/tarde/noche)
@@ -779,7 +796,7 @@ async function handleWebhook(req, res) {
         pendingName.delete(from);
         await send({
           to: from, type: 'text',
-          text: { body: '❌ Reserva no realizada.\nEscribí *reservar* cuando quieras intentarlo de nuevo.' },
+          text: { body: '❌ Reserva no realizada.\nEscribí *hola* para volver al menú cuando quieras.' },
         });
         return;
       }
@@ -793,6 +810,69 @@ async function handleWebhook(req, res) {
 // ─────────────────────────────────────────────────────────────
 //  Helpers internos del webhook
 // ─────────────────────────────────────────────────────────────
+
+/** Saludo según la hora de Argentina (robusto ante la TZ del server). */
+function saludoActual() {
+  const h = parseInt(new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires',
+  }).format(new Date()), 10);
+  if (h < 12) return 'Buen día';
+  if (h < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+/**
+ * Interacción inicial: saludo amigable con el nombre del club + menú de 3 opciones.
+ * El flujo de turnos NO arranca acá: solo se activa al elegir "Turnos por WhatsApp".
+ */
+async function _sendWelcome(ctx, to) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const complex = await Complex.findByPk(ctx.clubId, { attributes: ['nombre'] });
+  const nombre = complex?.nombre || 'nosotros';
+
+  await send({
+    to, type: 'text',
+    text: { body: `${saludoActual()}, gracias por comunicarte con *${nombre}* 👋` },
+  });
+
+  await send(wa.buildRowsListMessage(to, {
+    headerText:   'Menú principal',
+    bodyText:     '¿En qué te podemos ayudar? Elegí una opción:',
+    footerText:   nombre,
+    button:       'Ver opciones',
+    sectionTitle: 'Opciones',
+    rows: [
+      { id: 'menu_contacto', title: 'Comunicarse con Cancha', description: 'Chateá directo con la cancha' },
+      { id: 'menu_web',      title: 'Turnos por la Web',      description: 'Reservá desde la web' },
+      { id: 'menu_turnos',   title: 'Turnos por WhatsApp',    description: 'Sacá tu turno acá mismo' },
+    ],
+  }));
+}
+
+/** Botón "Ver la web": link de invitación (+ teléfono) o home por defecto. */
+async function _sendWebButton(ctx, to) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const complex = await Complex.findByPk(ctx.clubId, { attributes: ['link_invitacion'] });
+  const telParam = encodeURIComponent(to);
+  const webUrl = complex?.link_invitacion
+    ? `${complex.link_invitacion}${complex.link_invitacion.includes('?') ? '&' : '?'}tel=${telParam}`
+    : 'https://www.jugahoyweb.com';
+  await send(wa.buildComplexWebMessage(to, webUrl));
+}
+
+/** Botón "Comunicate con la cancha": chat con el número configurado (o aviso si no hay). */
+async function _sendContactButton(ctx, to) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const complex = await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] });
+  if (complex?.whatsapp_contacto) {
+    await send(wa.buildContactCanchaMessage(to, complex.whatsapp_contacto));
+  } else {
+    await send({
+      to, type: 'text',
+      text: { body: 'ℹ️ La cancha todavía no configuró un número de contacto directo.' },
+    });
+  }
+}
 
 async function _sendDaysMenu(ctx, to) {
   const send = p => wa.sendMessage(p, ctx.creds);
@@ -1166,7 +1246,7 @@ async function _handleTextCancel(ctx, from, bookingId) {
 
     await send({
       to: from, type: 'text',
-      text: { body: `✅ Reserva *#${bookingId}* cancelada.\n\nEscribí *reservar* para hacer un nuevo turno.` },
+      text: { body: `✅ Reserva *#${bookingId}* cancelada.\n\nEscribí *hola* para volver al menú.` },
     });
 
     // ── Notificación + push al dueño del complejo (mismo mecanismo que la PWA) ──
