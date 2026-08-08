@@ -1,5 +1,6 @@
-import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX } from 'lucide-react';
+import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
+import { waLink } from '../../utils/whatsapp';
 
 const METODO_LABELS = {
   efectivo: 'Efectivo', transferencia: 'Transferencia',
@@ -44,7 +45,7 @@ const STYLES = {
   },
 };
 
-export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, index }) {
+export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onConfirm, index }) {
   const isLibre     = slot.estado === 'libre';
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
@@ -124,6 +125,20 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, index
                     </span>
                   )}
 
+                  {/* Confirmar — solo para reservas pendientes (solicitudes web) */}
+                  {isPendiente && onConfirm && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onConfirm(slot.booking_id); }}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.30)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}
+                      title="Confirmar este turno"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> Confirmar
+                    </button>
+                  )}
+
                   {/* Marcar como no asistido — solo si el turno ya expiró */}
                   {puedeMarcarAusencia && onNoShow && (
                     <button
@@ -160,9 +175,25 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, index
               <span className="truncate max-w-[50vw] sm:max-w-none">{slot.booking.nombre_cliente}</span>
             </div>
             {slot.booking.telefono_cliente && (
-              <span className={`flex items-center gap-1 text-xs ${S.phone}`}>
-                <Phone className="w-3 h-3 shrink-0" /> {slot.booking.telefono_cliente}
-              </span>
+              waLink(slot.booking.telefono_cliente) ? (
+                /* Botón: el admin escribe al cliente por WhatsApp */
+                <a
+                  href={waLink(slot.booking.telefono_cliente)}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  title="Escribir al cliente por WhatsApp"
+                  className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-md transition-colors"
+                  style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.12)'}
+                >
+                  <MessageCircle className="w-3 h-3 shrink-0" /> {slot.booking.telefono_cliente}
+                </a>
+              ) : (
+                <span className={`flex items-center gap-1 text-xs ${S.phone}`}>
+                  <Phone className="w-3 h-3 shrink-0" /> {slot.booking.telefono_cliente}
+                </span>
+              )
             )}
             <span className={`flex items-center gap-1 text-xs ${S.method}`}>
               <CreditCard className="w-3 h-3 shrink-0" />

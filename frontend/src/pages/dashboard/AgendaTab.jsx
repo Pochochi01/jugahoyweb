@@ -19,6 +19,15 @@ function shiftDate(d, n) {
   return dt.toISOString().split('T')[0];
 }
 
+// Advertencia de cancelación según cuánto falte para el inicio del turno.
+function avisoCancelacion(fecha, hora) {
+  const inicio = new Date(`${fecha}T${hora}:00`);
+  const hs = (inicio - new Date()) / 3_600_000;
+  return hs < 2
+    ? 'Este turno solo puede cancelarse dentro de los primeros 15 min después de reservarlo.'
+    : 'Recordá: los turnos se cancelan con al menos 2 h de anticipación.';
+}
+
 // ── Estilos inline dark reutilizables ─────────────────────────────────────────
 const DARK = {
   surface:  { background: '#0d1220', border: '1px solid #1e2a3d' },
@@ -189,7 +198,23 @@ export default function AgendaTab({ complexId }) {
       await agendaService.cancelar(complexId, bookingId);
       showToast('success', 'Reserva cancelada.');
       loadSlots();
-    } catch { showToast('error', 'No se pudo cancelar.'); }
+    } catch (err) {
+      // Muestra el motivo del backend (ej. regla de las 2 h / 15 min)
+      showToast('error', err?.response?.data?.message || 'No se pudo cancelar.');
+    }
+  };
+
+  const handleConfirm = async (bookingId) => {
+    try {
+      await agendaService.confirmar(complexId, bookingId);
+      const slot = slots.find(s => s.booking_id === bookingId && s.isFirstOfBooking);
+      const hora = slot?.booking?.hora_inicio || slot?.hora;
+      const aviso = hora ? ` ${avisoCancelacion(date, hora)}` : '';
+      showToast('success', `Turno confirmado.${aviso}`);
+      loadSlots();
+    } catch (err) {
+      showToast('error', err?.response?.data?.message || 'No se pudo confirmar.');
+    }
   };
 
   const handleNoShow = async (bookingId) => {
@@ -307,6 +332,7 @@ export default function AgendaTab({ complexId }) {
           onSelect={setSelectedSlot}
           onCancel={handleCancel}
           onNoShow={handleNoShow}
+          onConfirm={handleConfirm}
         />
       )}
 

@@ -205,13 +205,17 @@ function buildRowsListMessage(to, { headerText, bodyText, footerText, button, se
  * @param {string} to      — número destino
  * @param {object} info    — { slotId, fechaLabel, hora, cancha }
  */
-function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha, nombre, duracionLabel }) {
+function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha, nombre, duracionLabel, aviso }) {
   const lineas = [
     `📅 ${fechaLabel}`,
     `⏰ ${hora} hs${duracionLabel ? ` (${duracionLabel})` : ''}`,
     `🏟️ ${cancha}`,
     nombre ? `👤 ${nombre}` : null,
   ].filter(Boolean).join('\n');
+
+  // La política de cancelación se muestra ANTES de confirmar; pulsar "Confirmar"
+  // implica aceptar estas condiciones.
+  const politica = aviso ? `\n\n⚠️ *Política de cancelación*\n${aviso}` : '';
 
   return {
     recipient_type: 'individual',
@@ -220,8 +224,8 @@ function buildConfirmMessage(to, { slotId, fechaLabel, hora, cancha, nombre, dur
     interactive: {
       type:   'button',
       header: { type: 'text', text: '✅ Confirmar reserva' },
-      body: { text: `¿Confirmamos este turno?\n\n${lineas}` },
-      footer: { text: 'Esta acción reserva el turno de forma definitiva' },
+      body: { text: `¿Confirmamos este turno?\n\n${lineas}${politica}` },
+      footer: { text: 'Al confirmar aceptás la política de cancelación' },
       action: {
         buttons: [
           { type: 'reply', reply: { id: `confirm_${slotId}`, title: '✅ Confirmar'  } },

@@ -41,6 +41,7 @@ const notifService = require('../services/notification.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto } = require('../utils/canchas');
+const { evaluarCancelacion, avisoAlReservar } = require('../utils/cancelPolicy');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -706,6 +707,7 @@ async function handleWebhook(req, res) {
 
         const { fecha, fieldId, hora, duracion } = parseSlotId(pend.slotRaw);
         const field = await Field.findByPk(fieldId);
+        const inicio = new Date(`${fecha}T${hora}:00`);
         await send(wa.buildConfirmMessage(from, {
           slotId:        pend.slotRaw,
           fechaLabel:    formatFechaLabel(fecha),
@@ -713,6 +715,7 @@ async function handleWebhook(req, res) {
           cancha:        nombreCancha(field?.identificador, field?.nombre) || `Cancha ${fieldId}`,
           nombre,
           duracionLabel: duracionLabel(duracion),
+          aviso:         avisoAlReservar(inicio),   // política según cuánto falte
         }));
         return;
       }
@@ -1188,9 +1191,10 @@ async function _handleConfirm(ctx, from, slotRaw) {
     await send(wa.buildComplexWebMessage(from, webUrl));
 
     // Segundo botón OPCIONAL: "Comunicate con la cancha".
-    // Solo se envía si el complejo tiene un número de WhatsApp configurado.
-    if (complex?.whatsapp_contacto) {
-      await send(wa.buildContactCanchaMessage(from, complex.whatsapp_contacto));
+    // Prioridad: número propio de la cancha → número del complejo.
+    const waContacto = field?.whatsapp_contacto || complex?.whatsapp_contacto;
+    if (waContacto) {
+      await send(wa.buildContactCanchaMessage(from, waContacto));
     }
   } catch (err) {
     console.error('[chatbot._handleConfirm] aviso post-confirmación falló (la reserva SÍ se guardó):', err.message);
@@ -1220,6 +1224,17 @@ async function _handleTextCancel(ctx, from, bookingId) {
       await send({
         to: from, type: 'text',
         text: { body: `ℹ️ La reserva *#${bookingId}* ya estaba cancelada.` },
+      });
+      return;
+    }
+
+    // ── Regla de cancelación (2 h de anticipación / 15 min de gracia) ──
+    const regla = evaluarCancelacion(booking);
+    if (!regla.allowed) {
+      await t.rollback();
+      await send({
+        to: from, type: 'text',
+        text: { body: `⛔ No se puede cancelar la reserva *#${bookingId}*.\n\n${regla.mensaje}` },
       });
       return;
     }

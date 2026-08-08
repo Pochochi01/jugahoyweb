@@ -158,6 +158,7 @@ const CANCHA_INICIAL = {
   duraciones_permitidas: [60], precios_por_duracion: { 60: '' },
   precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
   sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
+  whatsapp_contacto: '',   // WhatsApp propio de la cancha (fallback: el del complejo)
 };
 
 // ── Tarjeta de WhatsApp / Meta (credenciales propias del club) ───────────────
@@ -355,6 +356,15 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
     const base = parseFloat(form.precio_base) || 0;
     if (sena != null && base > 0 && sena > base) return setError('La seña no puede superar el precio base.');
 
+    // WhatsApp de la cancha: opcional; si se completa debe cumplir el formato.
+    const rawWa = (form.whatsapp_contacto || '').trim();
+    let whatsapp_contacto = null;
+    if (rawWa) {
+      const norm = normalizeWa(rawWa);
+      if (!isValidWa(norm)) return setError('WhatsApp de la cancha inválido. Formato: +549 + área (sin 0) + número (sin 15).');
+      whatsapp_contacto = norm;
+    }
+
     onSave({
       ...form, duracion_turno,
       // El nombre es el identificador (C1, C2, ...); en alta se usa el próximo.
@@ -364,6 +374,7 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
       precio_base: base,
       precios_por_duracion: precios,
       sena_monto: sena,
+      whatsapp_contacto,   // null = usa el número del complejo
     });
   };
 
@@ -447,6 +458,19 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
           value={form.sena_monto ?? ''} onChange={e => setForm(f => ({ ...f, sena_monto: e.target.value }))} />
         <p className="text-xs text-muted-foreground mt-1">
           Monto fijo que el jugador paga con MercadoPago para asegurar el turno. Dejalo vacío para no ofrecer seña en esta cancha.
+        </p>
+      </div>
+
+      {/* WhatsApp de contacto de la cancha */}
+      <div>
+        <label className="label flex items-center gap-1.5">
+          <MessageCircle className="w-4 h-4 text-primary" /> WhatsApp de la cancha
+        </label>
+        <input className="input" placeholder="+549381800459"
+          value={form.whatsapp_contacto || ''}
+          onChange={e => setForm(f => ({ ...f, whatsapp_contacto: e.target.value }))} />
+        <p className="text-xs text-muted-foreground mt-1">
+          Número propio de esta cancha para el botón "Comunicarme por WhatsApp". Formato <b>+549</b> + área <b>sin 0</b> + número <b>sin 15</b>. Vacío = usa el número del complejo.
         </p>
       </div>
 
@@ -659,6 +683,7 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
           <div className="flex flex-wrap gap-x-3 gap-y-0 mt-0.5 text-xs text-muted-foreground">
             <span className="capitalize">{deporte?.label || field.deporte}</span>
             {field.superficie && <span className="capitalize">· {field.superficie}</span>}
+            {field.whatsapp_contacto && <span className="text-green-500">· 💬 {field.whatsapp_contacto}</span>}
             {field.dimensiones && <span>· {field.dimensiones}</span>}
             <span>· {field.techada ? '🏠 Techada' : '🌤 Aire libre'}</span>
             <span className="flex items-center gap-0.5">
@@ -735,6 +760,7 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
               identificador:         field.identificador,
               deporte:               field.deporte,
               superficie:            field.superficie ?? '',
+              whatsapp_contacto:     field.whatsapp_contacto || '',
               dimensiones:           field.dimensiones || '',
               techada:               field.techada,
               precio_base:           field.precio_base || '',

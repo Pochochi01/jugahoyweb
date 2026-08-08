@@ -13,6 +13,9 @@ const Field = sequelize.define('Field', {
   superficie:  { type: DataTypes.STRING(30), allowNull: true, defaultValue: null },
   // Identificador incremental por complejo: "C1", "C2"... Se asigna al crear.
   identificador: { type: DataTypes.STRING(10), allowNull: true, defaultValue: null },
+  // WhatsApp de contacto propio de la cancha (fallback: el del complejo).
+  // Formato: +549 + área (sin 0) + número (sin 15). NULL = usar el del complejo.
+  whatsapp_contacto: { type: DataTypes.STRING(20), allowNull: true, defaultValue: null },
   piso:        { type: DataTypes.ENUM('cesped_sintetico', 'cemento', 'parquet', 'tierra', 'otro') },
   dimensiones: { type: DataTypes.STRING(50) },
   duracion_turno: { type: DataTypes.INTEGER, defaultValue: 60 },

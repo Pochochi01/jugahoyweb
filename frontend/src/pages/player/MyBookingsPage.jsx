@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarDays, Clock, MapPin, Building2,
-  CheckCircle, XCircle, AlertCircle, ChevronLeft,
+  CheckCircle, XCircle, AlertCircle, ChevronLeft, MessageCircle,
 } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
+import { waLink } from '../../utils/whatsapp';
 
 const DEPORTE_ICON = { futbol: '⚽', padel: '🏓', tenis: '🎾', basquet: '🏀', voley: '🏐', otro: '🏃' };
 const METODO_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', mercadopago: 'MercadoPago', tarjeta: 'Tarjeta' };
@@ -167,6 +168,9 @@ export default function MyBookingsPage() {
                 const canCancel = future && b.estado !== 'cancelado';
                 const field    = b.field;
                 const complex  = field?.complex;
+                // Número de la cancha → del complejo. Solo si el turno sigue activo.
+                const activo   = b.estado !== 'cancelado' && b.estado !== 'rechazado';
+                const wa       = activo ? waLink(field?.whatsapp_contacto || complex?.whatsapp_contacto) : null;
 
                 return (
                   <div key={b.id}
@@ -222,20 +226,36 @@ export default function MyBookingsPage() {
                       </div>
                     </div>
 
-                    {/* botón cancelar */}
-                    {canCancel && (
-                      <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-amber-600">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          Solo podés cancelar hasta que comience el turno
+                    {/* acciones — full responsive: apila en celular, en fila en tablet/desktop */}
+                    {(canCancel || wa) && (
+                      <div className="mt-4 pt-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        {canCancel ? (
+                          <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            Cancelable hasta 2 h antes del turno
+                          </div>
+                        ) : <span className="hidden sm:block" />}
+
+                        <div className="flex flex-col sm:flex-row gap-2 sm:shrink-0">
+                          {wa && (
+                            <a href={wa} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 sm:py-1.5 rounded-lg border transition-colors w-full sm:w-auto"
+                              style={{ background: 'rgba(34,197,94,0.10)', color: '#16a34a', borderColor: 'rgba(34,197,94,0.30)' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.18)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.10)'}>
+                              <MessageCircle className="w-4 h-4" /> Comunicarme por WhatsApp
+                            </a>
+                          )}
+                          {canCancel && (
+                            <button
+                              onClick={() => handleCancel(b)}
+                              disabled={cancelling === b.id}
+                              className="text-sm text-red-500 border border-red-200 hover:bg-red-50 px-3 py-2 sm:py-1.5 rounded-lg transition-colors disabled:opacity-50 w-full sm:w-auto"
+                            >
+                              {cancelling === b.id ? 'Cancelando...' : 'Cancelar turno'}
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleCancel(b)}
-                          disabled={cancelling === b.id}
-                          className="text-sm text-red-500 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {cancelling === b.id ? 'Cancelando...' : 'Cancelar turno'}
-                        </button>
                       </div>
                     )}
                   </div>

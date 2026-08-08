@@ -4,6 +4,7 @@ const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR } = require('../utils/time');
+const { evaluarCancelacion } = require('../utils/cancelPolicy');
 
 // Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
 function esReservaWhatsApp(booking) {
@@ -204,6 +205,13 @@ async function cancelBooking(req, res) {
     if (!booking) {
       await t.rollback();
       return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
+
+    // Regla de cancelación (2 h de anticipación / 15 min de gracia). Ver cancelPolicy.
+    const regla = evaluarCancelacion(booking);
+    if (!regla.allowed) {
+      await t.rollback();
+      return res.status(400).json({ message: regla.mensaje });
     }
 
     // Liberar todos los slots de esta reserva

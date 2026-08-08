@@ -3,6 +3,7 @@ const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequel
 const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
 const { todayAR } = require('../utils/time');
+const { evaluarCancelacion } = require('../utils/cancelPolicy');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 // Fecha "hoy" en Argentina (GMT-3), no en UTC.
@@ -320,7 +321,7 @@ async function getMyBookings(req, res) {
       where: { user_id: req.user.id },
       include: [{
         model: Field, as: 'field',
-        include: [{ model: Complex, as: 'complex', attributes: ['id', 'nombre', 'ciudad', 'direccion'] }],
+        include: [{ model: Complex, as: 'complex', attributes: ['id', 'nombre', 'ciudad', 'direccion', 'whatsapp_contacto'] }],
       }],
       order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']],
     });
@@ -350,9 +351,12 @@ async function cancelMyBooking(req, res) {
       await t.rollback();
       return res.status(400).json({ message: 'La reserva ya fue cancelada' });
     }
-    if (new Date(`${booking.fecha}T${booking.hora_inicio}:00`) <= new Date()) {
+    // Regla de cancelación: 2 h de anticipación, con gracia de 15 min para
+    // reservas de último momento. Ver utils/cancelPolicy.js.
+    const regla = evaluarCancelacion(booking);
+    if (!regla.allowed) {
       await t.rollback();
-      return res.status(400).json({ message: 'No podés cancelar un turno que ya comenzó o finalizó' });
+      return res.status(400).json({ message: regla.mensaje });
     }
 
     await Promise.all(

@@ -19,6 +19,21 @@ function resolveSuperficie(deporte, superficie) {
   return superficie || null;
 }
 
+/**
+ * Normaliza/valida el WhatsApp de una cancha. Vacío → null (usa el del complejo).
+ * Devuelve el número normalizado o lanza Error con .status=400.
+ */
+function resolveWhatsapp(raw) {
+  if (raw === undefined) return undefined;              // no vino → no tocar
+  if (raw === null || String(raw).trim() === '') return null;
+  const norm = normalizeWaContacto(raw);
+  if (!isValidWaContacto(norm)) {
+    const e = new Error('Número de WhatsApp inválido. Debe ser +549 + código de área (sin 0) + número (sin 15). Ej: +549381800459');
+    e.status = 400; throw e;
+  }
+  return norm;
+}
+
 /** URL http/https válida. */
 function isValidUrl(s) {
   try {
@@ -112,6 +127,10 @@ async function createField(req, res) {
     // Superficie válida según deporte (basket/squash → null)
     body.superficie = resolveSuperficie(body.deporte, body.superficie);
 
+    // WhatsApp propio de la cancha (opcional; validado)
+    const wa = resolveWhatsapp(body.whatsapp_contacto);
+    if (wa !== undefined) body.whatsapp_contacto = wa;
+
     // Identificador incremental "C<n>" por complejo (siguiente al mayor existente)
     const existentes = await Field.findAll({ where: { complex_id }, attributes: ['identificador'] });
     let max = 0;
@@ -139,6 +158,9 @@ async function updateField(req, res) {
     // Validar superficie según el deporte (el actual o el que venga en el body)
     const deporte = body.deporte || field.deporte;
     body.superficie = resolveSuperficie(deporte, body.superficie ?? field.superficie);
+    // WhatsApp propio de la cancha (opcional; validado). Vacío → null.
+    const wa = resolveWhatsapp(body.whatsapp_contacto);
+    if (wa !== undefined) body.whatsapp_contacto = wa;
     // El identificador se asigna al crear y no se cambia desde la edición
     delete body.identificador;
 
