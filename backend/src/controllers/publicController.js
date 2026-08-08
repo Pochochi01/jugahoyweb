@@ -337,7 +337,7 @@ async function cancelMyBooking(req, res) {
       where: { id: req.params.id, user_id: req.user.id },
       include: [
         { model: TimeSlot, as: 'timeSlots' },
-        { model: Field, as: 'field', attributes: ['id', 'nombre'],
+        { model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id'],
           include: [{ model: Complex, as: 'complex', attributes: ['owner_id', 'nombre'] }] },
       ],
       transaction: t,
@@ -359,10 +359,34 @@ async function cancelMyBooking(req, res) {
       booking.timeSlots.map(s => s.update({ estado: 'libre', booking_id: null }, { transaction: t }))
     );
     await booking.update({ estado: 'cancelado' }, { transaction: t });
+
+    const complexId = booking.field?.complex_id;
+    const ownerId   = booking.field?.complex?.owner_id;
+
+    // Registrar la operación → visible en la pestaña "Operaciones" del dashboard.
+    await Operation.create({
+      complex_id:  complexId,
+      tipo:        'cancelacion',
+      origen:      'web',
+      descripcion: `Cancelación del jugador: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio}-${booking.hora_fin}`,
+      agenda_id:   booking.id,
+      usuario_id:  req.user.id,
+    }, { transaction: t });
+
+    // Notificación in-app al dueño (campanita del dashboard)
+    if (ownerId) {
+      await Notification.create({
+        user_id:    ownerId,
+        tipo:       'reserva_cancelada',
+        titulo:     '🚫 Turno cancelado por el jugador',
+        mensaje:    `${booking.nombre_cliente} canceló su turno del ${booking.fecha} de ${booking.hora_inicio} a ${booking.hora_fin} en ${booking.field?.nombre || 'la cancha'}.`,
+        booking_id: booking.id,
+      }, { transaction: t });
+    }
+
     await t.commit();
 
     // Push al dueño: el jugador canceló un turno
-    const ownerId = booking.field?.complex?.owner_id;
     if (ownerId) {
       notifService.sendToUserAsync(ownerId, {
         tipo:   'cancelacion',

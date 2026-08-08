@@ -232,6 +232,18 @@ async function cancelBooking(req, res) {
 
     await t.commit();
 
+    // Push al jugador: su turno fue cancelado por el complejo (si era reserva web).
+    if (booking.user_id) {
+      notifService.sendToUserAsync(booking.user_id, {
+        tipo:   'cancelacion',
+        titulo: 'Turno cancelado ❌',
+        body:   `Tu turno del ${booking.fecha} ${booking.hora_inicio}–${booking.hora_fin} en ${booking.field?.nombre || 'la cancha'} fue cancelado por el complejo.`,
+        url:    '/mis-turnos',
+        data:   { cancha_id: booking.field_id, cancha_nombre: booking.field?.nombre, fecha: booking.fecha, hora: booking.hora_inicio, booking_id: booking.id },
+        actions: [{ action: 'ver', title: 'Ver mis turnos' }],
+      });
+    }
+
     // Aviso por WhatsApp si la reserva se hizo por el bot (best-effort, no bloquea).
     // MULTI-TENANT: se envía con las credenciales del club dueño de la reserva.
     if (esReservaWhatsApp(booking)) {
