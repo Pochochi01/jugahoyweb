@@ -852,7 +852,32 @@ async function _sendWelcome(ctx, to) {
   }));
 }
 
-/** Botón "Ver la web": link de invitación (+ teléfono) o home por defecto. */
+/**
+ * Payload de un link "web" como TEXTO (no como botón cta_url).
+ *
+ * Motivo: los botones cta_url de WhatsApp SIEMPRE abren el navegador interno
+ * (WebView). Enviando el link como texto, WhatsApp respeta la preferencia del
+ * usuario y abre el navegador EXTERNO del dispositivo (Safari/Chrome/Edge);
+ * si igual se abre adentro, se le indica cómo abrirlo afuera.
+ */
+function webLinkText(to, webUrl, { titulo = '🌐 *Ver la web*', intro = 'Entrá desde acá:' } = {}) {
+  return {
+    to,
+    type: 'text',
+    text: {
+      preview_url: true,   // muestra la vista previa del link
+      body:
+        `${titulo}\n\n` +
+        `${intro}\n${webUrl}\n\n` +
+        `_Consejo: si el link se abre dentro de WhatsApp, tocá el menú *⋮* (arriba a la derecha) y elegí *"Abrir en el navegador"*._`,
+    },
+  };
+}
+
+/**
+ * "Turnos por la Web" (menú): envía el link como texto para abrir el navegador
+ * externo. Destino: link de invitación del complejo (+ teléfono) o home.
+ */
 async function _sendWebButton(ctx, to) {
   const send = p => wa.sendMessage(p, ctx.creds);
   const complex = await Complex.findByPk(ctx.clubId, { attributes: ['link_invitacion'] });
@@ -860,7 +885,8 @@ async function _sendWebButton(ctx, to) {
   const webUrl = complex?.link_invitacion
     ? `${complex.link_invitacion}${complex.link_invitacion.includes('?') ? '&' : '?'}tel=${telParam}`
     : 'https://www.jugahoyweb.com';
-  await send(wa.buildComplexWebMessage(to, webUrl));
+
+  await send(webLinkText(to, webUrl, { titulo: '🌐 *Turnos por la Web*', intro: 'Reservá desde acá:' }));
 }
 
 /** Botón "Comunicate con la cancha": chat con el número configurado (o aviso si no hay). */
@@ -1188,7 +1214,8 @@ async function _handleConfirm(ctx, from, slotRaw) {
     const webUrl = complex?.link_invitacion
       ? `${complex.link_invitacion}${complex.link_invitacion.includes('?') ? '&' : '?'}tel=${telParam}`
       : frontendUrl(`login?complex=${ctx.clubId}&tel=${telParam}`);
-    await send(wa.buildComplexWebMessage(from, webUrl));
+    // Link como TEXTO (no botón cta_url) → abre el navegador externo del dispositivo.
+    await send(webLinkText(from, webUrl, { titulo: '🌐 *Ver la web del complejo*', intro: 'Gestioná tu reserva desde acá:' }));
 
     // Segundo botón OPCIONAL: "Comunicate con la cancha".
     // Prioridad: número propio de la cancha → número del complejo.
