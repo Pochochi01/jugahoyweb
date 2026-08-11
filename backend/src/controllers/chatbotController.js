@@ -88,8 +88,9 @@ function getNext8Days() {
 }
 
 /**
- * Genera slots de 30 min entre apertura y cierre.
- * Soporta cierre después de medianoche (ej. cierre '02:00').
+ * Genera slots de 60 min (hora en punto) entre apertura y cierre.
+ * Turnos de hora completa: 08:00, 09:00, 10:00... Soporta cierre después de
+ * medianoche (ej. cierre '02:00').
  */
 function generateSlots(apertura = '08:00', cierre = '22:00') {
   const startH = parseInt(apertura.split(':')[0]);
@@ -99,7 +100,6 @@ function generateSlots(apertura = '08:00', cierre = '22:00') {
   for (let h = startH; h < endH; h++) {
     const d = h % 24;
     slots.push(`${String(d).padStart(2, '0')}:00`);
-    slots.push(`${String(d).padStart(2, '0')}:30`);
   }
   return slots;
 }
@@ -309,7 +309,7 @@ async function getAvailableByHour(fecha, complexId, duracion = 60) {
     order: [['nombre', 'ASC']],
   });
 
-  const slotsNecesarios = Math.max(1, Math.ceil(duracion / 30));
+  const slotsNecesarios = Math.max(1, Math.ceil(duracion / 60));
   const byHour = {};
 
   for (const field of fields) {
@@ -330,8 +330,8 @@ async function getAvailableByHour(fecha, complexId, duracion = 60) {
 
     for (const hora of allHoras) {
       if (!hora.endsWith(':00')) continue;
-      // Todos los slots de 30' que ocupa el turno
-      const chunk = Array.from({ length: slotsNecesarios }, (_, i) => addMinutes(hora, i * 30));
+      // Todos los slots de 60' (horas completas) que ocupa el turno
+      const chunk = Array.from({ length: slotsNecesarios }, (_, i) => addMinutes(hora, i * 60));
       const cabe   = chunk.every(h => horasSet.has(h));       // dentro del horario
       const libre  = chunk.every(h => !ocupadosSet.has(h));   // sin ocupar
       if (!cabe || !libre || isPast(fecha, hora, apertura)) continue;
@@ -418,10 +418,10 @@ async function confirmBooking(req, res) {
       return res.status(404).json({ message: 'Cancha no encontrada.' });
     }
 
-    // Calcular todos los slots que ocupa la reserva (duracion / 30 min)
-    const slotsNecesarios = Math.ceil(duracion / 30);
+    // Calcular todos los slots que ocupa la reserva (duracion / 60 min)
+    const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = Array.from({ length: slotsNecesarios }, (_, i) =>
-      addMinutes(hora_inicio, i * 30)
+      addMinutes(hora_inicio, i * 60)
     );
     const hora_fin = addMinutes(hora_inicio, duracion);
 
@@ -681,6 +681,15 @@ async function handleWebhook(req, res) {
         return;
       }
 
+      // Selección numérica del menú principal (1 / 2 / 3), igual que tocar la lista.
+      if (text === '1' || text === '2' || text === '3') {
+        if (text === '1') { await _sendContactButton(ctx, from); return; }
+        if (text === '2') { await _sendWebButton(ctx, from); return; }
+        pendingName.delete(from);        // opción 3: arranca el flujo de turnos
+        await _sendDaysMenu(ctx, from);
+        return;
+      }
+
       // Saludos / palabras de menú → mostrar el menú de bienvenida.
       // OJO: NO arranca el flujo de turnos (eso solo pasa con "Turnos por WhatsApp").
       const resetWords = [
@@ -833,11 +842,21 @@ async function _sendWelcome(ctx, to) {
   const complex = await Complex.findByPk(ctx.clubId, { attributes: ['nombre'] });
   const nombre = complex?.nombre || 'nosotros';
 
+  // Saludo + pregunta + menú numerado (el usuario puede RESPONDER con el número).
   await send({
     to, type: 'text',
-    text: { body: `${saludoActual()}, gracias por comunicarte con *${nombre}* 👋` },
+    text: {
+      body:
+        `${saludoActual()}, gracias por comunicarte con *${nombre}* 👋\n\n` +
+        `*¿En qué te podemos ayudar?*\n\n` +
+        `1️⃣ Comunicarse con la cancha\n` +
+        `2️⃣ Turnos por la Web\n` +
+        `3️⃣ Turnos por WhatsApp\n\n` +
+        `_Respondé con el número (1, 2 o 3) o tocá "Ver opciones"._`,
+    },
   });
 
+  // Lista interactiva con las mismas opciones numeradas (para tocar).
   await send(wa.buildRowsListMessage(to, {
     headerText:   'Menú principal',
     bodyText:     '¿En qué te podemos ayudar? Elegí una opción:',
@@ -845,9 +864,9 @@ async function _sendWelcome(ctx, to) {
     button:       'Ver opciones',
     sectionTitle: 'Opciones',
     rows: [
-      { id: 'menu_contacto', title: 'Comunicarse con Cancha', description: 'Chateá directo con la cancha' },
-      { id: 'menu_web',      title: 'Turnos por la Web',      description: 'Reservá desde la web' },
-      { id: 'menu_turnos',   title: 'Turnos por WhatsApp',    description: 'Sacá tu turno acá mismo' },
+      { id: 'menu_contacto', title: '1. Comunicarse Cancha', description: 'Chateá directo con la cancha' },
+      { id: 'menu_web',      title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
+      { id: 'menu_turnos',   title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
     ],
   }));
 }
@@ -1074,10 +1093,10 @@ async function _handleConfirm(ctx, from, slotRaw) {
       return;
     }
 
-    // Slots que ocupa la reserva (duracion / 30 min)
-    const slotsNecesarios = Math.ceil(duracion / 30);
+    // Slots que ocupa la reserva (duracion / 60 min)
+    const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = Array.from({ length: slotsNecesarios }, (_, i) =>
-      addMinutes(hora, i * 30)
+      addMinutes(hora, i * 60)
     );
     hora_fin = addMinutes(hora, duracion);
 

@@ -13,7 +13,7 @@ function esReservaWhatsApp(booking) {
 
 // ── utilidades ────────────────────────────────────────────────────────────────
 
-// Genera slots de 30 min entre apertura y cierre de la cancha
+// Genera slots de 60 min (hora en punto) entre apertura y cierre de la cancha
 function generateSlotsForField(horaApertura = '08:00', horaCierre = '02:00') {
   const startH = parseInt(horaApertura.split(':')[0]);
   const closeH = parseInt(horaCierre.split(':')[0]);
@@ -22,12 +22,11 @@ function generateSlotsForField(horaApertura = '08:00', horaCierre = '02:00') {
   for (let h = startH; h < endH; h++) {
     const d = h % 24;
     slots.push(`${String(d).padStart(2, '0')}:00`);
-    slots.push(`${String(d).padStart(2, '0')}:30`);
   }
   return slots;
 }
 
-// Envuelve correctamente la medianoche: 23:30 + 30min = 00:00
+// Envuelve correctamente la medianoche: 23:00 + 60min = 00:00
 function addMinutes(hora, min) {
   const [h, m] = hora.split(':').map(Number);
   const total = h * 60 + m + min;
@@ -85,7 +84,7 @@ async function getSlotsForField(req, res) {
 
       return {
         hora,
-        hora_fin:         addMinutes(hora, 30),
+        hora_fin:         addMinutes(hora, 60),
         estado:           existing ? 'ocupado' : (past ? 'pasado' : 'libre'),
         time_slot_id:     existing?.id ?? null,
         booking_id:       booking?.id ?? null,
@@ -121,10 +120,10 @@ async function reserveSlot(req, res) {
       return res.status(400).json({ message: 'Faltan datos requeridos (field_id, fecha, hora, nombre_cliente)' });
     }
 
-    const slotsNecesarios = Math.ceil(duracion / 30);
+    const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = [];
     for (let i = 0; i < slotsNecesarios; i++) {
-      horasAReservar.push(addMinutes(hora, i * 30));
+      horasAReservar.push(addMinutes(hora, i * 60));
     }
     const horaFin = addMinutes(hora, duracion);
 

@@ -146,11 +146,10 @@ function nextFieldId(fields = []) {
   }
   return `C${max + 1}`;
 }
+// Turnos de hora completa: 1 h y 2 h (sin 30 min ni 1½ h).
 const DURACIONES = [
-  { value: 30,  label: '30 min',     short: '½ h' },
-  { value: 60,  label: '1 hora',     short: '1 h' },
-  { value: 90,  label: '1 h 30 min', short: '1½ h' },
-  { value: 120, label: '2 horas',    short: '2 h' },
+  { value: 60,  label: '1 hora',   short: '1 h' },
+  { value: 120, label: '2 horas',  short: '2 h' },
 ];
 
 const CANCHA_INICIAL = {

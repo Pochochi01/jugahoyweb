@@ -20,18 +20,17 @@ function sanitizeComplex(complex) {
   return json;
 }
 
-// Rango máximo del complejo: 08:00 a 02:00 (madrugada)
+// Rango máximo del complejo: 08:00 a 02:00 (madrugada). Slots de 60 min (hora en punto).
 function generateSlots(start = 8, end = 26) {
   const s = [];
   for (let h = start; h < end; h++) {
     const d = h % 24;
     s.push(`${String(d).padStart(2, '0')}:00`);
-    s.push(`${String(d).padStart(2, '0')}:30`);
   }
   return s;
 }
 
-// Grilla de 30 min propia de una cancha, entre su apertura y su cierre.
+// Grilla de 60 min (hora en punto) propia de una cancha, entre su apertura y su cierre.
 // Maneja el cruce de medianoche (cierre 02:00 = 2am del día siguiente).
 function fieldGrid(apertura = '08:00', cierre = '02:00') {
   const startH = parseInt(apertura.split(':')[0]);
@@ -41,7 +40,6 @@ function fieldGrid(apertura = '08:00', cierre = '02:00') {
   for (let h = startH; h < endH; h++) {
     const d = h % 24;
     arr.push(`${String(d).padStart(2, '0')}:00`);
-    arr.push(`${String(d).padStart(2, '0')}:30`);
   }
   return arr;
 }
@@ -145,7 +143,7 @@ async function getComplexSlots(req, res) {
           sena_monto: f.sena_monto,   // para ofrecer "pagar seña" en el modal
         }));
       if (freeFields.length === 0) return null;
-      return { hora, hora_fin: addMinutes(hora, 30), count: freeFields.length, fields: freeFields };
+      return { hora, hora_fin: addMinutes(hora, 60), count: freeFields.length, fields: freeFields };
     }).filter(Boolean);
 
     // ── Agrupado POR CANCHA: rango horario + turnos disponibles ──
@@ -162,7 +160,7 @@ async function getComplexSlots(req, res) {
       const apertura = f.hora_apertura || '08:00';
       const cierre   = f.hora_cierre   || '02:00';
       const turno    = parseInt(f.duracion_turno) || 60;
-      const step     = Math.max(1, Math.round(turno / 30)); // slots de 30 min por turno
+      const step     = Math.max(1, Math.round(turno / 60)); // slots de 60 min por turno
       const grid     = fieldGrid(apertura, cierre);
 
       const starts = [];
@@ -222,9 +220,9 @@ async function playerReserve(req, res) {
     const clientName  = (nombre_cliente?.trim()  || `${req.user.nombre} ${req.user.apellido}`).trim();
     const clientPhone = telefono_cliente?.trim()  || req.user.telefono || '';
 
-    const slotsNecesarios = Math.ceil(duracion / 30);
+    const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = [];
-    for (let i = 0; i < slotsNecesarios; i++) horasAReservar.push(addMinutes(hora, i * 30));
+    for (let i = 0; i < slotsNecesarios; i++) horasAReservar.push(addMinutes(hora, i * 60));
     const horaFin = addMinutes(hora, duracion);
 
     // Verificar disponibilidad con lock

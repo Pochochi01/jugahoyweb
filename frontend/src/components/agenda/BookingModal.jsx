@@ -8,10 +8,9 @@ const METODOS = [
   { value: 'tarjeta',       label: 'Tarjeta',        icon: '💳' },
 ];
 
+// Turnos de hora completa: 1 h y 2 h (sin 30 min ni 1½ h).
 const TODAS_DURACIONES = [
-  { value: 30,  label: '30 min',       labelCorto: '½ h' },
   { value: 60,  label: '1 hora',       labelCorto: '1 h' },
-  { value: 90,  label: '1 h 30 min',   labelCorto: '1½ h' },
   { value: 120, label: '2 horas',      labelCorto: '2 h' },
 ];
 
@@ -25,14 +24,14 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
   // Duraciones que permite la cancha (default: todas)
   const fieldDuraciones = field?.duraciones_permitidas?.length
     ? field.duraciones_permitidas
-    : [30, 60, 90, 120];
+    : [60, 120];
 
   // Calcular qué duraciones son realmente disponibles desde este slot
   const duracionesDisponibles = useMemo(() => {
     const startIdx = allSlots.findIndex(s => s.hora === slot.hora);
     return TODAS_DURACIONES.filter(d => {
       if (!fieldDuraciones.includes(d.value)) return false;
-      const slotsNecesarios = d.value / 30;
+      const slotsNecesarios = d.value / 60;   // slots de 60 min (hora completa)
       for (let i = 0; i < slotsNecesarios; i++) {
         const s = allSlots[startIdx + i];
         if (!s || s.estado !== 'libre' || s.past) return false;
