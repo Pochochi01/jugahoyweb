@@ -147,6 +147,13 @@ async function reserveSlot(req, res) {
       });
     }
 
+    // Trazabilidad: si el teléfono coincide con una cuenta de jugador, vincular
+    // la reserva a ese usuario (aparecerá en su "Mis turnos").
+    const telDig = String(telefono_cliente || '').replace(/\D/g, '');
+    const cuenta = telDig
+      ? await User.findOne({ where: { telefono: { [Op.in]: [telDig, `+${telDig}`, telefono_cliente] } }, attributes: ['id'], transaction: t })
+      : null;
+
     // Crear el booking
     const booking = await Booking.create({
       field_id,
@@ -161,6 +168,7 @@ async function reserveSlot(req, res) {
       monto,
       notas,
       estado:     'confirmado',
+      user_id:    cuenta?.id || null,
       created_by: req.user.id,
     }, { transaction: t });
 

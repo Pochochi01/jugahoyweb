@@ -315,8 +315,17 @@ async function playerReserve(req, res) {
 // ── mis turnos ────────────────────────────────────────────────────────────────
 async function getMyBookings(req, res) {
   try {
+    // Unifica ambos canales:
+    //  - Web: reservas con user_id = este jugador.
+    //  - WhatsApp: reservas con telefono_cliente = el WhatsApp de su cuenta.
+    const telDigits = String(req.user.telefono || '').replace(/\D/g, '');
+    const orConds = [{ user_id: req.user.id }];
+    if (telDigits) {
+      orConds.push({ telefono_cliente: { [Op.in]: [telDigits, `+${telDigits}`] } });
+    }
+
     const bookings = await Booking.findAll({
-      where: { user_id: req.user.id },
+      where: { [Op.or]: orConds },
       include: [{
         model: Field, as: 'field',
         include: [{ model: Complex, as: 'complex', attributes: ['id', 'nombre', 'ciudad', 'direccion', 'whatsapp_contacto'] }],

@@ -34,7 +34,7 @@
  */
 const crypto       = require('crypto');
 const { Op }       = require('sequelize');
-const { Field, TimeSlot, Booking, Complex, Operation, Notification, ClubIntegration, sequelize } = require('../models');
+const { Field, TimeSlot, Booking, Complex, Operation, Notification, User, ClubIntegration, sequelize } = require('../models');
 const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const notifService = require('../services/notification.service');
@@ -156,6 +156,22 @@ function setPending(from, data) {
 /** Obtiene el complex_id configurado para este chatbot */
 function getChatbotComplexId() {
   return parseInt(process.env.CHATBOT_COMPLEX_ID || '1');
+}
+
+/** Solo dígitos de un teléfono (para comparar el WhatsApp con user.telefono) */
+function soloDigitos(tel) {
+  return String(tel || '').replace(/\D/g, '');
+}
+
+/** Busca la cuenta (User) cuyo teléfono coincide con el número de WhatsApp. */
+async function cuentaPorTelefono(from, transaction) {
+  const d = soloDigitos(from);
+  if (!d) return null;
+  return User.findOne({
+    where: { telefono: { [Op.in]: [d, `+${d}`, from] } },
+    attributes: ['id'],
+    transaction,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -681,10 +697,11 @@ async function handleWebhook(req, res) {
         return;
       }
 
-      // Selección numérica del menú principal (1 / 2 / 3), igual que tocar la lista.
-      if (text === '1' || text === '2' || text === '3') {
+      // Selección numérica del menú principal (1 / 2 / 3 / 4), igual que tocar la lista.
+      if (['1', '2', '3', '4'].includes(text)) {
         if (text === '1') { await _sendContactButton(ctx, from); return; }
         if (text === '2') { await _sendWebButton(ctx, from); return; }
+        if (text === '4') { await _sendMisTurnos(ctx, from); return; }
         pendingName.delete(from);        // opción 3: arranca el flujo de turnos
         await _sendDaysMenu(ctx, from);
         return;
@@ -751,6 +768,10 @@ async function handleWebhook(req, res) {
       }
       if (replyId === 'menu_contacto') {
         await _sendContactButton(ctx, from);
+        return;
+      }
+      if (replyId === 'menu_misturnos') {
+        await _sendMisTurnos(ctx, from);
         return;
       }
 
@@ -851,8 +872,9 @@ async function _sendWelcome(ctx, to) {
         `*¿En qué te podemos ayudar?*\n\n` +
         `1️⃣ Comunicarse con la cancha\n` +
         `2️⃣ Turnos por la Web\n` +
-        `3️⃣ Turnos por WhatsApp\n\n` +
-        `_Respondé con el número (1, 2 o 3) o tocá "Ver opciones"._`,
+        `3️⃣ Turnos por WhatsApp\n` +
+        `4️⃣ Ver mis turnos\n\n` +
+        `_Respondé con el número (1, 2, 3 o 4) o tocá "Ver opciones"._`,
     },
   });
 
@@ -864,11 +886,77 @@ async function _sendWelcome(ctx, to) {
     button:       'Ver opciones',
     sectionTitle: 'Opciones',
     rows: [
-      { id: 'menu_contacto', title: '1. Comunicarse Cancha', description: 'Chateá directo con la cancha' },
-      { id: 'menu_web',      title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
-      { id: 'menu_turnos',   title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
+      { id: 'menu_contacto',  title: '1. Comunicarse Cancha', description: 'Chateá directo con la cancha' },
+      { id: 'menu_web',       title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
+      { id: 'menu_turnos',    title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
+      { id: 'menu_misturnos', title: '4. Ver mis turnos',     description: 'Consultá tus turnos agendados' },
     ],
   }));
+}
+
+/**
+ * "Ver mis turnos": lista los turnos del jugador unificando ambos canales
+ * (web + WhatsApp), buscando por su número de WhatsApp y por su cuenta.
+ * Muestra fecha/hora, cancha, complejo, estado y cómo cancelar cada uno.
+ */
+async function _sendMisTurnos(ctx, from) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const d = soloDigitos(from);
+  const cuenta = await cuentaPorTelefono(from);
+
+  const orConds = [{ telefono_cliente: { [Op.in]: [from, d, `+${d}`] } }];
+  if (cuenta) orConds.push({ user_id: cuenta.id });
+
+  const turnos = await Booking.findAll({
+    where: {
+      [Op.or]:  orConds,
+      estado:   { [Op.notIn]: ['cancelado', 'rechazado'] },
+      fecha:    { [Op.gte]: todayAR() },   // próximos (activos)
+    },
+    include: [{
+      model: Field, as: 'field',
+      attributes: ['nombre', 'identificador', 'deporte', 'superficie'],
+      include: [{ model: Complex, as: 'complex', attributes: ['nombre'] }],
+    }],
+    order: [['fecha', 'ASC'], ['hora_inicio', 'ASC']],
+    limit: 10,
+  });
+
+  if (!turnos.length) {
+    await send({
+      to: from, type: 'text',
+      text: { body: '📭 No tenés turnos próximos.\n\nEscribí *hola* para volver al menú y sacar uno nuevo.' },
+    });
+    return;
+  }
+
+  const ESTADO = {
+    confirmado:     '🟢 Confirmado',
+    pendiente:      '🟡 Pendiente',
+    pendiente_pago: '🟠 Pendiente de pago',
+    no_asistido:    '⚪ No asistió',
+  };
+
+  const bloques = turnos.map(t => {
+    const cancha  = nombreCancha(t.field?.identificador, t.field?.nombre);
+    const complejo = t.field?.complex?.nombre || '';
+    return (
+      `🗓️ *${formatFechaLabel(t.fecha)}* · ${t.hora_inicio}→${t.hora_fin}\n` +
+      `🏟️ ${cancha}${complejo ? ` — ${complejo}` : ''}\n` +
+      `${ESTADO[t.estado] || t.estado}\n` +
+      `Para cancelar: *cancelar #${t.id}*`
+    );
+  });
+
+  await send({
+    to: from, type: 'text',
+    text: {
+      body:
+        `📋 *Tus próximos turnos* (${turnos.length})\n\n` +
+        bloques.join('\n\n────────\n\n') +
+        `\n\nEscribí *hola* para volver al menú (comunicarte con la cancha o sacar otro turno).`,
+    },
+  });
 }
 
 /**
@@ -1128,6 +1216,10 @@ async function _handleConfirm(ctx, from, slotRaw) {
       ? parseFloat(precios[String(duracion)])
       : parseFloat(field.precio_base || 0) * (duracion / 60);
 
+    // Si el WhatsApp pertenece a una cuenta, vincular la reserva a ese usuario
+    // (así aparece en su "Mis turnos" de la web y se mantiene la trazabilidad).
+    const cuenta = await cuentaPorTelefono(from, t);
+
     booking = await Booking.create({
       field_id:         fieldId,
       fecha,
@@ -1140,6 +1232,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
       monto,
       estado:           'confirmado',
       notas:            'Reserva por WhatsApp',
+      user_id:          cuenta?.id || null,
       created_by:       null,
     }, { transaction: t });
 
