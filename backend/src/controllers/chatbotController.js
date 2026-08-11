@@ -163,12 +163,22 @@ function soloDigitos(tel) {
   return String(tel || '').replace(/\D/g, '');
 }
 
-/** Busca la cuenta (User) cuyo teléfono coincide con el número de WhatsApp. */
+/**
+ * Últimos 10 dígitos (área + número) de un teléfono. Es la parte que NO cambia
+ * entre formatos: +549 / 54 / 0381 / con o sin el 15 de celular. Sirve para
+ * comparar el WhatsApp (549…) con el teléfono guardado en la cuenta/reserva.
+ */
+function telSignificativo(tel) {
+  const d = soloDigitos(tel);
+  return d.length >= 8 ? d.slice(-10) : null;
+}
+
+/** Busca la cuenta (User) cuyo teléfono coincide (últimos 10 dígitos) con el WhatsApp. */
 async function cuentaPorTelefono(from, transaction) {
-  const d = soloDigitos(from);
-  if (!d) return null;
+  const sig = telSignificativo(from);
+  if (!sig) return null;
   return User.findOne({
-    where: { telefono: { [Op.in]: [d, `+${d}`, from] } },
+    where: { telefono: { [Op.like]: `%${sig}%` } },
     attributes: ['id'],
     transaction,
   });
@@ -901,11 +911,14 @@ async function _sendWelcome(ctx, to) {
  */
 async function _sendMisTurnos(ctx, from) {
   const send = p => wa.sendMessage(p, ctx.creds);
-  const d = soloDigitos(from);
+  const sig = telSignificativo(from);
   const cuenta = await cuentaPorTelefono(from);
 
-  const orConds = [{ telefono_cliente: { [Op.in]: [from, d, `+${d}`] } }];
+  // Unifica por los últimos 10 dígitos del teléfono (formato-agnóstico) + la cuenta.
+  const orConds = [];
+  if (sig) orConds.push({ telefono_cliente: { [Op.like]: `%${sig}%` } });
   if (cuenta) orConds.push({ user_id: cuenta.id });
+  if (!orConds.length) orConds.push({ telefono_cliente: from });
 
   const turnos = await Booking.findAll({
     where: {

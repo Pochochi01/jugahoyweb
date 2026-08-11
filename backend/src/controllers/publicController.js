@@ -317,11 +317,13 @@ async function getMyBookings(req, res) {
   try {
     // Unifica ambos canales:
     //  - Web: reservas con user_id = este jugador.
-    //  - WhatsApp: reservas con telefono_cliente = el WhatsApp de su cuenta.
+    //  - WhatsApp: reservas cuyo telefono_cliente coincide (últimos 10 dígitos)
+    //    con el WhatsApp de la cuenta — formato-agnóstico (+549 / 54 / 0381 / 15).
     const telDigits = String(req.user.telefono || '').replace(/\D/g, '');
+    const sig = telDigits.length >= 8 ? telDigits.slice(-10) : null;
     const orConds = [{ user_id: req.user.id }];
-    if (telDigits) {
-      orConds.push({ telefono_cliente: { [Op.in]: [telDigits, `+${telDigits}`] } });
+    if (sig) {
+      orConds.push({ telefono_cliente: { [Op.like]: `%${sig}%` } });
     }
 
     const bookings = await Booking.findAll({
