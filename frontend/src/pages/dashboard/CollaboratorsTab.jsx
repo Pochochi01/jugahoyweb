@@ -8,10 +8,12 @@ import {
 const PERMISOS_DEF = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
+  cancelar_turnos: false,
 };
 const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
   configuracion: 'Configuración', colaboradores: 'Colaboradores', estadisticas: 'Estadísticas',
+  cancelar_turnos: 'Cancelar turnos',
 };
 
 const FORM_INICIAL = {

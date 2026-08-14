@@ -4,6 +4,7 @@ const { Collaborator, User } = require('../models');
 const PERMISOS_DEFAULT = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
+  cancelar_turnos: false,   // permiso específico para cancelar turnos
 };
 
 async function getAll(req, res) {

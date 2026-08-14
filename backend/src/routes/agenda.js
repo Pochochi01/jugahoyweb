@@ -9,7 +9,8 @@ router.use(authenticate);
 router.get('/:complexId/cancha/:fieldId',     requireComplexAccess, requirePermission('agenda'), ctrl.getSlotsForField);
 router.get('/:complexId/pendientes',          requireComplexAccess, requirePermission('agenda'), ctrl.getPendingBookings);
 router.post('/:complexId/reservar',           requireComplexAccess, requirePermission('agenda'), ctrl.reserveSlot);
-router.put('/:complexId/cancelar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.cancelBooking);
+// Cancelar exige, además del acceso a la agenda, el permiso específico 'cancelar_turnos'.
+router.put('/:complexId/cancelar/:bookingId', requireComplexAccess, requirePermission('agenda'), requirePermission('cancelar_turnos'), ctrl.cancelBooking);
 router.put('/:complexId/confirmar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.confirmBooking);
 router.put('/:complexId/rechazar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.rejectBooking);
 router.patch('/:complexId/no-asistido/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.markNoShow);

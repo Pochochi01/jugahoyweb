@@ -4,7 +4,6 @@ const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR } = require('../utils/time');
-const { evaluarCancelacion } = require('../utils/cancelPolicy');
 
 // Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
 function esReservaWhatsApp(booking) {
@@ -215,12 +214,9 @@ async function cancelBooking(req, res) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
 
-    // Regla de cancelación (2 h de anticipación / 15 min de gracia). Ver cancelPolicy.
-    const regla = evaluarCancelacion(booking);
-    if (!regla.allowed) {
-      await t.rollback();
-      return res.status(400).json({ message: regla.mensaje });
-    }
+    // NOTA: acá NO aplica la regla de las 2 h. El admin (y el colaborador con el
+    // permiso 'cancelar_turnos') pueden cancelar cuando lo deseen. La restricción
+    // de 2 h / 15 min solo rige para el jugador (web y WhatsApp).
 
     // Liberar todos los slots de esta reserva
     await Promise.all(booking.timeSlots.map(s =>

@@ -153,16 +153,19 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
                     </button>
                   )}
 
-                  <button
-                    onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
-                    className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                    style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
-                    title="Cancelar esta reserva"
-                  >
-                    <XCircle className="w-3.5 h-3.5" /> Cancelar
-                  </button>
+                  {/* Cancelar — solo si el usuario tiene el permiso (onCancel provisto) */}
+                  {onCancel && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
+                      style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                      title="Cancelar esta reserva"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> Cancelar
+                    </button>
+                  )}
                 </>
               )}
             </div>

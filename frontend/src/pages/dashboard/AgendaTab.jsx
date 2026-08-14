@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { agendaService }  from '../../services/agendaService';
 import { settingsService } from '../../services/settingsService';
+import { useAuth } from '../../context/AuthContext';
 import TimeSlotList from '../../components/agenda/TimeSlotList';
 import BookingModal from '../../components/agenda/BookingModal';
 
@@ -158,6 +159,9 @@ function PendingPanel({ complexId, onUpdated }) {
 
 // ── Tab principal ─────────────────────────────────────────────────────────────
 export default function AgendaTab({ complexId }) {
+  const { hasPermission } = useAuth();
+  // Admins siempre pueden; los colaboradores necesitan el permiso 'cancelar_turnos'.
+  const puedeCancelar = hasPermission(complexId, 'cancelar_turnos');
   const [fields,        setFields]        = useState([]);
   const [selectedField, setSelectedField] = useState(null);
   const [date,          setDate]          = useState(today());
@@ -330,7 +334,7 @@ export default function AgendaTab({ complexId }) {
           slots={slots}
           loading={loading}
           onSelect={setSelectedSlot}
-          onCancel={handleCancel}
+          onCancel={puedeCancelar ? handleCancel : undefined}
           onNoShow={handleNoShow}
           onConfirm={handleConfirm}
         />
