@@ -78,32 +78,81 @@ async function getAttendanceStats(req, res) {
       if (hasta) where.fecha[Op.lte] = hasta;
     }
 
-    // Conteo agrupado por estado en una sola query
+    // Conteo + suma de monto agrupados por estado en una sola query
     const filas = await Booking.findAll({
       where,
-      attributes: ['estado', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+      attributes: [
+        'estado',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'n'],
+        [sequelize.fn('SUM', sequelize.col('monto')), 'monto'],
+      ],
       group: ['estado'],
       raw: true,
     });
-    const porEstado = filas.reduce((acc, f) => (acc[f.estado] = parseInt(f.n), acc), {});
+    const cnt   = (e) => parseInt(filas.find(f => f.estado === e)?.n || 0);
+    const money = (e) => parseFloat(filas.find(f => f.estado === e)?.monto || 0);
 
-    const confirmados = porEstado.confirmado || 0;
-    const noAsistidos = porEstado.no_asistido || 0;
-    const cancelados  = (porEstado.cancelado || 0) + (porEstado.rechazado || 0);
-    // Base para el % de ausencias: turnos que debían cumplirse (confirmados + ausencias)
-    const base = confirmados + noAsistidos;
+    const asistidos    = cnt('confirmado');
+    const noAsistidos  = cnt('no_asistido');
+    const cancelados   = cnt('cancelado') + cnt('rechazado');
+    // "Turnos pedidos" = los que debían cumplirse (asistieron + no asistieron)
+    const pedidos      = asistidos + noAsistidos;
+
+    const ingresosAsistidos   = money('confirmado');
+    const ingresosNoAsistidos = money('no_asistido');
 
     res.json({
-      confirmados,
-      no_asistidos: noAsistidos,
+      // Cantidades
+      reservas:      pedidos,          // total de turnos pedidos (asistidos + no asistidos)
+      asistidos,                       // "Turnos asistidos" (los que jugaron)
+      no_asistidos:  noAsistidos,
       cancelados,
+      // Pesos
+      ingresos:              ingresosAsistidos + ingresosNoAsistidos, // total de los pedidos
+      ingresos_asistidos:    ingresosAsistidos,
+      ingresos_no_asistidos: ingresosNoAsistidos,
+      // Porcentajes (sobre el total de pedidos)
+      ocupacion:             pedidos > 0 ? Math.round((asistidos / pedidos) * 100) : 0,
+      porcentaje_ausencias:  pedidos > 0 ? Math.round((noAsistidos / pedidos) * 100) : 0,
+      // compat
+      confirmados: asistidos,
       total: filas.reduce((s, f) => s + parseInt(f.n), 0),
-      porcentaje_ausencias: base > 0 ? Math.round((noAsistidos / base) * 100) : 0,
-      por_estado: porEstado,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 }
 
-module.exports = { getStats, getGlobalStats, getAttendanceStats };
+/**
+ * GET /api/stats/:complexId/no-asistidos?desde=&hasta=
+ * Lista de turnos marcados como "no asistido" en el rango de fechas.
+ */
+async function getNoShowList(req, res) {
+  try {
+    const { complexId } = req.params;
+    const { desde, hasta } = req.query;
+
+    const fields = await Field.findAll({ where: { complex_id: complexId }, attributes: ['id'] });
+    const fieldIds = fields.map(f => f.id);
+    if (fieldIds.length === 0) return res.json([]);
+
+    const where = { field_id: { [Op.in]: fieldIds }, estado: 'no_asistido' };
+    if (desde || hasta) {
+      where.fecha = {};
+      if (desde) where.fecha[Op.gte] = desde;
+      if (hasta) where.fecha[Op.lte] = hasta;
+    }
+
+    const list = await Booking.findAll({
+      where,
+      attributes: ['id', 'fecha', 'hora_inicio', 'hora_fin', 'nombre_cliente', 'telefono_cliente', 'monto'],
+      include: [{ model: Field, as: 'field', attributes: ['nombre', 'identificador'] }],
+      order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']],
+    });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getStats, getGlobalStats, getAttendanceStats, getNoShowList };

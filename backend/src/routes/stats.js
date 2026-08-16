@@ -7,5 +7,6 @@ router.get('/global', ctrl.getGlobalStats);
 router.use(authenticate);
 router.get('/:complexId', requireComplexAccess, requirePermission('estadisticas'), ctrl.getStats);
 router.get('/:complexId/asistencias', requireComplexAccess, requirePermission('estadisticas'), ctrl.getAttendanceStats);
+router.get('/:complexId/no-asistidos', requireComplexAccess, requirePermission('estadisticas'), ctrl.getNoShowList);
 
 module.exports = router;

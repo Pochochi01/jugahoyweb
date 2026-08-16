@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/agendaController');
 const { authenticate } = require('../middlewares/auth');
-const { requireComplexAccess, requirePermission } = require('../middlewares/roles');
+const { requireComplexAccess, requirePermission, requireRole } = require('../middlewares/roles');
 
 router.use(authenticate);
 
@@ -14,6 +14,8 @@ router.put('/:complexId/cancelar/:bookingId', requireComplexAccess, requirePermi
 router.put('/:complexId/confirmar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.confirmBooking);
 router.put('/:complexId/rechazar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.rejectBooking);
 router.patch('/:complexId/no-asistido/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.markNoShow);
+// Corregir asistencia (no_asistido → confirmado): SOLO administradores, no colaboradores.
+router.patch('/:complexId/asistio/:bookingId', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.correctNoShow);
 
 // Legacy
 router.get('/:complexId',        requireComplexAccess, requirePermission('agenda'), ctrl.getByComplex);

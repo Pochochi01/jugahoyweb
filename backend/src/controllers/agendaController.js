@@ -4,6 +4,7 @@ const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR } = require('../utils/time');
+const { yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 
 // Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
 function esReservaWhatsApp(booking) {
@@ -214,9 +215,13 @@ async function cancelBooking(req, res) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
 
-    // NOTA: acá NO aplica la regla de las 2 h. El admin (y el colaborador con el
-    // permiso 'cancelar_turnos') pueden cancelar cuando lo deseen. La restricción
-    // de 2 h / 15 min solo rige para el jugador (web y WhatsApp).
+    // El admin (y el colaborador con permiso) pueden cancelar cuando quieran —
+    // NO aplica la regla de las 2 h — PERO un turno que ya comenzó o pasó no
+    // puede cancelarse (para eso está "marcar no asistió").
+    if (yaComenzo(booking)) {
+      await t.rollback();
+      return res.status(400).json({ message: MSG_YA_COMENZO });
+    }
 
     // Liberar todos los slots de esta reserva
     await Promise.all(booking.timeSlots.map(s =>
@@ -531,4 +536,37 @@ async function markNoShow(req, res) {
   }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, getByComplex, create, update, remove };
+/**
+ * PATCH /api/agenda/:complexId/asistio/:bookingId — SOLO administradores.
+ * Corrige un turno mal marcado: de "no_asistido" vuelve a "confirmado" (asistió).
+ */
+async function correctNoShow(req, res) {
+  try {
+    const { complexId, bookingId } = req.params;
+    const booking = await Booking.findByPk(bookingId, {
+      include: [{ model: Field, as: 'field', attributes: ['complex_id'] }],
+    });
+    if (!booking) return res.status(404).json({ message: 'Reserva no encontrada.' });
+    if (String(booking.field?.complex_id) !== String(complexId)) {
+      return res.status(403).json({ message: 'La reserva no pertenece a este complejo.' });
+    }
+    if (booking.estado !== 'no_asistido') {
+      return res.status(409).json({ message: `El turno no está marcado como "no asistido" (está "${booking.estado}").` });
+    }
+
+    await booking.update({ estado: 'confirmado' });
+
+    await Operation.create({
+      complex_id:  complexId,
+      tipo:        'ajuste',
+      descripcion: `Corrección de asistencia: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} → asistió`,
+      usuario_id:  req.user.id,
+    });
+
+    res.json({ message: 'Turno corregido: marcado como asistido.', booking });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getByComplex, create, update, remove };

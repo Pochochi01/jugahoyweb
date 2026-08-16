@@ -8,6 +8,7 @@ import { favoritesService } from '../../services/favoritesService';
 import { paymentService } from '../../services/paymentService';
 import { useAuth } from '../../context/AuthContext';
 import BookingModal from '../../components/agenda/BookingModal';
+import { waLink } from '../../utils/whatsapp';
 
 const DEPORTE_ICON = { futbol: '⚽', padel: '🏓', tenis: '🎾', basquet: '🏀', voley: '🏐', otro: '🏃' };
 
@@ -38,6 +39,7 @@ export default function ComplexSlotsPage() {
   const [isFav,    setIsFav]    = useState(false);
   const [favBusy,  setFavBusy]  = useState(false);
   const [toast,    setToast]    = useState(null);
+  const [bloqueo,  setBloqueo]  = useState(null);   // { message, whatsapp } por reiteradas inasistencias
 
   // Vista: agrupar por cancha o por horario (filtro pedido para móvil)
   const [viewMode,   setViewMode]   = useState('cancha'); // 'cancha' | 'horario'
@@ -97,7 +99,18 @@ export default function ComplexSlotsPage() {
   };
 
   const handleConfirm = async (formData) => {
-    const { booking } = await publicService.reserve(id, formData);
+    let booking;
+    try {
+      ({ booking } = await publicService.reserve(id, formData));
+    } catch (err) {
+      // Bloqueo por reiteradas inasistencias → mostrar mensaje + contacto WhatsApp
+      if (err?.blocked_inasistencias) {
+        setSelected(null);
+        setBloqueo({ message: err.message, whatsapp: err.whatsapp });
+        return;
+      }
+      throw err;   // otros errores los muestra el propio modal de reserva
+    }
 
     // Flujo MercadoPago: crear preference y redirigir al checkout
     if (formData.tipo_pago === 'seña' || formData.tipo_pago === 'total') {
@@ -387,6 +400,30 @@ export default function ComplexSlotsPage() {
           ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           {toast.msg}
+        </div>
+      )}
+
+      {/* Modal de bloqueo por reiteradas inasistencias */}
+      {bloqueo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setBloqueo(null)} />
+          <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+              <XCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <h3 className="font-bold text-lg mb-2">No podés agendar</h3>
+            <p className="text-sm text-muted-foreground mb-5">{bloqueo.message}</p>
+            {waLink(bloqueo.whatsapp) && (
+              <a href={waLink(bloqueo.whatsapp)} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-semibold text-white mb-2"
+                style={{ background: '#16a34a' }}>
+                Comunicarme por WhatsApp
+              </a>
+            )}
+            <button onClick={() => setBloqueo(null)} className="w-full py-2 text-sm text-muted-foreground hover:text-foreground">
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
     </div>

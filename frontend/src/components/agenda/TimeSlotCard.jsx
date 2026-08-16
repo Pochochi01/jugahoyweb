@@ -45,7 +45,7 @@ const STYLES = {
   },
 };
 
-export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onConfirm, index }) {
+export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onConfirm, onCorrectNoShow, index }) {
   const isLibre     = slot.estado === 'libre';
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
@@ -107,10 +107,25 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {isNoAsistido ? (
-                <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(148,163,184,0.18)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.3)' }}>
-                  <UserX className="w-3 h-3" /> No asistió
-                </span>
+                <>
+                  <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(148,163,184,0.18)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.3)' }}>
+                    <UserX className="w-3 h-3" /> No asistió
+                  </span>
+                  {/* Corregir → asistió (solo administradores) */}
+                  {onCorrectNoShow && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onCorrectNoShow(slot.booking_id); }}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.30)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}
+                      title="Corregir: marcar como asistido"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> Asistió
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   {isPendiente ? (
@@ -153,8 +168,8 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
                     </button>
                   )}
 
-                  {/* Cancelar — solo si el usuario tiene el permiso (onCancel provisto) */}
-                  {onCancel && (
+                  {/* Cancelar — solo con permiso (onCancel) y si el turno NO empezó */}
+                  {onCancel && !slot.past && (
                     <button
                       onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"

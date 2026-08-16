@@ -18,13 +18,25 @@ const GRACE_MIN = 15;   // minutos de gracia para reservas de último momento
 
 const MSG_2H  = `Los turnos deben cancelarse con al menos ${WINDOW_H} horas de anticipación.`;
 const MSG_15  = `Este turno puede cancelarse solo dentro de los primeros ${GRACE_MIN} minutos después de reservarlo.`;
+const MSG_YA_COMENZO = 'No se puede cancelar un turno que ya comenzó o pasó.';
 
-/** Datetime de inicio del turno a partir de fecha (YYYY-MM-DD) + hora_inicio (HH:MM). */
+/**
+ * Datetime de inicio del turno a partir de fecha (YYYY-MM-DD) + hora_inicio (HH:MM).
+ * Madrugada (hora < 08:00) = día siguiente del calendario, igual que en la agenda.
+ */
 function inicioDe(booking) {
   const fecha = typeof booking.fecha === 'string'
     ? booking.fecha
     : new Date(booking.fecha).toISOString().slice(0, 10);
-  return new Date(`${fecha}T${booking.hora_inicio}:00`);
+  const inicio = new Date(`${fecha}T${booking.hora_inicio}:00`);
+  const h = parseInt(String(booking.hora_inicio).split(':')[0], 10);
+  if (h < 8) inicio.setDate(inicio.getDate() + 1);
+  return inicio;
+}
+
+/** true si el turno YA comenzó (su hora de inicio pasó). */
+function yaComenzo(booking, now = new Date()) {
+  return inicioDe(booking).getTime() <= now.getTime();
 }
 
 /**
@@ -61,4 +73,4 @@ function avisoAlReservar(inicio, now = new Date()) {
   return hHastaInicio < WINDOW_H ? MSG_15 : MSG_2H;
 }
 
-module.exports = { evaluarCancelacion, avisoAlReservar, inicioDe, WINDOW_H, GRACE_MIN, MSG_2H, MSG_15 };
+module.exports = { evaluarCancelacion, avisoAlReservar, inicioDe, yaComenzo, WINDOW_H, GRACE_MIN, MSG_2H, MSG_15, MSG_YA_COMENZO };

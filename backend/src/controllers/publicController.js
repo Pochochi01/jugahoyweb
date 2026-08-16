@@ -3,7 +3,8 @@ const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequel
 const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
 const { todayAR } = require('../utils/time');
-const { evaluarCancelacion } = require('../utils/cancelPolicy');
+const { evaluarCancelacion, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
+const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 // Fecha "hoy" en Argentina (GMT-3), no en UTC.
@@ -220,6 +221,20 @@ async function playerReserve(req, res) {
     const clientName  = (nombre_cliente?.trim()  || `${req.user.nombre} ${req.user.apellido}`).trim();
     const clientPhone = telefono_cliente?.trim()  || req.user.telefono || '';
 
+    // Bloqueo por reiteradas inasistencias (2 en un mes / 3 en 2+ meses).
+    const bloqueo = await evaluarBloqueoInasistencias(complexId, { userId: req.user.id, telefono: clientPhone });
+    if (bloqueo.blocked) {
+      await t.rollback();
+      const contacto = field.whatsapp_contacto
+        || (await Complex.findByPk(complexId, { attributes: ['whatsapp_contacto'] }))?.whatsapp_contacto
+        || null;
+      return res.status(403).json({
+        message: bloqueo.mensaje,
+        blocked_inasistencias: true,
+        whatsapp: contacto ? String(contacto).replace(/\D/g, '') : null,
+      });
+    }
+
     const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = [];
     for (let i = 0; i < slotsNecesarios; i++) horasAReservar.push(addMinutes(hora, i * 60));
@@ -359,6 +374,11 @@ async function cancelMyBooking(req, res) {
     if (booking.estado === 'cancelado') {
       await t.rollback();
       return res.status(400).json({ message: 'La reserva ya fue cancelada' });
+    }
+    // Un turno que ya comenzó o pasó no puede cancelarse.
+    if (yaComenzo(booking)) {
+      await t.rollback();
+      return res.status(400).json({ message: MSG_YA_COMENZO });
     }
     // Regla de cancelación: 2 h de anticipación, con gracia de 15 min para
     // reservas de último momento. Ver utils/cancelPolicy.js.

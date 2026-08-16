@@ -14,7 +14,7 @@ const GRUPOS = [
   { label: 'Madrugada', emoji: '🌃', minStart: 1440, minEnd: 1560, note: 'día siguiente' },
 ];
 
-export default function TimeSlotList({ slots, loading, onSelect, onCancel, onNoShow, onConfirm }) {
+export default function TimeSlotList({ slots, loading, onSelect, onCancel, onNoShow, onConfirm, onCorrectNoShow }) {
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3">
       <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
@@ -87,6 +87,7 @@ export default function TimeSlotList({ slots, loading, onSelect, onCancel, onNoS
                     onCancel={onCancel}
                     onNoShow={onNoShow}
                     onConfirm={onConfirm}
+                    onCorrectNoShow={onCorrectNoShow}
                   />
                 );
               })}

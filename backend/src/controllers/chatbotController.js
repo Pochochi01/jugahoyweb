@@ -41,7 +41,8 @@ const notifService = require('../services/notification.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto } = require('../utils/canchas');
-const { evaluarCancelacion, avisoAlReservar } = require('../utils/cancelPolicy');
+const { evaluarCancelacion, avisoAlReservar, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
+const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -1194,6 +1195,18 @@ async function _handleConfirm(ctx, from, slotRaw) {
       return;
     }
 
+    // Bloqueo por reiteradas inasistencias (2 en un mes / 3 en 2+ meses).
+    const bloqueo = await evaluarBloqueoInasistencias(ctx.clubId, { telefono: from });
+    if (bloqueo.blocked) {
+      await t.rollback();
+      pendingName.delete(from);
+      await send({ to: from, type: 'text', text: { body: `⛔ ${bloqueo.mensaje}` } });
+      const contacto = field.whatsapp_contacto
+        || (await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] }))?.whatsapp_contacto;
+      if (contacto) await send(wa.buildContactCanchaMessage(from, contacto));
+      return;
+    }
+
     // Slots que ocupa la reserva (duracion / 60 min)
     const slotsNecesarios = Math.ceil(duracion / 60);
     const horasAReservar  = Array.from({ length: slotsNecesarios }, (_, i) =>
@@ -1376,6 +1389,16 @@ async function _handleTextCancel(ctx, from, bookingId) {
       await send({
         to: from, type: 'text',
         text: { body: `ℹ️ La reserva *#${bookingId}* ya estaba cancelada.` },
+      });
+      return;
+    }
+
+    // Un turno que ya comenzó o pasó no puede cancelarse.
+    if (yaComenzo(booking)) {
+      await t.rollback();
+      await send({
+        to: from, type: 'text',
+        text: { body: `⛔ No se puede cancelar la reserva *#${bookingId}*.\n\n${MSG_YA_COMENZO}` },
       });
       return;
     }

@@ -159,9 +159,11 @@ function PendingPanel({ complexId, onUpdated }) {
 
 // ── Tab principal ─────────────────────────────────────────────────────────────
 export default function AgendaTab({ complexId }) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isComplexAdmin } = useAuth();
   // Admins siempre pueden; los colaboradores necesitan el permiso 'cancelar_turnos'.
   const puedeCancelar = hasPermission(complexId, 'cancelar_turnos');
+  // Corregir asistencia: SOLO administradores (no colaboradores).
+  const esAdmin = isComplexAdmin;
   const [fields,        setFields]        = useState([]);
   const [selectedField, setSelectedField] = useState(null);
   const [date,          setDate]          = useState(today());
@@ -229,6 +231,17 @@ export default function AgendaTab({ complexId }) {
       loadSlots();
     } catch (err) {
       showToast('error', err?.response?.data?.message || 'No se pudo marcar.');
+    }
+  };
+
+  const handleCorrectNoShow = async (bookingId) => {
+    if (!window.confirm('¿Corregir y marcar este turno como asistido?')) return;
+    try {
+      await agendaService.asistio(complexId, bookingId);
+      showToast('success', 'Turno corregido: asistió.');
+      loadSlots();
+    } catch (err) {
+      showToast('error', err?.response?.data?.message || 'No se pudo corregir.');
     }
   };
 
@@ -337,6 +350,7 @@ export default function AgendaTab({ complexId }) {
           onCancel={puedeCancelar ? handleCancel : undefined}
           onNoShow={handleNoShow}
           onConfirm={handleConfirm}
+          onCorrectNoShow={esAdmin ? handleCorrectNoShow : undefined}
         />
       )}
 
