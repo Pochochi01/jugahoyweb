@@ -1,47 +1,87 @@
 import { useState, useEffect } from 'react';
 import { statsService } from '../../services/statsService';
+import { agendaService } from '../../services/agendaService';
+import { useAuth } from '../../context/AuthContext';
 import {
-  BarChart2, TrendingUp, Calendar, Percent, CheckCircle, UserX, DollarSign, X,
+  BarChart2, TrendingUp, Calendar, Percent, CheckCircle, UserX, DollarSign, X, Ban, UserCheck,
 } from 'lucide-react';
 
 const money = (n) => `$${Number(n || 0).toLocaleString('es-AR')}`;
 
+// Rango del mes en curso (por defecto si no se ingresan fechas).
+function mesEnCurso() {
+  const now = new Date();
+  const fmt = (d) => d.toISOString().split('T')[0];
+  return {
+    desde: fmt(new Date(now.getFullYear(), now.getMonth(), 1)),
+    hasta: fmt(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+}
+
 export default function StatsTab({ complexId }) {
+  const { isComplexAdmin } = useAuth();   // gestión de incumplidos: solo administradores
   const [stats,   setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
-  const [desde,   setDesde]   = useState('');
-  const [hasta,   setHasta]   = useState('');
+
+  // Lista de incumplidos (blacklist por inasistencias)
+  const [incumplidos, setIncumplidos] = useState([]);
+  const [habilitando, setHabilitando] = useState(null);
+  // Pre-cargado con el mes en curso; el admin puede cambiar el rango.
+  const [desde,   setDesde]   = useState(mesEnCurso().desde);
+  const [hasta,   setHasta]   = useState(mesEnCurso().hasta);
 
   // Modal con la lista de no asistidos
   const [showNoShows, setShowNoShows] = useState(false);
   const [noShows,     setNoShows]     = useState([]);
   const [loadingNS,   setLoadingNS]   = useState(false);
 
+  // Si el usuario borra las fechas, se usa el mes en curso.
+  const rango = () => ({
+    desde: desde || mesEnCurso().desde,
+    hasta: hasta || mesEnCurso().hasta,
+  });
+
   const load = () => {
     setLoading(true);
-    statsService.getAttendance(complexId, { desde: desde || undefined, hasta: hasta || undefined })
+    statsService.getAttendance(complexId, rango())
       .then(setStats).catch(() => setStats(null)).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [complexId]);   // eslint-disable-line
 
+  const loadIncumplidos = () => {
+    if (!isComplexAdmin) return;
+    agendaService.getIncumplidos(complexId).then(setIncumplidos).catch(() => setIncumplidos([]));
+  };
+  useEffect(() => { loadIncumplidos(); }, [complexId, isComplexAdmin]);   // eslint-disable-line
+
+  const habilitar = async (inc) => {
+    if (!window.confirm(`¿Habilitar a ${inc.nombre || inc.telefono} para agendar nuevamente?`)) return;
+    setHabilitando(inc.id);
+    try {
+      await agendaService.habilitarIncumplido(complexId, inc.id);
+      setIncumplidos(list => list.filter(i => i.id !== inc.id));
+    } catch { /* noop */ } finally { setHabilitando(null); }
+  };
+
   const abrirNoAsistidos = () => {
     setShowNoShows(true);
     setLoadingNS(true);
-    statsService.getNoShows(complexId, { desde: desde || undefined, hasta: hasta || undefined })
+    statsService.getNoShows(complexId, rango())
       .then(setNoShows).catch(() => setNoShows([])).finally(() => setLoadingNS(false));
   };
 
   const formatFecha = (f) => new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' });
 
-  // Definición de los slots (cards). Los dos de "no asistidos" son clicables.
+  // Definición de los slots (cards). El de "No asistidos" unifica cantidad + monto
+  // y es clicable para ver el listado.
   const cards = stats ? [
     { label: 'Reservas',            value: stats.reservas,                     icon: Calendar,    color: 'text-blue-600',   bg: 'bg-blue-50' },
     { label: 'Ingresos',            value: money(stats.ingresos),              icon: TrendingUp,  color: 'text-green-600',  bg: 'bg-green-50' },
     { label: 'Turnos asistidos',    value: stats.asistidos,                    icon: CheckCircle, color: 'text-emerald-600',bg: 'bg-emerald-50' },
     { label: 'Ingresos asistidos',  value: money(stats.ingresos_asistidos),    icon: DollarSign,  color: 'text-teal-600',   bg: 'bg-teal-50' },
     { label: 'Ocupación',           value: `${stats.ocupacion}%`,              icon: Percent,     color: 'text-orange-500', bg: 'bg-orange-50' },
-    { label: 'No asistidos',        value: stats.no_asistidos,                 icon: UserX,       color: 'text-red-600',    bg: 'bg-red-50',    onClick: abrirNoAsistidos },
-    { label: 'Ingresos no asistidos', value: money(stats.ingresos_no_asistidos), icon: DollarSign, color: 'text-rose-600',  bg: 'bg-rose-50',   onClick: abrirNoAsistidos },
+    { label: 'No asistidos',        value: stats.no_asistidos, sub: money(stats.ingresos_no_asistidos),
+      icon: UserX, color: 'text-red-600', bg: 'bg-red-50', onClick: abrirNoAsistidos },
   ] : [];
 
   return (
@@ -62,7 +102,7 @@ export default function StatsTab({ complexId }) {
         <div className="card text-center py-12 text-muted-foreground"><BarChart2 className="w-10 h-10 mx-auto mb-2 opacity-30" />Sin datos.</div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {cards.map(({ label, value, icon: Icon, color, bg, onClick }) => (
+          {cards.map(({ label, value, sub, icon: Icon, color, bg, onClick }) => (
             <div key={label}
               onClick={onClick}
               className={`card ${bg} border-0 ${onClick ? 'cursor-pointer hover:ring-2 hover:ring-red-300 transition-all' : ''}`}
@@ -73,8 +113,47 @@ export default function StatsTab({ complexId }) {
               </div>
               <div className={`text-3xl font-bold ${color} mb-1`}>{value}</div>
               <div className="text-xs text-muted-foreground">{label}</div>
+              {sub !== undefined && <div className={`text-sm font-semibold ${color} mt-1`}>{sub}</div>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Lista de incumplidos — solo administradores */}
+      {isComplexAdmin && (
+        <div className="mt-8">
+          <h3 className="font-bold flex items-center gap-2 mb-3">
+            <Ban className="w-5 h-5 text-red-600" /> Lista de incumplidos
+            {incumplidos.length > 0 && <span className="badge-red text-xs">{incumplidos.length}</span>}
+          </h3>
+          {incumplidos.length === 0 ? (
+            <div className="card text-sm text-muted-foreground py-6 text-center">
+              No hay jugadores bloqueados por inasistencias.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {incumplidos.map(inc => (
+                <div key={inc.id} className="card py-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm">{inc.nombre || 'Sin nombre'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {inc.telefono || inc.tel_key}
+                      {inc.user_id && <> · cuenta #{inc.user_id}</>}
+                    </div>
+                  </div>
+                  <button onClick={() => habilitar(inc)} disabled={habilitando === inc.id}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+                    style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', borderColor: 'rgba(34,197,94,0.3)' }}>
+                    <UserCheck className="w-4 h-4" />
+                    {habilitando === inc.id ? '...' : 'Habilitar'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Los jugadores salen de la lista al habilitarlos manualmente, o automáticamente tras 30 días sin faltas y 2 turnos asistidos.
+          </p>
         </div>
       )}
 

@@ -50,7 +50,11 @@ async function getSettings(req, res) {
       include: [{ model: Field, as: 'fields' }],
     });
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
-    res.json(complex);
+
+    // MercadoPago es sensible: solo el administrador general ve el token.
+    const data = complex.toJSON();
+    if (req.user?.rol !== 'general_admin') delete data.mercadopago_token;
+    res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -60,6 +64,22 @@ async function updateSettings(req, res) {
   try {
     const complex = await Complex.findByPk(req.params.complexId);
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+
+    // Solo el administrador general puede modificar el token de MercadoPago.
+    if (req.user?.rol !== 'general_admin') delete req.body.mercadopago_token;
+
+    // Límite de inasistencias por mes: solo admins (general/complex), validado.
+    if (req.body.max_inasistencias_mes !== undefined) {
+      if (req.user?.rol === 'collaborator') {
+        delete req.body.max_inasistencias_mes;
+      } else {
+        const n = parseInt(req.body.max_inasistencias_mes, 10);
+        if (!Number.isInteger(n) || n < 1 || n > 99) {
+          return res.status(400).json({ message: 'El límite de inasistencias debe ser un número entre 1 y 99.' });
+        }
+        req.body.max_inasistencias_mes = n;
+      }
+    }
 
     // Validar/normalizar el WhatsApp de contacto de la cancha si viene en el body.
     // Vacío/null → eliminar el número (el botón deja de mostrarse en el chatbot).

@@ -874,18 +874,13 @@ async function _sendWelcome(ctx, to) {
   const complex = await Complex.findByPk(ctx.clubId, { attributes: ['nombre'] });
   const nombre = complex?.nombre || 'nosotros';
 
-  // Saludo + pregunta + menú numerado (el usuario puede RESPONDER con el número).
+  // Saludo simple (sin listar las opciones en el texto).
   await send({
     to, type: 'text',
     text: {
       body:
         `${saludoActual()}, gracias por comunicarte con *${nombre}* 👋\n\n` +
-        `*¿En qué te podemos ayudar?*\n\n` +
-        `1️⃣ Comunicarse con la cancha\n` +
-        `2️⃣ Turnos por la Web\n` +
-        `3️⃣ Turnos por WhatsApp\n` +
-        `4️⃣ Ver mis turnos\n\n` +
-        `_Respondé con el número (1, 2, 3 o 4) o tocá "Ver opciones"._`,
+        `_Recordá tocar las opciones desplegables como "Ver Opciones"._`,
     },
   });
 
@@ -1026,6 +1021,16 @@ async function _sendContactButton(ctx, to) {
 
 async function _sendDaysMenu(ctx, to) {
   const send = p => wa.sendMessage(p, ctx.creds);
+
+  // Bloqueo por inasistencias: se avisa al INICIO del flujo (no al confirmar).
+  const bloqueo = await evaluarBloqueoInasistencias(ctx.clubId, { telefono: to });
+  if (bloqueo.blocked) {
+    await send({ to, type: 'text', text: { body: `⛔ ${bloqueo.mensaje}` } });
+    const complex = await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] });
+    if (complex?.whatsapp_contacto) await send(wa.buildContactCanchaMessage(to, complex.whatsapp_contacto));
+    return;
+  }
+
   await send(wa.buildDaysListMessage(to, getNext8Days()));
 }
 

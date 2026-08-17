@@ -5,6 +5,7 @@ const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const { todayAR } = require('../utils/time');
 const { yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
+const { registrarInasistencia, reevaluarTrasCorreccion, listarIncumplidos, habilitarManual } = require('../utils/inasistencias');
 
 // Reserva originada por WhatsApp (para avisar la cancelación al número del cliente)
 function esReservaWhatsApp(booking) {
@@ -523,6 +524,13 @@ async function markNoShow(req, res) {
 
     await booking.update({ estado: 'no_asistido' });
 
+    // Actualizar la lista de incumplidos (puede incorporar al jugador).
+    await registrarInasistencia(complexId, {
+      userId:   booking.user_id,
+      telefono: booking.telefono_cliente,
+      nombre:   booking.nombre_cliente,
+    }).catch(err => console.error('[inasistencias] registrar:', err.message));
+
     await Operation.create({
       complex_id:  complexId,
       tipo:        'cancelacion',
@@ -556,6 +564,12 @@ async function correctNoShow(req, res) {
 
     await booking.update({ estado: 'confirmado' });
 
+    // Si con esta corrección ya no supera el límite, sale de la lista de incumplidos.
+    await reevaluarTrasCorreccion(complexId, {
+      userId:   booking.user_id,
+      telefono: booking.telefono_cliente,
+    }).catch(err => console.error('[inasistencias] reevaluar:', err.message));
+
     await Operation.create({
       complex_id:  complexId,
       tipo:        'ajuste',
@@ -569,4 +583,32 @@ async function correctNoShow(req, res) {
   }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getByComplex, create, update, remove };
+/**
+ * GET /api/agenda/:complexId/incumplidos — admins.
+ * Lista de jugadores incumplidos (activos) por reiteradas inasistencias.
+ */
+async function getIncumplidos(req, res) {
+  try {
+    const list = await listarIncumplidos(req.params.complexId);
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * PATCH /api/agenda/:complexId/incumplidos/:id/habilitar — SOLO complex_admin/general_admin.
+ * Habilita manualmente al jugador (lo saca de la lista de incumplidos).
+ */
+async function habilitarIncumplido(req, res) {
+  try {
+    const { complexId, id } = req.params;
+    const entry = await habilitarManual(complexId, id);
+    if (!entry) return res.status(404).json({ message: 'No encontrado en la lista.' });
+    res.json({ message: 'Jugador habilitado para agendar nuevamente.', entry });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getIncumplidos, habilitarIncumplido, getByComplex, create, update, remove };

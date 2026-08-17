@@ -6,6 +6,8 @@ export const publicService = {
   getComplex:      (id)               => api.get(`/public/complexes/${id}`),
   getSlots:        (id, date)         => api.get(`/public/complexes/${id}/slots`, { params: { date } }),
   reserve:         (complexId, data)  => api.post(`/public/complexes/${complexId}/reservar`, data),
+  // Verifica el bloqueo por inasistencias ANTES de reservar
+  checkBloqueo:    (complexId)        => api.get(`/public/complexes/${complexId}/bloqueo-inasistencias`),
   getMyBookings:   ()                 => api.get('/public/my-bookings'),
   cancelMyBooking: (id)               => api.put(`/public/my-bookings/${id}/cancelar`),
   registerComplex: (data)             => api.post('/public/register-complex', data),

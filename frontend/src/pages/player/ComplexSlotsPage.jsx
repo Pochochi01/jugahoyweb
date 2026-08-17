@@ -92,8 +92,17 @@ export default function ComplexSlotsPage() {
     }
   };
 
-  const handleBook = (slot, field) => {
+  const handleBook = async (slot, field) => {
     if (!user) { window.location.href = '/login'; return; }
+    // Verificar bloqueo por inasistencias ANTES de abrir el formulario de reserva.
+    try {
+      const b = await publicService.checkBloqueo(id);
+      if (b?.blocked) {
+        setHoraModal(null);
+        setBloqueo({ message: b.message, whatsapp: b.whatsapp });
+        return;
+      }
+    } catch { /* si falla el chequeo, seguimos: el backend igual valida al reservar */ }
     setHoraModal(null); // cerrar el modal de selección de cancha si estaba abierto
     setSelected({ slot: { ...slot, field_id: field.id, fecha: date }, field });
   };

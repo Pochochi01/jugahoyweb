@@ -17,6 +17,10 @@ router.patch('/:complexId/no-asistido/:bookingId', requireComplexAccess, require
 // Corregir asistencia (no_asistido → confirmado): SOLO administradores, no colaboradores.
 router.patch('/:complexId/asistio/:bookingId', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.correctNoShow);
 
+// Lista de incumplidos + habilitación manual (SOLO administradores).
+router.get('/:complexId/incumplidos', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.getIncumplidos);
+router.patch('/:complexId/incumplidos/:id/habilitar', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.habilitarIncumplido);
+
 // Legacy
 router.get('/:complexId',        requireComplexAccess, requirePermission('agenda'), ctrl.getByComplex);
 router.post('/:complexId',       requireComplexAccess, requirePermission('agenda'), ctrl.create);

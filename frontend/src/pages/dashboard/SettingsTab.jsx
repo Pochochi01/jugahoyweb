@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { settingsService } from '../../services/settingsService';
+import { useAuth } from '../../context/AuthContext';
 import {
   Save, Plus, X, Wind, Home, Pencil, Trash2, Check,
   Eye, EyeOff, Power, PowerOff, Clock, ChevronDown, ChevronUp,
@@ -782,6 +783,8 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
 
 // ── tab principal ─────────────────────────────────────────────────────────────
 export default function SettingsTab({ complexId, onUpdate }) {
+  // MercadoPago y WhatsApp: SOLO general_admin. Límite de inasistencias: admins.
+  const { isGeneralAdmin, isComplexAdmin } = useAuth();
   const [form,          setForm]          = useState(null);
   const [fields,        setFields]        = useState([]);
   const [saving,        setSaving]        = useState(false);
@@ -836,6 +839,8 @@ export default function SettingsTab({ complexId, onUpdate }) {
         descripcion: form.descripcion,
         whatsapp_contacto,   // null = eliminar (el botón deja de mostrarse)
         link_invitacion,     // null = eliminar (el chatbot usa la home por defecto)
+        // Límite de inasistencias: solo lo mandan los admins (el input no se muestra a colaboradores).
+        ...(isComplexAdmin ? { max_inasistencias_mes: parseInt(form.max_inasistencias_mes, 10) || 2 } : {}),
       };
       const updated = await settingsService.update(complexId, payload);
       setForm(f => ({
@@ -907,6 +912,22 @@ export default function SettingsTab({ complexId, onUpdate }) {
             onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} />
         </div>
 
+        {/* Límite de inasistencias por mes — solo administradores */}
+        {isComplexAdmin && (
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              Límite de inasistencias por mes
+            </label>
+            <input type="number" min="1" max="99" step="1" className="input w-32"
+              value={form.max_inasistencias_mes ?? 2}
+              onChange={e => setForm(f => ({ ...f, max_inasistencias_mes: e.target.value }))} />
+            <p className="text-xs text-muted-foreground mt-1">
+              Al alcanzar esta cantidad de turnos "no asistidos" en un mes, el usuario no puede agendar nuevos turnos.
+            </p>
+          </div>
+        )}
+
         {/* WhatsApp de contacto — botón "Comunicate con la cancha" del chatbot */}
         <div>
           <label className="label flex items-center gap-1.5">
@@ -953,11 +974,13 @@ export default function SettingsTab({ complexId, onUpdate }) {
         </button>
       </form>
 
-      {/* MercadoPago */}
-      <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
-
-      {/* WhatsApp / Meta (credenciales propias del club) */}
-      <WhatsAppCard complexId={complexId} />
+      {/* MercadoPago y WhatsApp — SOLO el administrador general */}
+      {isGeneralAdmin && (
+        <>
+          <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
+          <WhatsAppCard complexId={complexId} />
+        </>
+      )}
 
       {/* canchas */}
       <div className="card">

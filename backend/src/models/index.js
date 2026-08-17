@@ -22,6 +22,7 @@ const Localidad       = require('./Localidad');
 const Favorite        = require('./Favorite');
 const PushSubscription = require('./PushSubscription');
 const ClubIntegration  = require('./ClubIntegration');
+const Blacklist        = require('./Blacklist');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -137,4 +138,6 @@ module.exports = {
   PushSubscription,
   // Integraciones por club (multi-tenant)
   ClubIntegration,
+  // Lista de incumplidos (inasistencias)
+  Blacklist,
 };

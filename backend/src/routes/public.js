@@ -15,6 +15,7 @@ router.get('/provincias',               localidadesCtrl.getProvincias);
 router.get('/localidades',              localidadesCtrl.getLocalidades);
 
 // Requieren autenticación (cualquier rol)
+router.get('/complexes/:complexId/bloqueo-inasistencias', authenticate, ctrl.checkInasistencias);
 router.post('/complexes/:complexId/reservar', authenticate, ctrl.playerReserve);
 router.get('/my-bookings',                    authenticate, ctrl.getMyBookings);
 router.put('/my-bookings/:id/cancelar',       authenticate, ctrl.cancelMyBooking);

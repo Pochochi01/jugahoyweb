@@ -328,6 +328,28 @@ async function playerReserve(req, res) {
 }
 
 // ── mis turnos ────────────────────────────────────────────────────────────────
+/**
+ * GET /api/public/complexes/:complexId/bloqueo-inasistencias — requiere auth.
+ * Verifica, ANTES de reservar, si el jugador está bloqueado por inasistencias.
+ * Devuelve { blocked, message, whatsapp } para mostrar el aviso al identificarlo.
+ */
+async function checkInasistencias(req, res) {
+  try {
+    const { complexId } = req.params;
+    const bloqueo = await evaluarBloqueoInasistencias(complexId, {
+      userId: req.user.id, telefono: req.user.telefono,
+    });
+    let whatsapp = null;
+    if (bloqueo.blocked) {
+      const complex = await Complex.findByPk(complexId, { attributes: ['whatsapp_contacto'] });
+      whatsapp = complex?.whatsapp_contacto ? String(complex.whatsapp_contacto).replace(/\D/g, '') : null;
+    }
+    res.json({ blocked: bloqueo.blocked, message: bloqueo.mensaje, whatsapp });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
 async function getMyBookings(req, res) {
   try {
     // Unifica ambos canales:
@@ -523,4 +545,4 @@ async function registerComplex(req, res) {
   }
 }
 
-module.exports = { getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex };
+module.exports = { getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex, checkInasistencias };

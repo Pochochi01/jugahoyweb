@@ -14,6 +14,8 @@ const Complex = sequelize.define('Complex', {
   whatsapp_contacto: { type: DataTypes.STRING(20), allowNull: true, defaultValue: null },
   // URL del botón "Ver la web" del chatbot. NULL = usar la home por defecto.
   link_invitacion: { type: DataTypes.STRING(500), allowNull: true, defaultValue: null },
+  // Máximo de turnos "no asistidos" por usuario en un mes antes de bloquear.
+  max_inasistencias_mes: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 2 },
   email: { type: DataTypes.STRING(150) },
   prestaciones: { type: DataTypes.JSON },
   logo_url: { type: DataTypes.STRING(255) },
