@@ -23,6 +23,10 @@ const Favorite        = require('./Favorite');
 const PushSubscription = require('./PushSubscription');
 const ClubIntegration  = require('./ClubIntegration');
 const Blacklist        = require('./Blacklist');
+const CantinaProducto       = require('./CantinaProducto');
+const CantinaVenta          = require('./CantinaVenta');
+const CantinaDetalleVenta   = require('./CantinaDetalleVenta');
+const CantinaMovimiento     = require('./CantinaMovimiento');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -121,6 +125,14 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 Complex.hasOne(ClubIntegration,    { foreignKey: 'club_id', as: 'integrations' });
 ClubIntegration.belongsTo(Complex, { foreignKey: 'club_id', as: 'club' });
 
+// ── Cantina ──
+CantinaVenta.hasMany(CantinaDetalleVenta,   { foreignKey: 'venta_id', as: 'detalle', onDelete: 'CASCADE' });
+CantinaDetalleVenta.belongsTo(CantinaVenta, { foreignKey: 'venta_id', as: 'venta' });
+CantinaDetalleVenta.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'producto' });
+CantinaProducto.hasMany(CantinaDetalleVenta,   { foreignKey: 'producto_id', as: 'ventas' });
+CantinaProducto.hasMany(CantinaMovimiento,  { foreignKey: 'producto_id', as: 'movimientos', onDelete: 'CASCADE' });
+CantinaMovimiento.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'producto' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -140,4 +152,6 @@ module.exports = {
   ClubIntegration,
   // Lista de incumplidos (inasistencias)
   Blacklist,
+  // Cantina
+  CantinaProducto, CantinaVenta, CantinaDetalleVenta, CantinaMovimiento,
 };

@@ -5,6 +5,8 @@ const PERMISOS_DEFAULT = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
   cancelar_turnos: false,   // permiso específico para cancelar turnos
+  cantina_gestion: false,   // Cantina: CRUD de productos y stock (encargado)
+  cantina_ventas: false,    // Cantina: registrar ventas (vendedor)
 };
 
 async function getAll(req, res) {

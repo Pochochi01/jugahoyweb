@@ -8,12 +8,14 @@ import {
 const PERMISOS_DEF = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
-  cancelar_turnos: false,
+  cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false,
 };
 const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
   configuracion: 'Configuración', colaboradores: 'Colaboradores', estadisticas: 'Estadísticas',
   cancelar_turnos: 'Cancelar turnos',
+  cantina_gestion: 'Cantina — Gestión (stock/productos)',
+  cantina_ventas: 'Cantina — Ventas',
 };
 
 const FORM_INICIAL = {

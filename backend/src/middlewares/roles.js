@@ -62,4 +62,18 @@ function requirePermission(permiso) {
   };
 }
 
-module.exports = { requireRole, requireComplexAccess, requirePermission };
+// Como requirePermission, pero pasa si el colaborador tiene AL MENOS UNO de los permisos.
+function requireAnyPermission(...permisos) {
+  return (req, res, next) => {
+    const { rol } = req.user;
+    if (rol === 'general_admin' || rol === 'complex_admin') return next();
+    if (rol === 'collaborator') {
+      const col = req.collaborator;
+      if (col && permisos.some(p => col.permisos?.[p])) return next();
+      return res.status(403).json({ message: `Sin permiso para: ${permisos.join(' o ')}`, permisos });
+    }
+    return res.status(403).json({ message: 'Acceso denegado' });
+  };
+}
+
+module.exports = { requireRole, requireComplexAccess, requirePermission, requireAnyPermission };

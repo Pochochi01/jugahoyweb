@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -17,6 +17,7 @@ import ImagesTab        from './ImagesTab';
 import StatsTab         from './StatsTab';
 import UsersTab         from './UsersTab';
 import InvitesTab       from './InvitesTab';
+import CantinaTab       from './CantinaTab';
 
 // permiso: clave usada en Collaborator.permisos
 const TABS = [
@@ -24,6 +25,7 @@ const TABS = [
   { key: 'invitaciones',  label: 'Invitaciones',  icon: Link2,       permiso: 'agenda' },
   { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones' },
   { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja' },
+  { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas' },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
@@ -59,6 +61,8 @@ export default function Dashboard() {
       if (user?.rol === 'general_admin' || user?.rol === 'complex_admin') return true;
       if (isCollaborator && selectedComplex) {
         const permisos = getCollaboratorPermisos(selectedComplex.id);
+        // tab.permisos (array) → visible si tiene AL MENOS UNO; tab.permiso (único).
+        if (tab.permisos) return tab.permisos.some(p => permisos?.[p] === true);
         return permisos?.[tab.permiso] === true;
       }
       return false;
@@ -119,6 +123,7 @@ export default function Dashboard() {
       case 'agenda':        return <AgendaTab {...props} />;
       case 'operaciones':   return <OperationsTab {...props} />;
       case 'caja':          return <CashTab {...props} />;
+      case 'cantina':       return <CantinaTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return <SettingsTab {...props} onUpdate={c => setSelectedComplex(c)} />;
       case 'colaboradores': return <CollaboratorsTab {...props} />;
