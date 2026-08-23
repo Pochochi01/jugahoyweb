@@ -19,6 +19,13 @@ async function start() {
     const server = app.listen(PORT, () => {
       console.log(`✓ Servidor corriendo en http://localhost:${PORT}`);
     });
+
+    // Recordatorios automáticos de turnos (módulo opcional lista/recordatorios).
+    try {
+      require('./src/services/reminderService').startReminderScheduler(5);
+    } catch (err) {
+      console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
+    }
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         console.error(`✗ El puerto ${PORT} ya está en uso. Cerrá el proceso anterior o cambiá PORT en .env`);

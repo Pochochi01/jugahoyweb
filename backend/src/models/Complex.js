@@ -24,6 +24,9 @@ const Complex = sequelize.define('Complex', {
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
   mercadopago_token: { type: DataTypes.STRING(255) },
   cuentas_bancarias: { type: DataTypes.JSON },
+  // Módulo opcional (pago): lista de espera en el chatbot + recordatorios de turnos.
+  // Lo habilita el administrador general al abonarse el extra.
+  modulo_lista_recordatorios: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, { tableName: 'complexes' });
 
 module.exports = Complex;

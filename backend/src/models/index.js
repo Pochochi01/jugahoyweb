@@ -29,6 +29,7 @@ const CantinaDetalleVenta   = require('./CantinaDetalleVenta');
 const CantinaMovimiento     = require('./CantinaMovimiento');
 const RecurringBooking      = require('./RecurringBooking');
 const BookingConsumo        = require('./BookingConsumo');
+const Waitlist              = require('./Waitlist');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -143,6 +144,10 @@ Booking.hasMany(BookingConsumo,   { foreignKey: 'booking_id', as: 'consumos', on
 BookingConsumo.belongsTo(Booking, { foreignKey: 'booking_id', as: 'booking' });
 BookingConsumo.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'producto' });
 
+// ── Lista de espera ──
+Waitlist.belongsTo(Field,   { foreignKey: 'field_id',   as: 'field' });
+Waitlist.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -168,4 +173,6 @@ module.exports = {
   RecurringBooking,
   // Consumos por turno
   BookingConsumo,
+  // Lista de espera
+  Waitlist,
 };

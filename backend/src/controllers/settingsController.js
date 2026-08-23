@@ -68,6 +68,13 @@ async function updateSettings(req, res) {
     // Solo el administrador general puede modificar el token de MercadoPago.
     if (req.user?.rol !== 'general_admin') delete req.body.mercadopago_token;
 
+    // El módulo "Lista de espera + Recordatorios" es un extra pago: solo el
+    // administrador general puede habilitarlo/deshabilitarlo.
+    if (req.user?.rol !== 'general_admin') delete req.body.modulo_lista_recordatorios;
+    else if (req.body.modulo_lista_recordatorios !== undefined) {
+      req.body.modulo_lista_recordatorios = !!req.body.modulo_lista_recordatorios;
+    }
+
     // Límite de inasistencias por mes: solo admins (general/complex), validado.
     if (req.body.max_inasistencias_mes !== undefined) {
       if (req.user?.rol === 'collaborator') {

@@ -6,6 +6,7 @@ const {
 } = require('../models');
 const recurring = require('../services/recurringService');
 const caja = require('../services/cajaService');
+const waitlist = require('../services/waitlistService');
 const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
@@ -216,7 +217,7 @@ async function cancelBooking(req, res) {
     const booking = await Booking.findByPk(bookingId, {
       include: [
         { model: TimeSlot, as: 'timeSlots' },
-        { model: Field, as: 'field', attributes: ['nombre'] },
+        { model: Field, as: 'field', attributes: ['nombre', 'deporte'] },
       ],
       transaction: t,
     });
@@ -224,6 +225,9 @@ async function cancelBooking(req, res) {
       await t.rollback();
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
+    // Horas liberadas (para avisar a la lista de espera tras el commit).
+    const horasLiberadas = booking.timeSlots.map(s => s.hora);
+    const deporteCancha = booking.field?.deporte;
 
     // El admin (y el colaborador con permiso) pueden cancelar cuando quieran —
     // NO aplica la regla de las 2 h — PERO un turno que ya comenzó o pasó no
@@ -258,6 +262,12 @@ async function cancelBooking(req, res) {
     }
 
     await t.commit();
+
+    // Lista de espera: avisar a los inscriptos por cada hora liberada (best-effort).
+    for (const hora of horasLiberadas) {
+      waitlist.notificarLiberado(complexId, { field_id: booking.field_id, fecha: booking.fecha, hora, deporte: deporteCancha })
+        .catch(err => console.error('[waitlist] notificar:', err.message));
+    }
 
     // Push al jugador: su turno fue cancelado por el complejo (si era reserva web).
     if (booking.user_id) {

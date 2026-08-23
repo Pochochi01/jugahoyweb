@@ -52,6 +52,9 @@ const Booking = sequelize.define('Booking', {
   cobrado_at:    { type: DataTypes.DATE, allowNull: true, defaultValue: null },
   // Detalle del cobro: { jugadores, por_jugador, total, cancha, consumos, pagos:[bool] }
   cobro_detalle: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
+
+  // Recordatorio automático (2 h antes) ya enviado — evita duplicados.
+  recordatorio_enviado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, { tableName: 'bookings' });
 
 module.exports = Booking;

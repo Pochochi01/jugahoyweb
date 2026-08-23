@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Save, Plus, X, Wind, Home, Pencil, Trash2, Check,
   Eye, EyeOff, Power, PowerOff, Clock, ChevronDown, ChevronUp,
-  CreditCard, ShieldCheck, ExternalLink, MessageCircle, AlertTriangle, Copy,
+  CreditCard, ShieldCheck, ExternalLink, MessageCircle, AlertTriangle, Copy, Bell,
 } from 'lucide-react';
 
 // ── WhatsApp de contacto (chatbot) — misma validación que el backend ──────────
@@ -841,6 +841,8 @@ export default function SettingsTab({ complexId, onUpdate }) {
         link_invitacion,     // null = eliminar (el chatbot usa la home por defecto)
         // Límite de inasistencias: solo lo mandan los admins (el input no se muestra a colaboradores).
         ...(isComplexAdmin ? { max_inasistencias_mes: parseInt(form.max_inasistencias_mes, 10) || 2 } : {}),
+        // Módulo pago (lista de espera + recordatorios): solo lo habilita el general_admin.
+        ...(isGeneralAdmin ? { modulo_lista_recordatorios: !!form.modulo_lista_recordatorios } : {}),
       };
       const updated = await settingsService.update(complexId, payload);
       setForm(f => ({
@@ -925,6 +927,27 @@ export default function SettingsTab({ complexId, onUpdate }) {
             <p className="text-xs text-muted-foreground mt-1">
               Al alcanzar esta cantidad de turnos "no asistidos" en un mes, el usuario no puede agendar nuevos turnos.
             </p>
+          </div>
+        )}
+
+        {/* Módulo opcional (pago) — solo administrador general */}
+        {isGeneralAdmin && (
+          <div className="rounded-lg p-3.5" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" className="mt-1 w-4 h-4 accent-primary"
+                checked={!!form.modulo_lista_recordatorios}
+                onChange={e => setForm(f => ({ ...f, modulo_lista_recordatorios: e.target.checked }))} />
+              <div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <Bell className="w-4 h-4 text-primary" />
+                  Módulo Lista de espera + Recordatorios <span className="badge-blue">Extra</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Habilita en el chatbot la <b>lista de espera</b> para turnos ocupados y el envío de
+                  <b> recordatorios automáticos</b> 2 h antes de cada turno. Función paga: activar solo si el complejo abonó el extra.
+                </p>
+              </div>
+            </label>
           </div>
         )}
 

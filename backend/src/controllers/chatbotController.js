@@ -43,6 +43,7 @@ const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto } = require('../utils/canchas');
 const { evaluarCancelacion, avisoAlReservar, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
+const waitlist     = require('../services/waitlistService');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -372,6 +373,43 @@ async function getAvailableByHour(fecha, complexId, duracion = 60) {
   return byHour;
 }
 
+/**
+ * Horarios OCUPADOS (para lista de espera): canchas que no se pueden reservar esa
+ * hora+duración porque algún slot está tomado (pero el horario es válido y futuro).
+ * @returns {Object} { '20:00': [{ fieldId, nombre, deporte, superficie, identificador }], ... }
+ */
+async function getOccupiedByHour(fecha, complexId, duracion = 60) {
+  const fields = await Field.findAll({ where: { complex_id: complexId, activa: true }, order: [['nombre', 'ASC']] });
+  const slotsNecesarios = Math.max(1, Math.ceil(duracion / 60));
+  const byHour = {};
+
+  for (const field of fields) {
+    const permitidas = field.duraciones_permitidas?.length ? field.duraciones_permitidas : [60];
+    if (!permitidas.includes(duracion)) continue;
+
+    const apertura = field.hora_apertura || '08:00';
+    const cierre   = field.hora_cierre   || '22:00';
+    const allHoras = generateSlots(apertura, cierre);
+    const horasSet = new Set(allHoras);
+
+    const ocupados = await TimeSlot.findAll({ where: { field_id: field.id, fecha, estado: 'ocupado' }, attributes: ['hora'] });
+    const ocupadosSet = new Set(ocupados.map(s => s.hora));
+
+    for (const hora of allHoras) {
+      if (!hora.endsWith(':00')) continue;
+      const chunk = Array.from({ length: slotsNecesarios }, (_, i) => addMinutes(hora, i * 60));
+      const cabe    = chunk.every(h => horasSet.has(h));
+      const ocupado = chunk.some(h => ocupadosSet.has(h));   // al menos un slot tomado
+      if (!cabe || !ocupado || isPast(fecha, hora, apertura)) continue;
+      (byHour[hora] ??= []).push({
+        fieldId: field.id, nombre: field.nombre, deporte: field.deporte,
+        superficie: field.superficie, identificador: field.identificador,
+      });
+    }
+  }
+  return byHour;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  REST API handlers
 // ─────────────────────────────────────────────────────────────
@@ -522,7 +560,10 @@ async function cancelBooking(req, res) {
     }
 
     const booking = await Booking.findByPk(booking_id, {
-      include: [{ model: TimeSlot, as: 'timeSlots' }],
+      include: [
+        { model: TimeSlot, as: 'timeSlots' },
+        { model: Field, as: 'field', attributes: ['deporte', 'complex_id'] },
+      ],
       transaction: t,
     });
 
@@ -534,6 +575,7 @@ async function cancelBooking(req, res) {
       await t.rollback();
       return res.status(409).json({ message: 'La reserva ya estaba cancelada.' });
     }
+    const horasLiberadas = booking.timeSlots.map(s => s.hora);
 
     // Verificar que el número de WhatsApp coincida (solo si se proporciona)
     if (telefono_whatsapp && booking.telefono_cliente !== telefono_whatsapp) {
@@ -550,6 +592,15 @@ async function cancelBooking(req, res) {
 
     await booking.update({ estado: 'cancelado' }, { transaction: t });
     await t.commit();
+
+    // Lista de espera: avisar a los inscriptos por cada hora liberada.
+    const complexId = booking.field?.complex_id;
+    if (complexId) {
+      for (const hora of horasLiberadas) {
+        waitlist.notificarLiberado(complexId, { field_id: booking.field_id, fecha: booking.fecha, hora, deporte: booking.field?.deporte })
+          .catch(err => console.error('[waitlist] notificar:', err.message));
+      }
+    }
 
     return res.json({ ok: true, message: 'Reserva cancelada correctamente.' });
 
@@ -812,6 +863,45 @@ async function handleWebhook(req, res) {
         const [fc, dur, hc] = replyId.replace('hr_', '').split('_');
         const hora = `${hc.slice(0, 2)}:${hc.slice(2)}`;
         await _sendCourtsMenu(ctx, from, fechaFromCompact(fc), hora, parseInt(dur));
+        return;
+      }
+
+      // ── Lista de espera (módulo opcional) ──
+      if (replyId.startsWith('wla_')) {
+        // Eligió un turno ocupado → anotarse en la lista de espera
+        if (!(await waitlist.moduloHabilitado(ctx.clubId))) {
+          await send({ to: from, type: 'text', text: { body: 'ℹ️ La *lista de espera* no está disponible en este complejo por el momento.' } });
+          return;
+        }
+        const { fecha, fieldId, hora, duracion } = parseSlotId(replyId.replace('wla_', ''));
+        const field = await Field.findByPk(fieldId, { attributes: ['nombre', 'identificador', 'deporte', 'superficie'] });
+        const pend = pendingName.get(from);
+        const { duplicado } = await waitlist.agregar(ctx.clubId, {
+          field_id: fieldId, deporte: field?.deporte, fecha, hora, duracion,
+          nombre: pend?.name || null, telefono: from,
+        });
+        const canchaLbl = nombreCancha(field?.identificador, field?.nombre) || `Cancha ${fieldId}`;
+        await send({
+          to: from, type: 'text',
+          text: { body:
+            (duplicado ? 'ℹ️ Ya estabas anotado en ' : '✅ Te anotamos en la lista de espera de ') +
+            `*${canchaLbl}* · ${formatFechaLabel(fecha)} ${hora} hs.\n\n` +
+            'Te avisamos por acá si se libera. Podés elegir otro turno de la lista, o escribí *hola* para volver al menú.' },
+        });
+        // Re-mostrar los turnos ocupados para anotarse en más (uno o más).
+        const group = Object.keys(FRANJAS).find(g => FRANJAS[g].test(parseInt(hora)));
+        if (group) await _sendWaitlistMenu(ctx, from, fecha, group, duracion);
+        return;
+      }
+
+      if (replyId.startsWith('wl_')) {
+        // Eligió "Lista de espera" → verificar módulo y mostrar turnos ocupados
+        const [fc, group, dur] = replyId.replace('wl_', '').split('_');
+        if (!(await waitlist.moduloHabilitado(ctx.clubId))) {
+          await send({ to: from, type: 'text', text: { body: 'ℹ️ La *lista de espera* no está disponible en este complejo por el momento.' } });
+          return;
+        }
+        await _sendWaitlistMenu(ctx, from, fechaFromCompact(fc), group, parseInt(dur));
         return;
       }
 
@@ -1102,7 +1192,31 @@ async function _sendHoursMenu(ctx, to, fecha, group, duracion) {
     .filter(h => franja.test(parseInt(h)))
     .sort((a, b) => horaSortKey(a) - horaSortKey(b));
 
+  // Horarios OCUPADOS en la franja → habilitan la opción de lista de espera.
+  const occByHour = await getOccupiedByHour(fecha, ctx.clubId, duracion);
+  const horasOcc  = Object.keys(occByHour).filter(h => franja.test(parseInt(h)));
+  const hayOcupados = horasOcc.length > 0;
+
+  const fc = fechaCompact(fecha);
+  const waitlistRow = {
+    id:          `wl_${fc}_${group}_${duracion}`,
+    title:       '📋 Lista de espera',
+    description: 'Anotarte en turnos ocupados y avisarte si se liberan',
+  };
+
   if (!horas.length) {
+    // Sin horarios libres: si hay ocupados, ofrecer solo la lista de espera.
+    if (hayOcupados) {
+      await send(wa.buildRowsListMessage(to, {
+        headerText:   `⏰ ${formatFechaLabel(fecha)} · ${franja.label}`,
+        bodyText:     `😔 No hay horarios de ${duracionLabel(duracion)} libres en la franja ${franja.label}, pero podés anotarte en la lista de espera de los turnos ocupados.`,
+        footerText:   `Duración: ${duracionLabel(duracion)}`,
+        button:       'Ver opciones',
+        sectionTitle: 'Opciones',
+        rows:         [waitlistRow],
+      }));
+      return;
+    }
     await send({
       to, type: 'text',
       text: { body: `😔 No hay horarios de ${duracionLabel(duracion)} libres en la franja ${franja.label} para el ${formatFechaLabel(fecha)}.\nProbá con otra duración:` },
@@ -1111,20 +1225,64 @@ async function _sendHoursMenu(ctx, to, fecha, group, duracion) {
     return;
   }
 
-  const fc = fechaCompact(fecha);
-  const rows = horas.map(hora => ({
+  let rows = horas.map(hora => ({
     id:          `hr_${fc}_${duracion}_${hora.replace(':', '')}`,
     title:       `${hora} hs`,
     // Canchas libres agrupadas por deporte + superficie (ej. "Futb Sint C1 C3")
     description: formatCanchasAgrupadas(byHour[hora]),
   }));
+  // Deja lugar (≤10 filas) para la opción de lista de espera cuando hay ocupados.
+  if (hayOcupados) rows = [...rows.slice(0, 9), waitlistRow];
 
   await send(wa.buildRowsListMessage(to, {
     headerText:   `⏰ ${formatFechaLabel(fecha)} · ${franja.label}`,
-    bodyText:     `Turnos de ${duracionLabel(duracion)}. Elegí un horario (se indican las canchas libres):`,
+    bodyText:     `Turnos de ${duracionLabel(duracion)}. Elegí un horario (se indican las canchas libres)${hayOcupados ? ' o anotate en lista de espera' : ''}:`,
     footerText:   `Duración: ${duracionLabel(duracion)}`,
     button:       'Ver horarios',
     sectionTitle: 'Horarios disponibles',
+    rows,
+  }));
+}
+
+/**
+ * Menú de lista de espera: canchas/horas OCUPADAS en una franja+duración.
+ * Cada opción anota al usuario en la lista de espera (uno o más).
+ */
+async function _sendWaitlistMenu(ctx, to, fecha, group, duracion) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const franja = FRANJAS[group];
+  if (!franja) return _sendGroupsMenu(ctx, to, fecha);
+
+  const occByHour = await getOccupiedByHour(fecha, ctx.clubId, duracion);
+  const horas = Object.keys(occByHour)
+    .filter(h => franja.test(parseInt(h)))
+    .sort((a, b) => horaSortKey(a) - horaSortKey(b));
+
+  // Una fila por cancha ocupada + hora (distingue deporte en la descripción).
+  const rows = [];
+  for (const hora of horas) {
+    for (const c of occByHour[hora]) {
+      rows.push({
+        id:          `wla_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
+        title:       `${hora} · ${nombreCancha(c.identificador, c.nombre)}`.substring(0, 24),
+        description: `${tipoCanchaCompleto(c.deporte, c.superficie)} · ocupado`.substring(0, 72),
+      });
+      if (rows.length >= 10) break;
+    }
+    if (rows.length >= 10) break;
+  }
+
+  if (!rows.length) {
+    await send({ to, type: 'text', text: { body: '✅ ¡Buenas noticias! Ya no hay turnos ocupados en esa franja. Escribí *hola* para reservar.' } });
+    return;
+  }
+
+  await send(wa.buildRowsListMessage(to, {
+    headerText:   `📋 Lista de espera · ${franja.label}`,
+    bodyText:     'Elegí un turno ocupado para anotarte. Podés elegir varios; te avisamos si se libera alguno.',
+    footerText:   'Elegí uno o más turnos',
+    button:       'Ver turnos ocupados',
+    sectionTitle: 'Turnos ocupados',
     rows,
   }));
 }
