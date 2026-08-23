@@ -145,4 +145,19 @@ async function deleteSubscription(req, res) {
   }
 }
 
-module.exports = { getComplexes, getStats, createSubscription, updateSubscription, toggleSubscription, deleteSubscription };
+// ── Habilita/deshabilita el módulo opcional (lista de espera + recordatorios) ──
+async function toggleModulo(req, res) {
+  try {
+    const complex = await Complex.findByPk(req.params.id);
+    if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+    const habilitado = req.body?.habilitado !== undefined
+      ? !!req.body.habilitado
+      : !complex.modulo_lista_recordatorios;
+    await complex.update({ modulo_lista_recordatorios: habilitado });
+    res.json({ id: complex.id, modulo_lista_recordatorios: habilitado });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getComplexes, getStats, createSubscription, updateSubscription, toggleSubscription, deleteSubscription, toggleModulo };

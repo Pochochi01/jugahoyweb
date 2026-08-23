@@ -7,4 +7,5 @@ export const adminService = {
   updateSubscription:  (id, data) => api.put(`/admin/subscriptions/${id}`, data),
   toggleSubscription:  (id)       => api.patch(`/admin/subscriptions/${id}/toggle`),
   deleteSubscription:  (id)       => api.delete(`/admin/subscriptions/${id}`),
+  toggleModulo:        (id, habilitado) => api.patch(`/admin/complexes/${id}/modulo`, { habilitado }),
 };

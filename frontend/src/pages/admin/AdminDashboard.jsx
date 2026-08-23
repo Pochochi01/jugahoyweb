@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Building2, DollarSign, Power, PowerOff, Pencil,
   Trash2, Plus, X, CheckCircle, XCircle, LayoutDashboard,
-  TrendingUp, AlertCircle, Filter, LogOut,
+  TrendingUp, AlertCircle, Filter, LogOut, Bell, BellOff,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
@@ -129,7 +129,7 @@ function SubscriptionModal({ complex, onSave, onClose }) {
 }
 
 // ── Fila de complejo ──────────────────────────────────────────────────────────
-function ComplexRow({ complex, onEdit, onToggle, onDelete, toggling, deleting }) {
+function ComplexRow({ complex, onEdit, onToggle, onDelete, onToggleModulo, toggling, deleting, togglingModulo }) {
   const [confirm, setConfirm] = useState(false);
   const sub = complex.subscription;
   const isActivo = complex.activo && sub?.estado === 'activo';
@@ -221,6 +221,24 @@ function ComplexRow({ complex, onEdit, onToggle, onDelete, toggling, deleting })
         )}
       </td>
 
+      {/* Módulo extra (lista de espera + recordatorios) */}
+      <td className="px-4 py-3">
+        {(() => {
+          const on = !!complex.modulo_lista_recordatorios;
+          return (
+            <button onClick={() => onToggleModulo(complex, !on)} disabled={togglingModulo}
+              title={on ? 'Módulo habilitado — clic para deshabilitar' : 'Módulo deshabilitado — clic para habilitar'}
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-50
+                ${on
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                  : 'bg-gray-50 text-muted-foreground border-border hover:bg-gray-100'}`}>
+              {on ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+              {on ? 'Habilitado' : 'Deshabilitado'}
+            </button>
+          );
+        })()}
+      </td>
+
       {/* Acciones */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
@@ -280,6 +298,7 @@ export default function AdminDashboard() {
   const [modal,     setModal]     = useState(null); // complex seleccionado para modal
   const [toggling,  setToggling]  = useState(null);
   const [deleting,  setDeleting]  = useState(null);
+  const [togglingModulo, setTogglingModulo] = useState(null);
   const [toast,     setToast]     = useState(null);
   const [filtro,    setFiltro]    = useState('todos'); // todos | activos | inactivos | sin_sub
 
@@ -317,6 +336,22 @@ export default function AdminDashboard() {
       showToast('error', err.message || 'Error al cambiar estado.');
     } finally {
       setToggling(null);
+    }
+  };
+
+  const handleToggleModulo = async (complex, habilitado) => {
+    setTogglingModulo(complex.id);
+    // Optimista: refleja el cambio en la tabla al instante.
+    setComplexes(cs => cs.map(c => c.id === complex.id ? { ...c, modulo_lista_recordatorios: habilitado } : c));
+    try {
+      await adminService.toggleModulo(complex.id, habilitado);
+      showToast('success', `Módulo ${habilitado ? 'habilitado' : 'deshabilitado'} para ${complex.nombre}.`);
+    } catch (err) {
+      // Revertir si falla.
+      setComplexes(cs => cs.map(c => c.id === complex.id ? { ...c, modulo_lista_recordatorios: !habilitado } : c));
+      showToast('error', err.response?.data?.message || err.message || 'Error al cambiar el módulo.');
+    } finally {
+      setTogglingModulo(null);
     }
   };
 
@@ -433,7 +468,7 @@ export default function AdminDashboard() {
               <table className="w-full">
                 <thead className="bg-muted/50 border-b border-border">
                   <tr>
-                    {['Complejo', 'Titular', 'Canchas', 'Precio/mes', 'Vencimiento', 'Estado', 'Acciones'].map(h => (
+                    {['Complejo', 'Titular', 'Canchas', 'Precio/mes', 'Vencimiento', 'Estado', 'Módulo extra', 'Acciones'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         {h}
                       </th>
@@ -448,8 +483,10 @@ export default function AdminDashboard() {
                       onEdit={setModal}
                       onToggle={handleToggle}
                       onDelete={handleDelete}
+                      onToggleModulo={handleToggleModulo}
                       toggling={toggling === c.id}
                       deleting={deleting === c.id}
+                      togglingModulo={togglingModulo === c.id}
                     />
                   ))}
                 </tbody>

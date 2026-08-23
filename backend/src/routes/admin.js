@@ -11,5 +11,6 @@ router.post('/subscriptions',         ctrl.createSubscription);
 router.put('/subscriptions/:id',      ctrl.updateSubscription);
 router.patch('/subscriptions/:id/toggle', ctrl.toggleSubscription);
 router.delete('/subscriptions/:id',   ctrl.deleteSubscription);
+router.patch('/complexes/:id/modulo', ctrl.toggleModulo);
 
 module.exports = router;
