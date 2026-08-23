@@ -853,15 +853,32 @@ async function cobrarTurno(req, res) {
     const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
     const cancha = num(booking.monto);
     const total = cancha + totalConsumos;
-    const metodo = metodo_pago || booking.metodo_pago || 'efectivo';
+    const metodoValido = m => ['efectivo', 'transferencia', 'mercadopago', 'tarjeta'].includes(m);
+    const metodo = metodoValido(metodo_pago) ? metodo_pago : (booking.metodo_pago || 'efectivo');
     const nJug = Math.max(1, parseInt(jugadores) || 1);
+    const por_jugador = Math.round((total / nJug) * 100) / 100;
+    const canchaShare = cancha / nJug;
+
+    // Normaliza los pagos por jugador: soporta [bool] (versión previa) y
+    // [{ pagado, metodo }]. Si no se envía nada, se asume que todos pagaron con
+    // el método global (comportamiento previo: cobro del total).
+    const sinDetalle = !Array.isArray(pagos) || pagos.length === 0;
+    const pagosNorm = Array.from({ length: nJug }, (_, i) => {
+      if (sinDetalle) return { pagado: true, metodo };
+      const p = pagos[i];
+      if (typeof p === 'boolean') return { pagado: p, metodo };
+      const pagado = !!(p && p.pagado);
+      const m = p && metodoValido(p.metodo) ? p.metodo : metodo;
+      return { pagado, metodo: m };
+    });
+    const pagadoTotal = Math.round(pagosNorm.filter(p => p.pagado).length * por_jugador * 100) / 100;
 
     // Consumos → venta de cantina (para reportes y caja). El stock ya se descontó
     // al agregarlos, por eso NO se generan movimientos nuevos acá.
     if (consumos.length > 0) {
       const venta = await CantinaVenta.create({
         complex_id: complexId, subtotal: totalConsumos, descuento: 0, total: totalConsumos,
-        metodo_pago: metodo === 'transferencia' || metodo === 'mercadopago' || metodo === 'tarjeta' ? metodo : 'efectivo',
+        metodo_pago: metodoValido(metodo) && metodo !== 'efectivo' ? metodo : 'efectivo',
         estado: 'completada', usuario_id: req.user.id, notas: `Consumos turno #${booking.id} — ${booking.nombre_cliente}`,
       }, { transaction: t });
       for (const c of consumos) {
@@ -877,31 +894,42 @@ async function cobrarTurno(req, res) {
       if (txC) await venta.update({ cash_transaction_id: txC.id }, { transaction: t });
     }
 
-    // Costo de cancha → ingreso de caja categoría 'turno'.
+    // Costo de cancha → ingreso de caja categoría 'turno', DESGLOSADO POR MÉTODO.
+    // La porción de cada jugador se atribuye al método con que pagó (los no pagados
+    // se imputan al método global para que la suma cubra el costo total de cancha).
     if (cancha > 0) {
-      await caja.registrarEnCaja(complexId, {
-        tipo: 'ingreso', concepto: `Turno ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio}`,
-        monto: cancha, metodo_pago: metodo, categoria: 'turno', usuario_id: req.user.id, agenda_id: booking.id,
-      }, t);
+      const porMetodo = {};
+      pagosNorm.forEach(p => {
+        const m = p.pagado ? p.metodo : metodo;
+        porMetodo[m] = (porMetodo[m] || 0) + canchaShare;
+      });
+      const labels = { efectivo: 'Efectivo', transferencia: 'Transferencia', mercadopago: 'MercadoPago', tarjeta: 'Tarjeta' };
+      for (const [m, monto] of Object.entries(porMetodo)) {
+        const montoR = Math.round(monto * 100) / 100;
+        if (montoR <= 0) continue;
+        await caja.registrarEnCaja(complexId, {
+          tipo: 'ingreso',
+          concepto: `Turno ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} (${labels[m] || m})`,
+          monto: montoR, metodo_pago: m, categoria: 'turno', usuario_id: req.user.id, agenda_id: booking.id,
+        }, t);
+      }
     }
 
-    const por_jugador = Math.round((total / nJug) * 100) / 100;
-    const pagosNorm = Array.from({ length: nJug }, (_, i) => Boolean(pagos[i]));
     await booking.update({
       cobrado: true,
       cobrado_at: new Date(),
       metodo_pago: metodo,
-      cobro_detalle: { jugadores: nJug, por_jugador, total, cancha, consumos: totalConsumos, pagos: pagosNorm },
+      cobro_detalle: { jugadores: nJug, por_jugador, total, cancha, consumos: totalConsumos, pagado: pagadoTotal, pagos: pagosNorm },
     }, { transaction: t });
 
     await Operation.create({
       complex_id: complexId, tipo: 'pago',
-      descripcion: `Cobro turno: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} — $${total} (${nJug} jug.)`,
+      descripcion: `Cobro turno: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} — $${total} (${nJug} jug., pagado $${pagadoTotal})`,
       usuario_id: req.user.id, monto: total,
     }, { transaction: t });
 
     await t.commit();
-    res.json({ message: 'Turno cobrado.', total, por_jugador, jugadores: nJug });
+    res.json({ message: 'Turno cobrado.', total, por_jugador, jugadores: nJug, pagado: pagadoTotal });
   } catch (err) { await t.rollback(); res.status(500).json({ message: err.message }); }
 }
 

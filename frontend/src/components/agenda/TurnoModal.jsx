@@ -259,27 +259,42 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
   );
 }
 
-// ── Vista: cobrar (división entre jugadores + slots de pago) ───────────────────
+// ── Vista: cobrar (división entre jugadores + método de pago por jugador) ──────
 function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, saving, setSaving, onBack, onDone, showToast }) {
   const [jugadores, setJugadores] = useState(1);
-  const [pagos,     setPagos]     = useState([false]);
-  const [metodo,    setMetodo]    = useState(b?.metodo_pago || 'efectivo');
+  // Cada jugador: { pagado, metodo }. metodo se asigna al tildar el pago.
+  const [pagos,     setPagos]     = useState([{ pagado: false, metodo: '' }]);
+  const [metodo,    setMetodo]    = useState(b?.metodo_pago || 'efectivo');   // método por defecto del dropdown
 
   // Ajusta la cantidad de slots de pago al cambiar la cantidad de jugadores.
   useEffect(() => {
-    setPagos(prev => Array.from({ length: jugadores }, (_, i) => prev[i] ?? false));
+    setPagos(prev => Array.from({ length: jugadores }, (_, i) => prev[i] ?? { pagado: false, metodo: '' }));
   }, [jugadores]);
 
   const porJugador = jugadores > 0 ? totales.total / jugadores : totales.total;
-  const pagados = pagos.filter(Boolean).length;
+  const pagados    = pagos.filter(p => p.pagado).length;
+  // "Pagado": suma en tiempo real de los jugadores tildados.
+  const pagado     = Math.round(pagados * porJugador * 100) / 100;
+  const pendiente  = Math.round((totales.total - pagado) * 100) / 100;
 
   const setJug = v => setJugadores(Math.max(1, Math.min(50, parseInt(v) || 1)));
-  const togglePago = i => setPagos(p => p.map((x, idx) => idx === i ? !x : x));
+
+  // Al tildar → toma el método del dropdown; al destildar → conserva el método.
+  const togglePago = i => setPagos(p => p.map((x, idx) =>
+    idx === i ? { pagado: !x.pagado, metodo: !x.pagado ? (x.metodo || metodo) : x.metodo } : x));
+  const setMetodoJugador = (i, m) => setPagos(p => p.map((x, idx) => idx === i ? { ...x, metodo: m } : x));
 
   const cobrar = async () => {
+    if (pendiente > 0 && !window.confirm(
+      `Quedan ${money(pendiente)} sin marcar como pagados (${pagados}/${jugadores} jugadores). ¿Confirmar el cobro igualmente?`)) return;
     setSaving(true);
     try {
-      const res = await agendaService.cobrarTurno(complexId, bookingId, { jugadores, pagos, metodo_pago: metodo });
+      const payload = {
+        jugadores,
+        metodo_pago: metodo,
+        pagos: pagos.map(p => ({ pagado: p.pagado, metodo: p.metodo || metodo })),
+      };
+      const res = await agendaService.cobrarTurno(complexId, bookingId, payload);
       showToast?.('success', res?.message || 'Turno cobrado.');
       onDone();
     } catch (err) {
@@ -288,14 +303,29 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
   };
 
   if (yaCobrado) {
+    const cd = b.cobro_detalle || {};
     return (
       <div className="space-y-4">
         <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white"><ArrowLeft className="w-3.5 h-3.5" /> Volver</button>
         <div className="rounded-xl p-4 text-center" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}>
           <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
           <p className="text-white font-bold">Este turno ya fue cobrado</p>
-          <p className="text-sm text-muted-foreground mt-1">Total {money(b.cobro_detalle?.total ?? totales.total)}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Total {money(cd.total ?? totales.total)}{cd.pagado != null && <> · Pagado {money(cd.pagado)}</>}
+          </p>
         </div>
+        {Array.isArray(cd.pagos) && cd.pagos.length > 0 && (
+          <div className="rounded-lg overflow-hidden text-sm" style={DARK.row}>
+            {cd.pagos.map((p, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 border-b border-border/40 last:border-0">
+                <span className="text-white/80">Jugador {i + 1}</span>
+                {p.pagado
+                  ? <span className="flex items-center gap-1.5 text-green-400"><CheckCircle className="w-3.5 h-3.5" /> {METODOS.find(m => m.v === p.metodo)?.l || p.metodo}</span>
+                  : <span className="text-white/40">Sin pagar</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -314,6 +344,20 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
         <div className="flex justify-between text-lg mt-2 pt-2 border-t border-border">
           <span className="text-white font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
         </div>
+        {/* Pagado (dinámico) */}
+        <div className="flex justify-between text-sm mt-1.5">
+          <span className="text-muted-foreground">Pagado <span className="opacity-60">({pagados}/{jugadores})</span></span>
+          <span className={`font-bold ${pendiente > 0 ? 'text-amber-400' : 'text-green-400'}`}>{money(pagado)}</span>
+        </div>
+      </div>
+
+      {/* Método de pago por defecto */}
+      <div>
+        <label className="label">Método de pago</label>
+        <select className="input" value={metodo} onChange={e => setMetodo(e.target.value)}>
+          {METODOS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+        </select>
+        <p className="text-xs text-muted-foreground mt-1">Se asigna a cada jugador al marcar su pago (podés cambiarlo en cada uno).</p>
       </div>
 
       {/* Jugadores */}
@@ -332,32 +376,31 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
         </div>
       </div>
 
-      {/* Slots de pago por jugador */}
+      {/* Slots de pago por jugador (con método individual) */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="label mb-0">Pago por jugador</label>
-          <span className="text-xs text-muted-foreground">{pagados}/{jugadores} pagaron</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {pagos.map((pagado, i) => (
-            <button key={i} onClick={() => togglePago(i)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-              style={pagado
-                ? { background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.35)' }
-                : { background: 'rgba(255,255,255,0.03)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {pagado ? <CheckCircle className="w-4 h-4 shrink-0" /> : <Circle className="w-4 h-4 shrink-0" />}
-              Jug. {i + 1}
-            </button>
+        <label className="label mb-2">Pago por jugador</label>
+        <div className="space-y-1.5">
+          {pagos.map((p, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg"
+              style={p.pagado
+                ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)' }
+                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <button onClick={() => togglePago(i)} className="flex items-center gap-2 shrink-0"
+                style={{ color: p.pagado ? '#4ade80' : '#94a3b8' }}>
+                {p.pagado ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                <span className="text-sm font-medium">Jug. {i + 1}</span>
+              </button>
+              <span className="text-xs text-muted-foreground ml-1 tabular-nums">{money(porJugador)}</span>
+              <div className="flex-1" />
+              {p.pagado && (
+                <select value={p.metodo || metodo} onChange={e => setMetodoJugador(i, e.target.value)}
+                  className="text-xs rounded-lg px-2 py-1.5 bg-white/5 text-white border border-white/10 focus:outline-none focus:border-primary">
+                  {METODOS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                </select>
+              )}
+            </div>
           ))}
         </div>
-      </div>
-
-      {/* Método de pago */}
-      <div>
-        <label className="label">Método de pago</label>
-        <select className="input" value={metodo} onChange={e => setMetodo(e.target.value)}>
-          {METODOS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-        </select>
       </div>
 
       <button onClick={cobrar} disabled={saving}
