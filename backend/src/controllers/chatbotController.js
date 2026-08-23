@@ -940,10 +940,10 @@ async function _sendMisTurnos(ctx, from) {
   }
 
   const ESTADO = {
-    confirmado:     '🟢 Confirmado',
-    pendiente:      '🟡 Pendiente',
+    confirmado:     '🟡 Asignado',
+    pendiente:      '🟠 Pendiente',
     pendiente_pago: '🟠 Pendiente de pago',
-    no_asistido:    '⚪ No asistió',
+    no_asistido:    '🔴 No asistió',
   };
 
   const bloques = turnos.map(t => {

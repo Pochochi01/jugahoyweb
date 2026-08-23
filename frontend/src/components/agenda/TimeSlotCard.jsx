@@ -7,41 +7,49 @@ const METODO_LABELS = {
   mercadopago: 'MercadoPago', tarjeta: 'Tarjeta',
 };
 
-// ── Paleta dark para cada estado ─────────────────────────────────────────────
+// ── Paleta dark por estado del turno ─────────────────────────────────────────
+//   asignado  = amarillo (turno confirmado, aún no comenzó)
+//   asistido  = verde    (turno confirmado cuya hora de inicio ya pasó)
+//   noasistido= rojo     (marcado como "no asistió")
+//   pendiente = ámbar    (solicitud web esperando confirmación)
+// Textos claros sobre fondos translúcidos oscuros → contraste/legibilidad OK.
 const STYLES = {
   libre: {
     card:   { background: 'rgba(34,197,94,0.07)',  border: '1px solid rgba(34,197,94,0.22)',  cursor: 'pointer' },
     hover:  { background: 'rgba(34,197,94,0.13)',  border: '1px solid rgba(34,197,94,0.40)' },
-    icon:   'text-green-400',
-    text:   'text-green-300',
-    hint:   'text-green-500',
+    icon:   'text-green-400', text: 'text-green-300', hint: 'text-green-500',
   },
-  confirmado: {
-    card:   { background: 'rgba(239,68,68,0.08)',  border: '1px solid rgba(239,68,68,0.22)',  borderLeft: '3px solid rgba(239,68,68,0.60)' },
-    name:   'text-red-200',
-    phone:  'text-red-400',
-    method: 'text-red-500',
-    badge:  { background: 'rgba(239,68,68,0.18)', color: '#fca5a5' },
-    monto:  'text-green-400',
-    icon:   'text-red-400',
+  asignado: {  // amarillo
+    card:   { background: 'rgba(234,179,8,0.12)',  border: '1px solid rgba(234,179,8,0.30)', borderLeft: '3px solid rgba(234,179,8,0.7)' },
+    name:   'text-yellow-100', phone: 'text-yellow-200', method: 'text-yellow-300', time: 'text-yellow-100',
+    badge:  { background: 'rgba(234,179,8,0.22)', color: '#fde68a', border: '1px solid rgba(234,179,8,0.4)' },
+    monto:  'text-green-300', icon: 'text-yellow-300', label: 'Asignado',
   },
-  pendiente: {
-    card:   { background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.28)', borderLeft: '3px solid rgba(245,158,11,0.55)' },
-    name:   'text-amber-200',
-    phone:  'text-amber-400',
-    method: 'text-amber-500',
-    badge:  { background: 'rgba(245,158,11,0.18)', color: '#fcd34d' },
-    monto:  'text-green-400',
-    icon:   'text-amber-400',
+  asistido: {  // verde
+    card:   { background: 'rgba(34,197,94,0.13)',  border: '1px solid rgba(34,197,94,0.32)', borderLeft: '3px solid rgba(34,197,94,0.7)' },
+    name:   'text-green-100', phone: 'text-green-200', method: 'text-green-300', time: 'text-green-100',
+    badge:  { background: 'rgba(34,197,94,0.22)', color: '#86efac', border: '1px solid rgba(34,197,94,0.4)' },
+    monto:  'text-green-300', icon: 'text-green-300', label: 'Asistido',
+  },
+  noasistido: {  // rojo
+    card:   { background: 'rgba(239,68,68,0.13)',  border: '1px solid rgba(239,68,68,0.32)', borderLeft: '3px solid rgba(239,68,68,0.7)' },
+    name:   'text-red-100', phone: 'text-red-200', method: 'text-red-300', time: 'text-red-100',
+    badge:  { background: 'rgba(239,68,68,0.22)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.4)' },
+    monto:  'text-green-300', icon: 'text-red-300', label: 'No asistió',
+  },
+  pendiente: {  // ámbar
+    card:   { background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.28)', borderLeft: '3px solid rgba(245,158,11,0.55)' },
+    name:   'text-amber-100', phone: 'text-amber-200', method: 'text-amber-300', time: 'text-amber-100',
+    badge:  { background: 'rgba(245,158,11,0.20)', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.35)' },
+    monto:  'text-green-300', icon: 'text-amber-300', label: 'Pendiente',
   },
   secondary: {
-    card:   { background: 'rgba(239,68,68,0.04)',  border: '1px solid rgba(239,68,68,0.12)',  borderLeft: '3px solid rgba(239,68,68,0.25)' },
-    text:   'text-red-600',
+    card:   { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
+    text:   'text-white/40',
   },
   past: {
     card:   { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: 0.35, cursor: 'not-allowed' },
-    icon:   'text-white/20',
-    text:   'text-white/25',
+    icon:   'text-white/20', text: 'text-white/25',
   },
 };
 
@@ -50,21 +58,27 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
   const isSecondary = isOcupado && !slot.isFirstOfBooking;
-  const isPendiente = isOcupado && slot.booking?.estado === 'pendiente';
+  const isPendiente  = isOcupado && slot.booking?.estado === 'pendiente';
   const isNoAsistido = isOcupado && slot.booking?.estado === 'no_asistido';
+  const isConfirmado = isOcupado && slot.booking?.estado === 'confirmado';
+  const isAsistido   = isConfirmado && slot.past;   // ya comenzó → asistido (verde)
   // Se puede marcar ausencia solo si el turno ya empezó y está confirmado
-  const puedeMarcarAusencia = isOcupado && slot.isFirstOfBooking && slot.past
-    && slot.booking?.estado === 'confirmado';
+  const puedeMarcarAusencia = isConfirmado && slot.isFirstOfBooking && slot.past;
 
-  // Estilo base según estado
+  // Estilo del estado del turno (amarillo / verde / rojo / ámbar)
+  const ES = isNoAsistido ? STYLES.noasistido
+           : isAsistido   ? STYLES.asistido
+           : isPendiente  ? STYLES.pendiente
+           :                STYLES.asignado;   // confirmado futuro
+
+  // Estilo base de la tarjeta
   let baseStyle;
-  if (isPast)                   baseStyle = STYLES.past.card;
-  else if (isLibre)             baseStyle = STYLES.libre.card;
-  else if (isPendiente && !isSecondary) baseStyle = STYLES.pendiente.card;
-  else if (isSecondary)         baseStyle = STYLES.secondary.card;
-  else                          baseStyle = STYLES.confirmado.card;
+  if (isPast)              baseStyle = STYLES.past.card;
+  else if (isLibre)        baseStyle = STYLES.libre.card;
+  else if (isSecondary)    baseStyle = STYLES.secondary.card;
+  else                     baseStyle = ES.card;
 
-  const S = isPendiente ? STYLES.pendiente : STYLES.confirmado;
+  const S = ES;
 
   // Para slots libres usamos NeonBorderCell como contenedor externo.
   // radius=12 coincide con rounded-xl (0.75rem = 12px).
@@ -101,7 +115,7 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <Clock className={`w-3.5 h-3.5 shrink-0 ${S.icon}`} />
-              <span className={`text-sm tabular-nums font-semibold ${isPendiente ? 'text-amber-200' : 'text-red-200'}`}>
+              <span className={`text-sm tabular-nums font-semibold ${S.time}`}>
                 {slot.hora}
               </span>
             </div>
@@ -128,17 +142,11 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
                 </>
               ) : (
                 <>
-                  {isPendiente ? (
-                    <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.30)' }}>
-                      <AlertCircle className="w-3 h-3" /> Pendiente
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.28)' }}>
-                      Confirmado
-                    </span>
-                  )}
+                  {/* Badge de estado: amarillo (asignado) / verde (asistido) / ámbar (pendiente) */}
+                  <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style={S.badge}>
+                    {isAsistido ? <CheckCircle className="w-3 h-3" /> : isPendiente ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                    {S.label}
+                  </span>
 
                   {/* Confirmar — solo para reservas pendientes (solicitudes web) */}
                   {isPendiente && onConfirm && (

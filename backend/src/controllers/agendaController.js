@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
-const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, sequelize } = require('../models');
+const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, RecurringBooking, sequelize } = require('../models');
+const recurring = require('../services/recurringService');
 const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
@@ -59,6 +60,9 @@ async function getSlotsForField(req, res) {
     // Admin puede ver slots de canchas inactivas (para consulta histórica)
     const field = await Field.findOne({ where: { id: fieldId, complex_id: complexId } });
     if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
+
+    // Extiende los turnos fijos (crea ocurrencias futuras faltantes) — best-effort.
+    await recurring.materializarComplejo(complexId).catch(err => console.error('[turnos-fijos]', err.message));
 
     const apertura = field.hora_apertura || '08:00';
     const cierre   = field.hora_cierre   || '02:00';
@@ -584,6 +588,31 @@ async function correctNoShow(req, res) {
 }
 
 /**
+ * GET /api/agenda/:complexId/conteo?date= — cantidad de turnos agendados por cancha ese día.
+ * Cuenta los turnos NO cancelados (confirmados, pendientes, no asistidos).
+ */
+async function getConteoDia(req, res) {
+  try {
+    const { complexId } = req.params;
+    const date = req.query.date || todayAR();
+    const fields = await Field.findAll({ where: { complex_id: complexId }, attributes: ['id'] });
+    const fieldIds = fields.map(f => f.id);
+    if (!fieldIds.length) return res.json({});
+
+    const rows = await Booking.findAll({
+      where: { field_id: { [Op.in]: fieldIds }, fecha: date, estado: { [Op.notIn]: ['cancelado', 'rechazado'] } },
+      attributes: ['field_id', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+      group: ['field_id'], raw: true,
+    });
+    const map = {};
+    rows.forEach(r => { map[r.field_id] = parseInt(r.n); });
+    res.json(map);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
  * GET /api/agenda/:complexId/incumplidos — admins.
  * Lista de jugadores incumplidos (activos) por reiteradas inasistencias.
  */
@@ -611,4 +640,55 @@ async function habilitarIncumplido(req, res) {
   }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getIncumplidos, habilitarIncumplido, getByComplex, create, update, remove };
+// ─────────────────────────────────────────────────────────────
+//  TURNOS FIJOS (recurrentes)
+// ─────────────────────────────────────────────────────────────
+async function crearTurnoFijo(req, res) {
+  try {
+    const { complexId } = req.params;
+    const { field_id, fecha, hora, duracion = 60, nombre_cliente, telefono_cliente, monto, metodo_pago } = req.body;
+    if (!field_id || !fecha || !hora || !nombre_cliente?.trim()) {
+      return res.status(400).json({ message: 'Faltan datos (cancha, fecha, hora y nombre).' });
+    }
+    const field = await Field.findOne({ where: { id: field_id, complex_id: complexId } });
+    if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
+
+    const dia_semana = new Date(`${fecha}T12:00:00`).getDay();   // 0=Dom..6=Sáb
+    const tpl = await RecurringBooking.create({
+      complex_id: complexId, field_id, dia_semana,
+      hora_inicio: hora, hora_fin: addMinutes(hora, duracion), duracion,
+      nombre_cliente: nombre_cliente.trim(), telefono_cliente: telefono_cliente || null,
+      monto: monto || 0, metodo_pago: metodo_pago || 'efectivo',
+      desde_fecha: fecha, activo: true, created_by: req.user.id,
+    });
+    const generados = await recurring.materializar(tpl);
+    res.status(201).json({ message: `Turno fijo creado (${generados} turnos generados).`, template: tpl, generados });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+async function listTurnosFijos(req, res) {
+  try {
+    const list = await RecurringBooking.findAll({
+      where: { complex_id: req.params.complexId, activo: true },
+      include: [{ model: Field, as: 'field', attributes: ['nombre', 'identificador', 'deporte'] }],
+      order: [['dia_semana', 'ASC'], ['hora_inicio', 'ASC']],
+    });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+async function bajaTurnoFijo(req, res) {
+  try {
+    const r = await recurring.darDeBaja(req.params.complexId, req.params.id);
+    if (!r) return res.status(404).json({ message: 'Turno fijo no encontrado' });
+    res.json({ message: `Turno fijo dado de baja. Se eliminaron ${r.eliminadas} turnos futuros.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getConteoDia, getIncumplidos, habilitarIncumplido, crearTurnoFijo, listTurnosFijos, bajaTurnoFijo, getByComplex, create, update, remove };

@@ -2,6 +2,11 @@ import api from './api';
 
 export const agendaService = {
   getSlots:      (complexId, fieldId, date)      => api.get(`/agenda/${complexId}/cancha/${fieldId}`, { params: { date } }),
+  conteoDia:     (complexId, date)               => api.get(`/agenda/${complexId}/conteo`, { params: { date } }),
+  // Turnos fijos (recurrentes)
+  crearFijo:     (complexId, data)               => api.post(`/agenda/${complexId}/fijos`, data),
+  listFijos:     (complexId)                     => api.get(`/agenda/${complexId}/fijos`),
+  bajaFijo:      (complexId, id)                 => api.delete(`/agenda/${complexId}/fijos/${id}`),
   getPendientes: (complexId)                     => api.get(`/agenda/${complexId}/pendientes`),
   reservar:      (complexId, data)               => api.post(`/agenda/${complexId}/reservar`, data),
   cancelar:      (complexId, bookingId)          => api.put(`/agenda/${complexId}/cancelar/${bookingId}`),

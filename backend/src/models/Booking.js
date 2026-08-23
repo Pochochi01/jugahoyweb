@@ -43,6 +43,8 @@ const Booking = sequelize.define('Booking', {
 
   notas:      { type: DataTypes.TEXT },
   created_by: { type: DataTypes.INTEGER },
+  // Vincula la ocurrencia con su plantilla de turno fijo (null = turno normal).
+  recurring_id: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
 }, { tableName: 'bookings' });
 
 module.exports = Booking;

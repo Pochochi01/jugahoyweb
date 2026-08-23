@@ -27,6 +27,7 @@ const CantinaProducto       = require('./CantinaProducto');
 const CantinaVenta          = require('./CantinaVenta');
 const CantinaDetalleVenta   = require('./CantinaDetalleVenta');
 const CantinaMovimiento     = require('./CantinaMovimiento');
+const RecurringBooking      = require('./RecurringBooking');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -133,6 +134,9 @@ CantinaProducto.hasMany(CantinaDetalleVenta,   { foreignKey: 'producto_id', as: 
 CantinaProducto.hasMany(CantinaMovimiento,  { foreignKey: 'producto_id', as: 'movimientos', onDelete: 'CASCADE' });
 CantinaMovimiento.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'producto' });
 
+// ── Turnos fijos ──
+RecurringBooking.belongsTo(Field, { foreignKey: 'field_id', as: 'field' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -154,4 +158,6 @@ module.exports = {
   Blacklist,
   // Cantina
   CantinaProducto, CantinaVenta, CantinaDetalleVenta, CantinaMovimiento,
+  // Turnos fijos
+  RecurringBooking,
 };

@@ -51,6 +51,7 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [fijo, setFijo]       = useState(false);   // turno fijo (recurrente) — solo admin/colaborador
 
   // Opciones de pago del jugador: 'complejo' | 'seña' | 'total'
   const [tipoPago, setTipoPago] = useState('complejo');
@@ -96,6 +97,8 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
         monto:    form.monto ? parseFloat(form.monto) : undefined,
         // En modo jugador, el tipo de pago define el flujo (offline / MercadoPago)
         tipo_pago: playerMode ? tipoPago : undefined,
+        // Turno fijo (recurrente) — solo modo admin/colaborador
+        fijo: !playerMode && fijo,
       });
     } catch (err) {
       setError(err.message || 'Error al confirmar la reserva.');
@@ -313,6 +316,17 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
                 value={form.notas} onChange={e => set('notas', e.target.value)} />
             </div>
           </div>
+
+          {/* Turno fijo — solo panel admin/colaborador */}
+          {!playerMode && (
+            <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 cursor-pointer hover:border-primary transition-colors">
+              <input type="checkbox" className="mt-0.5" checked={fijo} onChange={e => setFijo(e.target.checked)} />
+              <span className="text-sm">
+                <span className="font-semibold text-slate-800">Turno fijo (se repite cada semana)</span>
+                <span className="block text-xs text-slate-500">Se agenda automáticamente este mismo día y hora en las próximas semanas.</span>
+              </span>
+            </label>
+          )}
 
           <div className="flex gap-3 pt-1 border-t border-border">
             <button type="button" onClick={onClose}

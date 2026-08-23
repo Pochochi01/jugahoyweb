@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, CalendarDays, RefreshCw,
-  CheckCircle, XCircle, Clock, AlertCircle, Phone, User,
+  CheckCircle, XCircle, Clock, AlertCircle, Phone, User, Repeat, Trash2,
 } from 'lucide-react';
 import { agendaService }  from '../../services/agendaService';
 import { settingsService } from '../../services/settingsService';
@@ -157,6 +157,92 @@ function PendingPanel({ complexId, onUpdated }) {
   );
 }
 
+const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+// ── Modal de gestión de turnos fijos ─────────────────────────────────────────
+function FijosModal({ complexId, onClose, onChanged }) {
+  const [fijos,      setFijos]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [processing, setProcessing] = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    agendaService.listFijos(complexId)
+      .then(data => setFijos(Array.isArray(data) ? data : []))
+      .catch(() => setFijos([]))
+      .finally(() => setLoading(false));
+  }, [complexId]);
+  useEffect(() => { load(); }, [load]);
+
+  const baja = async (f) => {
+    if (!window.confirm(`¿Dar de baja el turno fijo de ${f.nombre_cliente} (${DIAS[f.dia_semana]} ${f.hora_inicio})?\nSe eliminarán los turnos futuros aún no jugados.`)) return;
+    setProcessing(f.id);
+    try {
+      await agendaService.bajaFijo(complexId, f.id);
+      setFijos(fs => fs.filter(x => x.id !== f.id));
+      onChanged?.();
+    } catch {
+      // silencioso: el listado se recarga
+      load();
+    } finally { setProcessing(null); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose} />
+      <div className="relative z-10 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" style={DARK.surface}>
+        <div className="flex items-center gap-2 mb-4">
+          <Repeat className="w-5 h-5 text-primary" />
+          <h3 className="font-bold text-white">Turnos fijos</h3>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Cargando...</p>
+        ) : fijos.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            No hay turnos fijos activos. Podés crear uno tildando <strong className="text-white/60">“Turno fijo”</strong> al reservar un horario.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {fijos.map(f => (
+              <div key={f.id} className="flex items-center gap-3 rounded-lg px-4 py-3" style={DARK.amberCard}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-200">
+                    <User className="w-3.5 h-3.5 text-amber-500" />
+                    {f.nombre_cliente}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-white/40 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Repeat className="w-3 h-3" /> {DIAS[f.dia_semana]}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> {f.hora_inicio} → {f.hora_fin}
+                    </span>
+                    {f.field && <span className="text-amber-400/70">{f.field.nombre}</span>}
+                    {f.telefono_cliente && (
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {f.telefono_cliente}</span>
+                    )}
+                    {f.monto > 0 && <span className="text-green-400 font-semibold">${parseFloat(f.monto).toFixed(0)}</span>}
+                  </div>
+                </div>
+                <button disabled={!!processing} onClick={() => baja(f)}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-150 shrink-0"
+                  style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}>
+                  {processing === f.id ? '...' : <><Trash2 className="w-3.5 h-3.5" /> Dar de baja</>}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={onClose} className="btn-outline w-full text-sm mt-5">Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab principal ─────────────────────────────────────────────────────────────
 export default function AgendaTab({ complexId }) {
   const { hasPermission, isComplexAdmin } = useAuth();
@@ -171,6 +257,8 @@ export default function AgendaTab({ complexId }) {
   const [loading,       setLoading]       = useState(false);
   const [selectedSlot,  setSelectedSlot]  = useState(null);
   const [toast,         setToast]         = useState(null);
+  const [conteos,       setConteos]       = useState({});   // { fieldId: cantidad de turnos del día }
+  const [showFijos,     setShowFijos]     = useState(false); // modal de gestión de turnos fijos
 
   useEffect(() => {
     settingsService.getFields(complexId).then(data => {
@@ -179,6 +267,12 @@ export default function AgendaTab({ complexId }) {
       if (activas.length > 0) setSelectedField(activas[0]);
     }).catch(() => {});
   }, [complexId]);
+
+  // Contador de turnos del día por cancha (badge en cada tab)
+  const loadConteos = useCallback(() => {
+    agendaService.conteoDia(complexId, date).then(setConteos).catch(() => setConteos({}));
+  }, [complexId, date]);
+  useEffect(() => { loadConteos(); }, [loadConteos]);
 
   const loadSlots = useCallback(() => {
     if (!selectedField) return;
@@ -192,10 +286,17 @@ export default function AgendaTab({ complexId }) {
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
   const handleConfirmBooking = async (formData) => {
+    if (formData.fijo) {
+      const res = await agendaService.crearFijo(complexId, formData);
+      setSelectedSlot(null);
+      showToast('success', res?.message || 'Turno fijo creado.');
+      loadSlots(); loadConteos();
+      return;
+    }
     await agendaService.reservar(complexId, formData);
     setSelectedSlot(null);
     showToast('success', 'Reserva creada y confirmada.');
-    loadSlots();
+    loadSlots(); loadConteos();
   };
 
   const handleCancel = async (bookingId) => {
@@ -203,7 +304,7 @@ export default function AgendaTab({ complexId }) {
     try {
       await agendaService.cancelar(complexId, bookingId);
       showToast('success', 'Reserva cancelada.');
-      loadSlots();
+      loadSlots(); loadConteos();
     } catch (err) {
       // Muestra el motivo del backend (ej. regla de las 2 h / 15 min)
       showToast('error', err?.response?.data?.message || 'No se pudo cancelar.');
@@ -263,12 +364,20 @@ export default function AgendaTab({ complexId }) {
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">Agenda</h2>
-        <button onClick={loadSlots}
-          className="p-2 rounded-lg text-muted-foreground hover:text-white transition-colors"
-          style={{ background: 'rgba(255,255,255,0.04)' }}
-          title="Actualizar">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-primary' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowFijos(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e2a3d' }}
+            title="Gestionar turnos fijos">
+            <Repeat className="w-4 h-4" /> Turnos fijos
+          </button>
+          <button onClick={loadSlots}
+            className="p-2 rounded-lg text-muted-foreground hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)' }}
+            title="Actualizar">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-primary' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* ── Navegación de fecha ── */}
@@ -303,20 +412,32 @@ export default function AgendaTab({ complexId }) {
       {/* ── Tabs de canchas ── */}
       {fields.length > 0 ? (
         <div className="flex gap-2 flex-wrap">
-          {fields.map(f => (
-            <button key={f.id} onClick={() => setSelectedField(f)}
-              className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-              style={selectedField?.id === f.id
-                ? { background: '#22c55e', color: '#fff', border: '1px solid #22c55e' }
-                : { background: 'rgba(255,255,255,0.04)', color: '#94a3b8', border: '1px solid #1e2a3d' }
-              }
-              onMouseEnter={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#94a3b8'; }}
-            >
-              {f.nombre}
-              <span className="ml-1.5 text-xs opacity-60 capitalize">({f.deporte})</span>
-            </button>
-          ))}
+          {fields.map(f => {
+            const conteo = conteos[f.id] || 0;
+            return (
+              <button key={f.id} onClick={() => setSelectedField(f)}
+                className="relative px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                style={selectedField?.id === f.id
+                  ? { background: '#22c55e', color: '#fff', border: '1px solid #22c55e' }
+                  : { background: 'rgba(255,255,255,0.04)', color: '#94a3b8', border: '1px solid #1e2a3d' }
+                }
+                onMouseEnter={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#94a3b8'; }}
+              >
+                {f.nombre}
+                <span className="ml-1.5 text-xs opacity-60 capitalize">({f.deporte})</span>
+                {/* Badge de notificación: cantidad de turnos del día en esta cancha */}
+                {conteo > 0 && (
+                  <span
+                    className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] font-bold text-white shadow"
+                    style={{ background: '#ef4444', border: '2px solid #0a0e1a' }}
+                    title={`${conteo} turno${conteo !== 1 ? 's' : ''} agendado${conteo !== 1 ? 's' : ''} este día`}>
+                    {conteo}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-xl py-8 text-center text-sm text-muted-foreground" style={DARK.surface}>
@@ -362,6 +483,15 @@ export default function AgendaTab({ complexId }) {
           allSlots={slots}
           onConfirm={handleConfirmBooking}
           onClose={() => setSelectedSlot(null)}
+        />
+      )}
+
+      {/* ── Modal de turnos fijos ── */}
+      {showFijos && (
+        <FijosModal
+          complexId={complexId}
+          onClose={() => setShowFijos(false)}
+          onChanged={() => { loadSlots(); loadConteos(); }}
         />
       )}
 
