@@ -11,8 +11,7 @@ const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 const CATEGORIAS = ['bebidas', 'comidas_rapidas', 'snacks', 'postres', 'otros'];
 const CAT_LABEL = { bebidas: 'Bebidas', comidas_rapidas: 'Comidas rápidas', snacks: 'Snacks', postres: 'Postres', otros: 'Otros' };
 const METODOS = [
-  { v: 'efectivo', l: 'Efectivo' }, { v: 'tarjeta', l: 'Tarjeta' },
-  { v: 'billetera', l: 'Billetera virtual' }, { v: 'transferencia', l: 'Transferencia' },
+  { v: 'efectivo', l: 'Efectivo' }, { v: 'mercadopago', l: 'MercadoPago' }, { v: 'tarjeta', l: 'Tarjeta' },
 ];
 
 // ══════════════════════════════════════════════════════════════════
@@ -459,15 +458,24 @@ function ReportesView({ complexId }) {
       </div>
 
       {caja && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { l: 'Ingresos cantina', v: money(caja.ingresos_cantina), c: 'text-green-400' },
-            { l: 'Ingresos turnos', v: money(caja.ingresos_turnos), c: 'text-blue-400' },
-            { l: 'Egresos', v: money(caja.egresos), c: 'text-red-400' },
-            { l: 'Neto en caja', v: money(caja.neto), c: 'text-primary' },
-          ].map(x => (
-            <div key={x.l} className="card py-3"><div className={`text-xl font-bold ${x.c}`}>{x.v}</div><div className="text-xs text-muted-foreground">{x.l}</div></div>
-          ))}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
+          <div className="card py-3"><div className="text-xl font-bold text-green-400">{money(caja.ingresos_cantina)}</div><div className="text-xs text-muted-foreground">Ingresos cantina</div></div>
+
+          {/* Ingresos por turnos + desglose por método de pago */}
+          <div className="card py-3">
+            <div className="text-xl font-bold text-blue-400">{money(caja.ingresos_turnos)}</div>
+            <div className="text-xs text-muted-foreground">Ingresos turnos</div>
+            {caja.turnos_por_metodo && (
+              <div className="mt-2 pt-2 border-t border-border space-y-1 text-xs">
+                <div className="flex justify-between"><span className="text-muted-foreground">Efectivo</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.efectivo)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">MercadoPago</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.mercadopago)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Tarjeta</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.tarjeta)}</span></div>
+              </div>
+            )}
+          </div>
+
+          <div className="card py-3"><div className="text-xl font-bold text-red-400">{money(caja.egresos)}</div><div className="text-xs text-muted-foreground">Egresos</div></div>
+          <div className="card py-3"><div className="text-xl font-bold text-primary">{money(caja.neto)}</div><div className="text-xs text-muted-foreground">Neto en caja</div></div>
         </div>
       )}
 

@@ -354,7 +354,7 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
       <div>
         <label className="label">Método de pago</label>
         <select className="input" value={metodo} onChange={e => setMetodo(e.target.value)}>
-          {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#111827', background: '#fff' }}>{m.l}</option>)}
+          {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#e5e7eb', background: '#0d1220' }}>{m.l}</option>)}
         </select>
         <p className="text-xs text-muted-foreground mt-1">Se asigna a cada jugador al marcar su pago (podés cambiarlo en cada uno).</p>
       </div>
@@ -394,7 +394,7 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
               {p.pagado && (
                 <select value={p.metodo || metodo} onChange={e => setMetodoJugador(i, e.target.value)}
                   className="text-xs rounded-lg px-2 py-1.5 bg-white/5 text-white border border-white/10 focus:outline-none focus:border-primary">
-                  {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#111827', background: '#fff' }}>{m.l}</option>)}
+                  {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#e5e7eb', background: '#0d1220' }}>{m.l}</option>)}
                 </select>
               )}
             </div>

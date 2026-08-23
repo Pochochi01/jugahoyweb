@@ -64,16 +64,37 @@ async function resumenCaja(complexId, { desde, hasta } = {}) {
 
   // Ingresos de turnos: solo los COBRADOS (el costo de cancha impacta la caja
   // recién cuando el turno se cobra; los consumos entran por la venta de cantina).
+  // Se desglosa por método de pago a partir del detalle de cobro por jugador.
   const fields = await Field.findAll({ where: { complex_id: complexId }, attributes: ['id'] });
   const fieldIds = fields.map(f => f.id);
   let ingresosTurnos = 0;
+  const turnosPorMetodo = { efectivo: 0, mercadopago: 0, tarjeta: 0 };
   if (fieldIds.length) {
     const turnoWhere = {
       field_id: { [Op.in]: fieldIds }, cobrado: true,
       estado: { [Op.notIn]: ['cancelado', 'rechazado'] },
       ...rangoFecha('fecha'),
     };
-    ingresosTurnos = parseFloat(await Booking.sum('monto', { where: turnoWhere }) || 0);
+    const cobrados = await Booking.findAll({ where: turnoWhere, attributes: ['monto', 'metodo_pago', 'cobro_detalle'] });
+    const addM = (m, amt) => {
+      // Sólo se exponen efectivo / mercadopago / tarjeta; otros métodos legados
+      // (transferencia, billetera) se agrupan en efectivo para no perder el monto.
+      const k = ['mercadopago', 'tarjeta'].includes(m) ? m : 'efectivo';
+      turnosPorMetodo[k] += amt;
+    };
+    for (const b of cobrados) {
+      const cancha = parseFloat(b.monto) || 0;
+      ingresosTurnos += cancha;
+      const cd = b.cobro_detalle;
+      if (cd && Array.isArray(cd.pagos) && cd.jugadores > 0) {
+        const share = cancha / cd.jugadores;
+        cd.pagos.forEach(p => addM(p && p.pagado ? p.metodo : (b.metodo_pago || 'efectivo'), share));
+      } else {
+        addM(b.metodo_pago || 'efectivo', cancha);
+      }
+    }
+    ingresosTurnos = Math.round(ingresosTurnos * 100) / 100;
+    Object.keys(turnosPorMetodo).forEach(k => { turnosPorMetodo[k] = Math.round(turnosPorMetodo[k] * 100) / 100; });
   }
 
   // Egresos (compras de cantina + egresos manuales) registrados en la caja del complejo
@@ -89,6 +110,7 @@ async function resumenCaja(complexId, { desde, hasta } = {}) {
   return {
     ingresos_cantina: ingresosCantina,
     ingresos_turnos:  ingresosTurnos,
+    turnos_por_metodo: turnosPorMetodo,
     ingresos_total:   ingresos,
     egresos,
     neto: ingresos - egresos,
