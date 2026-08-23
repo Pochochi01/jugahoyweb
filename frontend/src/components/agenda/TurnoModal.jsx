@@ -11,10 +11,9 @@ const DARK = {
 };
 
 const METODOS = [
-  { v: 'efectivo',      l: 'Efectivo' },
-  { v: 'transferencia', l: 'Transferencia' },
-  { v: 'mercadopago',   l: 'MercadoPago' },
-  { v: 'tarjeta',       l: 'Tarjeta' },
+  { v: 'efectivo',    l: 'Efectivo' },
+  { v: 'mercadopago', l: 'MercadoPago' },
+  { v: 'tarjeta',     l: 'Tarjeta' },
 ];
 
 const money = n => `$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-AR')}`;
