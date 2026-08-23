@@ -1,6 +1,11 @@
 const { Op } = require('sequelize');
-const { Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex, RecurringBooking, sequelize } = require('../models');
+const {
+  Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex,
+  RecurringBooking, BookingConsumo, CantinaProducto, CantinaVenta,
+  CantinaDetalleVenta, CantinaMovimiento, sequelize,
+} = require('../models');
 const recurring = require('../services/recurringService');
+const caja = require('../services/cajaService');
 const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
@@ -691,4 +696,213 @@ async function bajaTurnoFijo(req, res) {
   }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getConteoDia, getIncumplidos, habilitarIncumplido, crearTurnoFijo, listTurnosFijos, bajaTurnoFijo, getByComplex, create, update, remove };
+// ─────────────────────────────────────────────────────────────
+//  CONSUMOS DEL TURNO + COBRO
+// ─────────────────────────────────────────────────────────────
+const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+
+// Descuenta/repone stock de un producto y deja registro en el historial.
+async function moverStock({ producto, tipo, motivo, cantidad, usuario_id, notas }, t) {
+  const anterior = num(producto.stock);
+  let resultante = tipo === 'entrada' ? anterior + cantidad : anterior - cantidad;
+  if (resultante < 0) resultante = 0;
+  await producto.update({ stock: resultante }, { transaction: t });
+  await CantinaMovimiento.create({
+    producto_id: producto.id, tipo, motivo, cantidad,
+    stock_anterior: anterior, stock_resultante: resultante,
+    usuario_id: usuario_id || null, notas: notas || null,
+  }, { transaction: t });
+}
+
+// Carga un turno del complejo (valida pertenencia). Devuelve el booking o null.
+async function findBookingDelComplejo(complexId, bookingId, opts = {}) {
+  const booking = await Booking.findByPk(bookingId, {
+    include: [{ model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id'] }],
+    ...opts,
+  });
+  if (!booking) return { error: 404, message: 'Turno no encontrado.' };
+  if (String(booking.field?.complex_id) !== String(complexId)) {
+    return { error: 403, message: 'El turno no pertenece a este complejo.' };
+  }
+  return { booking };
+}
+
+// GET /:complexId/turno/:bookingId — detalle del turno (cancha + consumos + totales)
+async function getTurnoDetalle(req, res) {
+  try {
+    const { complexId, bookingId } = req.params;
+    const r = await findBookingDelComplejo(complexId, bookingId);
+    if (r.error) return res.status(r.error).json({ message: r.message });
+    const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, order: [['id', 'ASC']] });
+    const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
+    const cancha = num(r.booking.monto);
+    res.json({
+      booking: {
+        id: r.booking.id, nombre_cliente: r.booking.nombre_cliente, telefono_cliente: r.booking.telefono_cliente,
+        fecha: r.booking.fecha, hora_inicio: r.booking.hora_inicio, hora_fin: r.booking.hora_fin,
+        monto: cancha, metodo_pago: r.booking.metodo_pago, estado: r.booking.estado,
+        cobrado: r.booking.cobrado, cobrado_at: r.booking.cobrado_at, cobro_detalle: r.booking.cobro_detalle,
+        field: r.booking.field,
+      },
+      consumos,
+      totales: { cancha, consumos: totalConsumos, total: cancha + totalConsumos },
+    });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+}
+
+// GET /:complexId/turno-productos — productos disponibles para agregar como consumo
+async function listProductosDisponibles(req, res) {
+  try {
+    const { complexId } = req.params;
+    const productos = await CantinaProducto.findAll({
+      where: { complex_id: complexId, activo: true },
+      attributes: ['id', 'nombre', 'precio_venta', 'stock', 'categoria', 'unidad_medida'],
+      order: [['categoria', 'ASC'], ['nombre', 'ASC']],
+    });
+    res.json(productos.map(p => ({ ...p.toJSON(), disponible: num(p.stock) > 0 })));
+  } catch (err) { res.status(500).json({ message: err.message }); }
+}
+
+// POST /:complexId/turno/:bookingId/consumos — agrega uno o varios productos al turno
+// (descuenta stock; el ingreso a caja se difiere al cobro).
+async function agregarConsumos(req, res) {
+  const t = await sequelize.transaction();
+  try {
+    const { complexId, bookingId } = req.params;
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      await t.rollback(); return res.status(400).json({ message: 'No hay productos para agregar.' });
+    }
+    const r = await findBookingDelComplejo(complexId, bookingId, { transaction: t });
+    if (r.error) { await t.rollback(); return res.status(r.error).json({ message: r.message }); }
+    if (r.booking.cobrado) { await t.rollback(); return res.status(409).json({ message: 'El turno ya fue cobrado. No se pueden agregar consumos.' }); }
+    if (['cancelado', 'rechazado'].includes(r.booking.estado)) {
+      await t.rollback(); return res.status(409).json({ message: `El turno está "${r.booking.estado}".` });
+    }
+
+    for (const it of items) {
+      const cant = num(it.cantidad);
+      if (cant <= 0) { await t.rollback(); return res.status(400).json({ message: 'Cantidad inválida.' }); }
+      const producto = await CantinaProducto.findOne({ where: { id: it.producto_id, complex_id: complexId }, transaction: t, lock: true });
+      if (!producto)        { await t.rollback(); return res.status(404).json({ message: `Producto ${it.producto_id} no encontrado.` }); }
+      if (!producto.activo) { await t.rollback(); return res.status(409).json({ message: `"${producto.nombre}" está inactivo.` }); }
+      if (cant > num(producto.stock)) { await t.rollback(); return res.status(409).json({ message: `Sin stock suficiente de "${producto.nombre}" (hay ${num(producto.stock)}).` }); }
+
+      const precio = num(producto.precio_venta);
+      // Si ya existe una línea del mismo producto, acumular la cantidad.
+      const existente = await BookingConsumo.findOne({ where: { booking_id: bookingId, producto_id: producto.id }, transaction: t });
+      if (existente) {
+        const nuevaCant = num(existente.cantidad) + cant;
+        await existente.update({ cantidad: nuevaCant, precio_unitario: precio, subtotal: precio * nuevaCant }, { transaction: t });
+      } else {
+        await BookingConsumo.create({
+          booking_id: bookingId, producto_id: producto.id, nombre_producto: producto.nombre,
+          cantidad: cant, precio_unitario: precio, subtotal: precio * cant, usuario_id: req.user.id,
+        }, { transaction: t });
+      }
+      await moverStock({ producto, tipo: 'salida', motivo: 'venta', cantidad: cant, usuario_id: req.user.id, notas: `Consumo turno #${bookingId}` }, t);
+    }
+
+    await t.commit();
+    const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, order: [['id', 'ASC']] });
+    const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
+    res.status(201).json({ message: 'Consumos agregados.', consumos, total_consumos: totalConsumos });
+  } catch (err) { await t.rollback(); res.status(500).json({ message: err.message }); }
+}
+
+// DELETE /:complexId/turno/:bookingId/consumos/:consumoId — quita un consumo (repone stock)
+async function quitarConsumo(req, res) {
+  const t = await sequelize.transaction();
+  try {
+    const { complexId, bookingId, consumoId } = req.params;
+    const r = await findBookingDelComplejo(complexId, bookingId, { transaction: t });
+    if (r.error) { await t.rollback(); return res.status(r.error).json({ message: r.message }); }
+    if (r.booking.cobrado) { await t.rollback(); return res.status(409).json({ message: 'El turno ya fue cobrado.' }); }
+
+    const consumo = await BookingConsumo.findOne({ where: { id: consumoId, booking_id: bookingId }, transaction: t });
+    if (!consumo) { await t.rollback(); return res.status(404).json({ message: 'Consumo no encontrado.' }); }
+
+    const producto = await CantinaProducto.findByPk(consumo.producto_id, { transaction: t, lock: true });
+    if (producto) await moverStock({ producto, tipo: 'entrada', motivo: 'devolucion', cantidad: num(consumo.cantidad), usuario_id: req.user.id, notas: `Quita consumo turno #${bookingId}` }, t);
+    await consumo.destroy({ transaction: t });
+
+    await t.commit();
+    const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, order: [['id', 'ASC']] });
+    const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
+    res.json({ message: 'Consumo eliminado.', consumos, total_consumos: totalConsumos });
+  } catch (err) { await t.rollback(); res.status(500).json({ message: err.message }); }
+}
+
+// POST /:complexId/turno/:bookingId/cobrar — finaliza el cobro del turno.
+// Registra en caja el costo de cancha + consumos (recién acá impactan la caja).
+async function cobrarTurno(req, res) {
+  const t = await sequelize.transaction();
+  try {
+    const { complexId, bookingId } = req.params;
+    const { jugadores = 1, pagos = [], metodo_pago } = req.body;
+
+    const r = await findBookingDelComplejo(complexId, bookingId, { transaction: t });
+    if (r.error) { await t.rollback(); return res.status(r.error).json({ message: r.message }); }
+    const booking = r.booking;
+    if (booking.cobrado) { await t.rollback(); return res.status(409).json({ message: 'El turno ya fue cobrado.' }); }
+    if (['cancelado', 'rechazado'].includes(booking.estado)) {
+      await t.rollback(); return res.status(409).json({ message: `El turno está "${booking.estado}".` });
+    }
+
+    const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, transaction: t });
+    const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
+    const cancha = num(booking.monto);
+    const total = cancha + totalConsumos;
+    const metodo = metodo_pago || booking.metodo_pago || 'efectivo';
+    const nJug = Math.max(1, parseInt(jugadores) || 1);
+
+    // Consumos → venta de cantina (para reportes y caja). El stock ya se descontó
+    // al agregarlos, por eso NO se generan movimientos nuevos acá.
+    if (consumos.length > 0) {
+      const venta = await CantinaVenta.create({
+        complex_id: complexId, subtotal: totalConsumos, descuento: 0, total: totalConsumos,
+        metodo_pago: metodo === 'transferencia' || metodo === 'mercadopago' || metodo === 'tarjeta' ? metodo : 'efectivo',
+        estado: 'completada', usuario_id: req.user.id, notas: `Consumos turno #${booking.id} — ${booking.nombre_cliente}`,
+      }, { transaction: t });
+      for (const c of consumos) {
+        await CantinaDetalleVenta.create({
+          venta_id: venta.id, producto_id: c.producto_id, nombre_producto: c.nombre_producto,
+          cantidad: num(c.cantidad), precio_unitario: num(c.precio_unitario), descuento_linea: 0, subtotal: num(c.subtotal),
+        }, { transaction: t });
+      }
+      const txC = await caja.registrarEnCaja(complexId, {
+        tipo: 'ingreso', concepto: `Consumos turno #${booking.id}`, monto: totalConsumos,
+        metodo_pago: metodo, categoria: 'cantina', usuario_id: req.user.id, agenda_id: booking.id,
+      }, t);
+      if (txC) await venta.update({ cash_transaction_id: txC.id }, { transaction: t });
+    }
+
+    // Costo de cancha → ingreso de caja categoría 'turno'.
+    if (cancha > 0) {
+      await caja.registrarEnCaja(complexId, {
+        tipo: 'ingreso', concepto: `Turno ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio}`,
+        monto: cancha, metodo_pago: metodo, categoria: 'turno', usuario_id: req.user.id, agenda_id: booking.id,
+      }, t);
+    }
+
+    const por_jugador = Math.round((total / nJug) * 100) / 100;
+    const pagosNorm = Array.from({ length: nJug }, (_, i) => Boolean(pagos[i]));
+    await booking.update({
+      cobrado: true,
+      cobrado_at: new Date(),
+      metodo_pago: metodo,
+      cobro_detalle: { jugadores: nJug, por_jugador, total, cancha, consumos: totalConsumos, pagos: pagosNorm },
+    }, { transaction: t });
+
+    await Operation.create({
+      complex_id: complexId, tipo: 'pago',
+      descripcion: `Cobro turno: ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} — $${total} (${nJug} jug.)`,
+      usuario_id: req.user.id, monto: total,
+    }, { transaction: t });
+
+    await t.commit();
+    res.json({ message: 'Turno cobrado.', total, por_jugador, jugadores: nJug });
+  } catch (err) { await t.rollback(); res.status(500).json({ message: err.message }); }
+}
+
+module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getConteoDia, getIncumplidos, habilitarIncumplido, crearTurnoFijo, listTurnosFijos, bajaTurnoFijo, getTurnoDetalle, listProductosDisponibles, agregarConsumos, quitarConsumo, cobrarTurno, getByComplex, create, update, remove };

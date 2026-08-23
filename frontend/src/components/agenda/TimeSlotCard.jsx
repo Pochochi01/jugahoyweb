@@ -1,4 +1,4 @@
-import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle } from 'lucide-react';
+import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle, DollarSign } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
 import { waLink } from '../../utils/whatsapp';
 
@@ -53,7 +53,7 @@ const STYLES = {
   },
 };
 
-export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onConfirm, onCorrectNoShow, index }) {
+export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoShow, onConfirm, onCorrectNoShow, index }) {
   const isLibre     = slot.estado === 'libre';
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
@@ -62,8 +62,11 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
   const isNoAsistido = isOcupado && slot.booking?.estado === 'no_asistido';
   const isConfirmado = isOcupado && slot.booking?.estado === 'confirmado';
   const isAsistido   = isConfirmado && slot.past;   // ya comenzó → asistido (verde)
+  const isCobrado    = isOcupado && !!slot.booking?.cobrado;
   // Se puede marcar ausencia solo si el turno ya empezó y está confirmado
   const puedeMarcarAusencia = isConfirmado && slot.isFirstOfBooking && slot.past;
+  // El turno (primer slot, no pendiente) es gestionable: cobrar / agregar consumos
+  const esGestionable = isOcupado && slot.isFirstOfBooking && slot.booking && !isPendiente && onManage;
 
   // Estilo del estado del turno (amarillo / verde / rojo / ámbar)
   const ES = isNoAsistido ? STYLES.noasistido
@@ -76,7 +79,7 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
   if (isPast)              baseStyle = STYLES.past.card;
   else if (isLibre)        baseStyle = STYLES.libre.card;
   else if (isSecondary)    baseStyle = STYLES.secondary.card;
-  else                     baseStyle = ES.card;
+  else                     baseStyle = { ...ES.card, ...(esGestionable ? { cursor: 'pointer' } : {}) };
 
   const S = ES;
 
@@ -94,7 +97,10 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
       data-aos="fade-up"
       data-aos-delay={Math.min(index * 15, 200)}
       data-aos-once="true"
-      onClick={() => isLibre && !isPast && onSelect(slot)}
+      onClick={() => {
+        if (isLibre && !isPast) return onSelect(slot);
+        if (esGestionable) return onManage(slot);
+      }}
       onMouseEnter={e => {
         if (isLibre && !isPast) {
           Object.assign(e.currentTarget.style, STYLES.libre.hover);
@@ -147,6 +153,14 @@ export default function TimeSlotCard({ slot, onSelect, onCancel, onNoShow, onCon
                     {isAsistido ? <CheckCircle className="w-3 h-3" /> : isPendiente ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                     {S.label}
                   </span>
+
+                  {/* Cobrado */}
+                  {isCobrado && (
+                    <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: 'rgba(16,185,129,0.2)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.4)' }}>
+                      <DollarSign className="w-3 h-3" /> Cobrado
+                    </span>
+                  )}
 
                   {/* Confirmar — solo para reservas pendientes (solicitudes web) */}
                   {isPendiente && onConfirm && (

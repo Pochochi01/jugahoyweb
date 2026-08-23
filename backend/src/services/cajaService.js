@@ -47,7 +47,8 @@ async function registrarEnCaja(complexId, { tipo, concepto, monto, metodo_pago, 
 
 /**
  * Resumen de la caja diaria: ingresos de cantina + turnos − egresos.
- * Los turnos "no asistido" (y cancelados/rechazados) NO se suman a los ingresos.
+ * Los turnos suman a caja SOLO cuando están cobrados (cobrado=true); los que
+ * están apenas confirmados, "no asistido", cancelados o rechazados NO suman.
  */
 async function resumenCaja(complexId, { desde, hasta } = {}) {
   const rangoFecha = (col) => {
@@ -61,12 +62,17 @@ async function resumenCaja(complexId, { desde, hasta } = {}) {
   const ventaWhere = { complex_id: complexId, estado: 'completada', ...rangoFecha('fecha') };
   const ingresosCantina = parseFloat(await CantinaVenta.sum('total', { where: ventaWhere }) || 0);
 
-  // Ingresos de turnos: solo confirmados (los "no asistido" NO suman)
+  // Ingresos de turnos: solo los COBRADOS (el costo de cancha impacta la caja
+  // recién cuando el turno se cobra; los consumos entran por la venta de cantina).
   const fields = await Field.findAll({ where: { complex_id: complexId }, attributes: ['id'] });
   const fieldIds = fields.map(f => f.id);
   let ingresosTurnos = 0;
   if (fieldIds.length) {
-    const turnoWhere = { field_id: { [Op.in]: fieldIds }, estado: 'confirmado', ...rangoFecha('fecha') };
+    const turnoWhere = {
+      field_id: { [Op.in]: fieldIds }, cobrado: true,
+      estado: { [Op.notIn]: ['cancelado', 'rechazado'] },
+      ...rangoFecha('fecha'),
+    };
     ingresosTurnos = parseFloat(await Booking.sum('monto', { where: turnoWhere }) || 0);
   }
 

@@ -8,6 +8,7 @@ import { settingsService } from '../../services/settingsService';
 import { useAuth } from '../../context/AuthContext';
 import TimeSlotList from '../../components/agenda/TimeSlotList';
 import BookingModal from '../../components/agenda/BookingModal';
+import TurnoModal from '../../components/agenda/TurnoModal';
 
 function today() { return new Date().toISOString().split('T')[0]; }
 function formatDateDisplay(d) {
@@ -259,6 +260,8 @@ export default function AgendaTab({ complexId }) {
   const [toast,         setToast]         = useState(null);
   const [conteos,       setConteos]       = useState({});   // { fieldId: cantidad de turnos del día }
   const [showFijos,     setShowFijos]     = useState(false); // modal de gestión de turnos fijos
+  const [manageSlot,    setManageSlot]    = useState(null);  // turno abierto (cobrar / consumos)
+  const [cancelFijo,    setCancelFijo]    = useState(null);  // { bookingId, recurringId, nombre }
 
   useEffect(() => {
     settingsService.getFields(complexId).then(data => {
@@ -299,8 +302,8 @@ export default function AgendaTab({ complexId }) {
     loadSlots(); loadConteos();
   };
 
-  const handleCancel = async (bookingId) => {
-    if (!window.confirm('¿Cancelar esta reserva y liberar todos los horarios?')) return;
+  // Cancela una reserva puntual (un solo turno).
+  const doCancel = async (bookingId) => {
     try {
       await agendaService.cancelar(complexId, bookingId);
       showToast('success', 'Reserva cancelada.');
@@ -308,6 +311,31 @@ export default function AgendaTab({ complexId }) {
     } catch (err) {
       // Muestra el motivo del backend (ej. regla de las 2 h / 15 min)
       showToast('error', err?.response?.data?.message || 'No se pudo cancelar.');
+    }
+  };
+
+  const handleCancel = async (bookingId) => {
+    const booking = slots.find(s => s.booking_id === bookingId)?.booking;
+    // Turno fijo → preguntar: solo este día o todo el turno fijo.
+    if (booking?.recurring_id) {
+      setCancelFijo({ bookingId, recurringId: booking.recurring_id, nombre: booking.nombre_cliente });
+      return;
+    }
+    if (!window.confirm('¿Cancelar esta reserva y liberar todos los horarios?')) return;
+    doCancel(bookingId);
+  };
+
+  // Da de baja todo el turno fijo (elimina las ocurrencias futuras).
+  const handleBajaFijoCompleto = async () => {
+    if (!cancelFijo) return;
+    try {
+      const res = await agendaService.bajaFijo(complexId, cancelFijo.recurringId);
+      showToast('success', res?.message || 'Turno fijo dado de baja.');
+    } catch (err) {
+      showToast('error', err?.response?.data?.message || 'No se pudo dar de baja el turno fijo.');
+    } finally {
+      setCancelFijo(null);
+      loadSlots(); loadConteos();
     }
   };
 
@@ -468,6 +496,7 @@ export default function AgendaTab({ complexId }) {
           slots={slots}
           loading={loading}
           onSelect={setSelectedSlot}
+          onManage={setManageSlot}
           onCancel={puedeCancelar ? handleCancel : undefined}
           onNoShow={handleNoShow}
           onConfirm={handleConfirm}
@@ -484,6 +513,47 @@ export default function AgendaTab({ complexId }) {
           onConfirm={handleConfirmBooking}
           onClose={() => setSelectedSlot(null)}
         />
+      )}
+
+      {/* ── Modal de gestión del turno (cobrar / consumos) ── */}
+      {manageSlot && (
+        <TurnoModal
+          complexId={complexId}
+          slot={manageSlot}
+          onClose={() => setManageSlot(null)}
+          onChanged={() => { loadSlots(); loadConteos(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* ── Cancelación de turno fijo: puntual vs completo ── */}
+      {cancelFijo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setCancelFijo(null)} />
+          <div className="relative z-10 rounded-2xl p-6 w-full max-w-sm shadow-2xl" style={DARK.surface}>
+            <h3 className="font-bold text-white mb-1">Cancelar turno fijo</h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              El turno de <strong className="text-white/80">{cancelFijo.nombre}</strong> es un turno fijo (se repite cada semana). ¿Qué querés cancelar?
+            </p>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => { const id = cancelFijo.bookingId; setCancelFijo(null); doCancel(id); }}
+                className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors"
+                style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.3)' }}>
+                Solo el turno de este día
+                <span className="block text-xs font-normal text-amber-200/60 mt-0.5">Libera este horario; el turno fijo sigue vigente.</span>
+              </button>
+              <button
+                onClick={handleBajaFijoCompleto}
+                className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors"
+                style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+                Todo el turno fijo
+                <span className="block text-xs font-normal text-red-200/60 mt-0.5">Elimina también las próximas semanas (turnos futuros no jugados).</span>
+              </button>
+              <button onClick={() => setCancelFijo(null)} className="btn-outline w-full text-sm mt-1">Volver</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Modal de turnos fijos ── */}

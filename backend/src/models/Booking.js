@@ -45,6 +45,13 @@ const Booking = sequelize.define('Booking', {
   created_by: { type: DataTypes.INTEGER },
   // Vincula la ocurrencia con su plantilla de turno fijo (null = turno normal).
   recurring_id: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
+
+  // ── Cobro del turno ──────────────────────────────────────────
+  // El costo de cancha + consumos suma a caja SOLO cuando el turno está cobrado.
+  cobrado:       { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  cobrado_at:    { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+  // Detalle del cobro: { jugadores, por_jugador, total, cancha, consumos, pagos:[bool] }
+  cobro_detalle: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
 }, { tableName: 'bookings' });
 
 module.exports = Booking;

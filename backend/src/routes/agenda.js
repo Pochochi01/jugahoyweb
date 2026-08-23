@@ -23,6 +23,13 @@ router.get   ('/:complexId/fijos',      requireComplexAccess, requirePermission(
 router.post  ('/:complexId/fijos',      requireComplexAccess, requirePermission('agenda'), ctrl.crearTurnoFijo);
 router.delete('/:complexId/fijos/:id',  requireComplexAccess, requirePermission('agenda'), ctrl.bajaTurnoFijo);
 
+// Cobro de turnos y consumos (admins y colaboradores con permiso de agenda).
+router.get   ('/:complexId/turno-productos',                 requireComplexAccess, requirePermission('agenda'), ctrl.listProductosDisponibles);
+router.get   ('/:complexId/turno/:bookingId',                requireComplexAccess, requirePermission('agenda'), ctrl.getTurnoDetalle);
+router.post  ('/:complexId/turno/:bookingId/consumos',       requireComplexAccess, requirePermission('agenda'), ctrl.agregarConsumos);
+router.delete('/:complexId/turno/:bookingId/consumos/:consumoId', requireComplexAccess, requirePermission('agenda'), ctrl.quitarConsumo);
+router.post  ('/:complexId/turno/:bookingId/cobrar',         requireComplexAccess, requirePermission('agenda'), ctrl.cobrarTurno);
+
 // Lista de incumplidos + habilitación manual (SOLO administradores).
 router.get('/:complexId/incumplidos', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.getIncumplidos);
 router.patch('/:complexId/incumplidos/:id/habilitar', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.habilitarIncumplido);
