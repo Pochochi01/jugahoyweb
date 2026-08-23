@@ -17,7 +17,7 @@ const { CashRegister, CashTransaction, CantinaVenta, Booking, Field, sequelize }
 // La caja acepta estos métodos; 'billetera' de cantina se mapea a 'mercadopago'.
 function metodoCaja(m) {
   if (m === 'billetera') return 'mercadopago';
-  return ['efectivo', 'transferencia', 'mercadopago', 'tarjeta'].includes(m) ? m : 'efectivo';
+  return ['efectivo', 'transferencia', 'mercadopago', 'tarjeta', 'otros'].includes(m) ? m : 'efectivo';
 }
 
 /** Caja abierta del complejo (o null). */

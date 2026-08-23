@@ -1,18 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { cantinaService } from '../../services/cantinaService';
+import { METODOS_PAGO as METODOS, metodoLabel, metodoChipStyle } from '../../utils/metodoPago';
 import {
   LayoutDashboard, ShoppingCart, Package, Boxes, Receipt, BarChart2,
   Plus, Minus, Trash2, X, Search, AlertTriangle, DollarSign, TrendingUp,
-  CheckCircle, RotateCcw, Pencil,
+  CheckCircle, RotateCcw, Pencil, Filter,
 } from 'lucide-react';
 
 const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 const CATEGORIAS = ['bebidas', 'comidas_rapidas', 'snacks', 'postres', 'otros'];
 const CAT_LABEL = { bebidas: 'Bebidas', comidas_rapidas: 'Comidas rápidas', snacks: 'Snacks', postres: 'Postres', otros: 'Otros' };
-const METODOS = [
-  { v: 'efectivo', l: 'Efectivo' }, { v: 'mercadopago', l: 'MercadoPago' }, { v: 'tarjeta', l: 'Tarjeta' },
-];
+
+// Chip de método de pago reutilizable.
+const MetodoChip = ({ metodo }) => (
+  <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={metodoChipStyle(metodo)}>
+    {metodoLabel(metodo)}
+  </span>
+);
 
 // ══════════════════════════════════════════════════════════════════
 //  DASHBOARD
@@ -375,9 +380,17 @@ function VentasView({ complexId, toast, puedeGestionar }) {
   const hoy = new Date().toISOString().slice(0, 10);
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
+  const [fMetodo, setFMetodo] = useState('');   // filtro por método
 
   const load = useCallback(() => { cantinaService.listVentas(complexId, { desde, hasta }).then(setVentas).catch(() => setVentas([])); }, [complexId, desde, hasta]);
   useEffect(() => { load(); }, [complexId]); // eslint-disable-line
+
+  const visibles = fMetodo ? ventas.filter(v => v.metodo_pago === fMetodo) : ventas;
+  // Totales por método (solo ventas completadas).
+  const porMetodo = METODOS.map(m => ({
+    ...m,
+    total: ventas.filter(v => v.estado === 'completada' && v.metodo_pago === m.v).reduce((s, v) => s + Number(v.total), 0),
+  })).filter(m => m.total > 0);
 
   const devolver = async (v) => {
     if (!window.confirm(`¿Anular la venta #${v.id} y reponer el stock?`)) return;
@@ -392,22 +405,43 @@ function VentasView({ complexId, toast, puedeGestionar }) {
         <span className="text-muted-foreground text-sm">→</span>
         <input type="date" className="input w-auto text-sm" value={hasta} onChange={e => setHasta(e.target.value)} />
         <button onClick={load} className="btn-primary text-sm py-2 px-4">Filtrar</button>
+        <div className="flex items-center gap-1.5">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select className="input w-auto text-sm" value={fMetodo} onChange={e => setFMetodo(e.target.value)}>
+            <option value="">Todos los métodos</option>
+            {METODOS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+          </select>
+        </div>
         <span className="text-sm text-muted-foreground ml-auto">
-          Total: <b className="text-green-400">{money(ventas.filter(v => v.estado === 'completada').reduce((s, v) => s + Number(v.total), 0))}</b>
+          Total: <b className="text-green-400">{money(visibles.filter(v => v.estado === 'completada').reduce((s, v) => s + Number(v.total), 0))}</b>
         </span>
       </div>
+
+      {/* Totales por método de pago */}
+      {porMetodo.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {porMetodo.map(m => (
+            <div key={m.v} className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <MetodoChip metodo={m.v} />
+              <span className="text-sm font-bold text-green-400">{money(m.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-1.5">
-        {ventas.map(v => (
+        {visibles.map(v => (
           <div key={v.id} className={`card py-3 flex items-center gap-3 cursor-pointer ${v.estado === 'anulada' ? 'opacity-50' : ''}`} onClick={() => setDetalle(v)}>
             <Receipt className="w-4 h-4 text-primary shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold">Venta #{v.id} {v.estado === 'anulada' && <span className="badge-red">Anulada</span>}</div>
-              <div className="text-xs text-muted-foreground">{new Date(v.fecha).toLocaleString('es-AR')} · {v.metodo_pago} · {v.detalle?.length || 0} ítems</div>
+              <div className="text-xs text-muted-foreground">{new Date(v.fecha).toLocaleString('es-AR')} · {v.detalle?.length || 0} ítems</div>
             </div>
-            <span className="font-bold text-green-400">{money(v.total)}</span>
+            <MetodoChip metodo={v.metodo_pago} />
+            <span className="font-bold text-green-400 whitespace-nowrap">{money(v.total)}</span>
           </div>
         ))}
-        {ventas.length === 0 && <div className="card text-center text-sm text-muted-foreground py-8">Sin ventas en el rango.</div>}
+        {visibles.length === 0 && <div className="card text-center text-sm text-muted-foreground py-8">{fMetodo ? 'Sin ventas con este método.' : 'Sin ventas en el rango.'}</div>}
       </div>
 
       {detalle && (
@@ -420,7 +454,10 @@ function VentasView({ complexId, toast, puedeGestionar }) {
               </div>
             ))}
             <div className="border-t border-border pt-2 flex justify-between font-semibold"><span>Total</span><span className="text-green-400">{money(detalle.total)}</span></div>
-            <div className="text-xs text-muted-foreground">{new Date(detalle.fecha).toLocaleString('es-AR')} · {detalle.metodo_pago}</div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{new Date(detalle.fecha).toLocaleString('es-AR')}</span>
+              <MetodoChip metodo={detalle.metodo_pago} />
+            </div>
             {puedeGestionar && detalle.estado === 'completada' && (
               <button onClick={() => devolver(detalle)} className="btn-outline w-full flex items-center justify-center gap-2 text-red-400 border-red-400/40 hover:bg-red-500/10 mt-2">
                 <RotateCcw className="w-4 h-4" /> Anular / devolver

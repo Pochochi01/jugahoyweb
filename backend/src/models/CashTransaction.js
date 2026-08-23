@@ -8,7 +8,7 @@ const CashTransaction = sequelize.define('CashTransaction', {
   concepto: { type: DataTypes.STRING(255), allowNull: false },
   monto: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   metodo_pago: {
-    type: DataTypes.ENUM('efectivo', 'transferencia', 'mercadopago', 'tarjeta'),
+    type: DataTypes.ENUM('efectivo', 'transferencia', 'mercadopago', 'tarjeta', 'otros'),
     defaultValue: 'efectivo',
   },
   categoria: { type: DataTypes.STRING(100) },

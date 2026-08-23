@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
 import { posService } from '../../services/posService';
-import { DollarSign, Plus, Lock, Unlock, TrendingUp, TrendingDown } from 'lucide-react';
+import { DollarSign, Plus, Lock, Unlock, TrendingUp, TrendingDown, Filter } from 'lucide-react';
+import { METODOS_PAGO, metodoLabel, metodoChipStyle } from '../../utils/metodoPago';
+
+const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Chip de método de pago (legible sobre las tarjetas oscuras).
+function MetodoChip({ metodo }) {
+  return (
+    <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={metodoChipStyle(metodo)}>
+      {metodoLabel(metodo)}
+    </span>
+  );
+}
 
 export default function CashTab({ complexId }) {
   const [caja, setCaja] = useState(null);
@@ -8,6 +20,7 @@ export default function CashTab({ complexId }) {
   const [showTxForm, setShowTxForm] = useState(false);
   const [tx, setTx] = useState({ tipo: 'ingreso', concepto: '', monto: '', metodo_pago: 'efectivo' });
   const [submitting, setSubmitting] = useState(false);
+  const [filtroMetodo, setFiltroMetodo] = useState('');   // '' = todos
 
   const load = () => {
     posService.getCurrent(complexId).then(setCaja).catch(() => setCaja(null)).finally(() => setLoading(false));
@@ -40,8 +53,18 @@ export default function CashTab({ complexId }) {
     }
   };
 
-  const ingresos = caja?.transactions?.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + parseFloat(t.monto), 0) || 0;
-  const egresos = caja?.transactions?.filter(t => t.tipo === 'egreso').reduce((s, t) => s + parseFloat(t.monto), 0) || 0;
+  const allTx = caja?.transactions || [];
+  // El filtro por método afecta el listado y los totales → "reporte por método".
+  const visibles = filtroMetodo ? allTx.filter(t => t.metodo_pago === filtroMetodo) : allTx;
+  const ingresos = visibles.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + parseFloat(t.monto), 0);
+  const egresos = visibles.filter(t => t.tipo === 'egreso').reduce((s, t) => s + parseFloat(t.monto), 0);
+
+  // Desglose por método (sobre todos los movimientos de la caja abierta).
+  const porMetodo = METODOS_PAGO.map(m => {
+    const ing = allTx.filter(t => t.tipo === 'ingreso' && t.metodo_pago === m.v).reduce((s, t) => s + parseFloat(t.monto), 0);
+    const egr = allTx.filter(t => t.tipo === 'egreso'  && t.metodo_pago === m.v).reduce((s, t) => s + parseFloat(t.monto), 0);
+    return { ...m, ing, egr };
+  }).filter(m => m.ing > 0 || m.egr > 0);
 
   if (loading) return <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" /></div>;
 
@@ -102,10 +125,7 @@ export default function CashTab({ complexId }) {
                 <div>
                   <label className="label text-xs">Método de pago</label>
                   <select className="input text-sm" value={tx.metodo_pago} onChange={e => setTx(f => ({ ...f, metodo_pago: e.target.value }))}>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="mercadopago">MercadoPago</option>
-                    <option value="tarjeta">Tarjeta</option>
+                    {METODOS_PAGO.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
                   </select>
                 </div>
               </div>
@@ -118,21 +138,54 @@ export default function CashTab({ complexId }) {
             </form>
           )}
 
+          {/* Desglose por método de pago (reporte del día) */}
+          {porMetodo.length > 0 && (
+            <div className="card mb-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Totales por método de pago</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {porMetodo.map(m => (
+                  <div key={m.v} className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <MetodoChip metodo={m.v} />
+                    <div className="mt-1.5 text-sm font-bold text-green-400">{money(m.ing)}</div>
+                    {m.egr > 0 && <div className="text-xs text-red-400">-{money(m.egr)}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Filtro por método */}
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            <select className="input text-sm w-auto" value={filtroMetodo} onChange={e => setFiltroMetodo(e.target.value)}>
+              <option value="">Todos los métodos</option>
+              {METODOS_PAGO.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+            </select>
+            {filtroMetodo && (
+              <span className="text-xs text-muted-foreground">
+                {visibles.length} mov. · ingresos {money(ingresos)} · egresos {money(egresos)}
+              </span>
+            )}
+          </div>
+
           {/* Transacciones */}
           <div className="space-y-2">
-            {(caja.transactions || []).length === 0 ? (
-              <div className="card text-center py-8 text-muted-foreground text-sm">Sin movimientos aún.</div>
-            ) : caja.transactions.map(t => (
+            {visibles.length === 0 ? (
+              <div className="card text-center py-8 text-muted-foreground text-sm">
+                {filtroMetodo ? 'Sin movimientos con este método.' : 'Sin movimientos aún.'}
+              </div>
+            ) : visibles.map(t => (
               <div key={t.id} className="card py-3 flex items-center gap-3">
                 <div className={t.tipo === 'ingreso' ? 'text-green-500' : 'text-red-500'}>
                   {t.tipo === 'ingreso' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{t.concepto}</div>
-                  <div className="text-xs text-muted-foreground">{t.metodo_pago} · {new Date(t.fecha).toLocaleTimeString('es-AR')}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(t.fecha).toLocaleTimeString('es-AR')}</div>
                 </div>
-                <span className={`font-semibold ${t.tipo === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
-                  {t.tipo === 'ingreso' ? '+' : '-'}${parseFloat(t.monto).toFixed(2)}
+                <MetodoChip metodo={t.metodo_pago} />
+                <span className={`font-semibold whitespace-nowrap ${t.tipo === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
+                  {t.tipo === 'ingreso' ? '+' : '-'}{money(t.monto)}
                 </span>
               </div>
             ))}

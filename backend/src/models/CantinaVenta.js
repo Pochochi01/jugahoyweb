@@ -9,7 +9,7 @@ const CantinaVenta = sequelize.define('CantinaVenta', {
   subtotal:            { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   descuento:           { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   total:               { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
-  metodo_pago:         { type: DataTypes.ENUM('efectivo', 'tarjeta', 'billetera', 'transferencia', 'mercadopago'), allowNull: false, defaultValue: 'efectivo' },
+  metodo_pago:         { type: DataTypes.ENUM('efectivo', 'tarjeta', 'billetera', 'transferencia', 'mercadopago', 'otros'), allowNull: false, defaultValue: 'efectivo' },
   estado:              { type: DataTypes.ENUM('completada', 'anulada'), allowNull: false, defaultValue: 'completada' },
   usuario_id:          { type: DataTypes.INTEGER },
   cash_transaction_id: { type: DataTypes.INTEGER },
