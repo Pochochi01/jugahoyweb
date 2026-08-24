@@ -38,6 +38,30 @@ async function agregar(complexId, { field_id, deporte, fecha, hora, duracion = 6
   return { waitlist, duplicado: false };
 }
 
+/** Borra las inscripciones activas cuyo turno ya comenzó (vencidas). */
+async function limpiarVencidos(complexId) {
+  const activos = await Waitlist.findAll({ where: { complex_id: complexId, estado: 'activo' } });
+  const now = Date.now();
+  let n = 0;
+  for (const w of activos) {
+    const [h] = String(w.hora).split(':').map(Number);
+    const dt = new Date(`${w.fecha}T${w.hora}:00`);
+    if (h < 8) dt.setDate(dt.getDate() + 1);   // madrugada = día siguiente
+    if (dt.getTime() <= now) { await w.destroy(); n++; }
+  }
+  return n;
+}
+
+/** Claves `${field_id}_${fecha}_${hora}` que un teléfono ya tiene en lista de espera. */
+async function slotsActivosDeTelefono(complexId, telefono) {
+  const tel = soloDigitos(telefono);
+  const rows = await Waitlist.findAll({
+    where: { complex_id: complexId, estado: 'activo', telefono: { [Op.like]: `%${tel.slice(-10)}%` } },
+    attributes: ['field_id', 'fecha', 'hora'],
+  });
+  return new Set(rows.map(r => `${r.field_id}_${r.fecha}_${r.hora}`));
+}
+
 /** Inscripciones activas de un complejo (para el panel). */
 function listarActivos(complexId) {
   return Waitlist.findAll({
@@ -91,4 +115,4 @@ async function notificarLiberado(complexId, { field_id, fecha, hora, deporte }) 
   }
 }
 
-module.exports = { moduloHabilitado, agregar, listarActivos, notificarLiberado, soloDigitos };
+module.exports = { moduloHabilitado, agregar, limpiarVencidos, slotsActivosDeTelefono, listarActivos, notificarLiberado, soloDigitos };
