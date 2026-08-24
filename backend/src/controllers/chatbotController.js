@@ -155,18 +155,6 @@ function setPending(from, data) {
   for (const [k, v] of pendingName) if (Date.now() - v.ts > 15 * 60 * 1000) pendingName.delete(k);
 }
 
-// Selección múltiple de lista de espera: número → { fecha, group, deporte, duracion, selected:Set(slotId), ts }
-const waitlistSel = new Map();
-function getWaitlistSel(from, ctx = {}) {
-  let s = waitlistSel.get(from);
-  // Si cambió el contexto (otra fecha/deporte/duración), reinicia la selección.
-  const mismo = s && s.fecha === ctx.fecha && s.deporte === ctx.deporte && s.duracion === ctx.duracion && s.group === ctx.group;
-  if (!mismo) { s = { ...ctx, selected: new Set(), ts: Date.now() }; waitlistSel.set(from, s); }
-  s.ts = Date.now();
-  for (const [k, v] of waitlistSel) if (Date.now() - v.ts > 20 * 60 * 1000) waitlistSel.delete(k);
-  return s;
-}
-
 // Emoji por deporte para los menús.
 const DEPORTE_EMOJI = { futbol: '⚽', padel: '🎾', tenis: '🎾', basquet: '🏀', squash: '🥎', voley: '🏐', otro: '🏟️' };
 const depEmoji = (d) => DEPORTE_EMOJI[d] || '🏟️';
@@ -899,50 +887,31 @@ async function handleWebhook(req, res) {
         return;
       }
 
-      // ── Lista de espera (módulo opcional) — selección múltiple ──
+      // ── Lista de espera (módulo opcional) ──
       if (replyId.startsWith('wla_')) {
-        // Toca un turno ocupado → alterna su tilde (checkbox) y re-muestra la lista
+        // Toca un turno ocupado → queda anotado al instante (sin confirmar)
         if (!(await waitlist.moduloHabilitado(ctx.clubId))) {
           await send({ to: from, type: 'text', text: { body: 'ℹ️ La función de lista de espera no está disponible actualmente.' } });
           return;
         }
-        const slotId = replyId.replace('wla_', '');
-        const { fecha, fieldId, hora, duracion } = parseSlotId(slotId);
-        const field = await Field.findByPk(fieldId, { attributes: ['deporte'] });
-        const deporte = field?.deporte || 'otro';
-        const group = Object.keys(FRANJAS).find(g => FRANJAS[g].test(parseInt(hora)));
-        const sel = getWaitlistSel(from, { fecha, group, deporte, duracion });
-        if (sel.selected.has(slotId)) sel.selected.delete(slotId); else sel.selected.add(slotId);
-        if (group) await _sendWaitlistMenu(ctx, from, fecha, group, duracion, deporte);
-        return;
-      }
-
-      if (replyId.startsWith('wlc_')) {
-        // Confirmar selección → registrar TODOS los turnos tildados en un solo paso
-        if (!(await waitlist.moduloHabilitado(ctx.clubId))) {
-          await send({ to: from, type: 'text', text: { body: 'ℹ️ La función de lista de espera no está disponible actualmente.' } });
-          return;
-        }
-        const [fc, group, deporte, dur] = replyId.replace('wlc_', '').split('_');
-        const sel = waitlistSel.get(from);
-        const slotIds = sel ? [...sel.selected] : [];
-        if (!slotIds.length) {
-          await send({ to: from, type: 'text', text: { body: 'ℹ️ No tildaste ningún turno. Tocá los turnos que quieras y después *Confirmar*.' } });
-          await _sendWaitlistMenu(ctx, from, fechaFromCompact(fc), group, parseInt(dur), deporte);
-          return;
-        }
+        const { fecha, fieldId, hora, duracion } = parseSlotId(replyId.replace('wla_', ''));
+        const field = await Field.findByPk(fieldId, { attributes: ['nombre', 'identificador', 'deporte'] });
         const pend = pendingName.get(from);
-        for (const slotId of slotIds) {
-          const s = parseSlotId(slotId);
-          const field = await Field.findByPk(s.fieldId, { attributes: ['deporte'] });
-          await waitlist.agregar(ctx.clubId, {
-            field_id: s.fieldId, deporte: field?.deporte, fecha: s.fecha, hora: s.hora, duracion: s.duracion,
-            nombre: pend?.name || null, telefono: from,
-          });
-        }
-        waitlistSel.delete(from);
-        await send({ to: from, type: 'text', text: { body: '✅ Has sido agregado a la lista de espera de los turnos seleccionados.' } });
-        await _sendReservarOtroOSalir(ctx, from);
+        const { duplicado } = await waitlist.agregar(ctx.clubId, {
+          field_id: fieldId, deporte: field?.deporte, fecha, hora, duracion,
+          nombre: pend?.name || null, telefono: from,
+        });
+        const canchaLbl = nombreCancha(field?.identificador, field?.nombre) || `Cancha ${fieldId}`;
+        await send({
+          to: from, type: 'text',
+          text: { body:
+            (duplicado ? 'ℹ️ Ya estabas anotado en ' : '✅ Te agregamos a la lista de espera de ') +
+            `*${canchaLbl}* · ${formatFechaLabel(fecha)} ${hora} hs.` },
+        });
+        // Re-mostrar los turnos ocupados restantes para anotarse en más.
+        const group = Object.keys(FRANJAS).find(g => FRANJAS[g].test(parseInt(hora)));
+        const deporte = field?.deporte || 'otro';
+        if (group) await _sendWaitlistMenu(ctx, from, fecha, group, duracion, deporte);
         return;
       }
 
@@ -953,7 +922,6 @@ async function handleWebhook(req, res) {
           await send({ to: from, type: 'text', text: { body: 'ℹ️ La función de lista de espera no está disponible actualmente.' } });
           return;
         }
-        waitlistSel.delete(from);   // arranca una selección nueva
         await _sendWaitlistMenu(ctx, from, fechaFromCompact(fc), group, parseInt(dur), deporte);
         return;
       }
@@ -996,7 +964,6 @@ async function handleWebhook(req, res) {
       }
       if (btnId === 'wlnext_salir') {
         pendingName.delete(from);
-        waitlistSel.delete(from);
         await send({
           to: from, type: 'text',
           text: { body: '👋 ¡Listo! Te avisamos si se libera alguno de tus turnos. Que tengas un buen día. Escribí *hola* cuando quieras volver.' },
@@ -1353,18 +1320,14 @@ async function _sendHoursMenu(ctx, to, fecha, group, duracion, deporte) {
 }
 
 /**
- * Menú de lista de espera (SELECCIÓN MÚLTIPLE): turnos ocupados de una franja+
- * duración+deporte, cada uno con "checkbox" (✅/⬜). El estado se guarda en sesión;
- * cada toque alterna un turno y se re-muestra la lista. Una fila final confirma
- * y registra todos los turnos elegidos en un solo paso.
- * Excluye turnos vencidos y los que el usuario ya tiene en lista de espera.
+ * Menú de lista de espera: turnos ocupados de una franja+duración+deporte.
+ * Cada turno se anota en la lista de espera al tocarlo (sin paso de confirmación).
+ * Excluye turnos vencidos y los que el usuario ya tiene anotados.
  */
 async function _sendWaitlistMenu(ctx, to, fecha, group, duracion, deporte) {
   const send = p => wa.sendMessage(p, ctx.creds);
   const franja = FRANJAS[group];
   if (!franja) return _sendGroupsMenu(ctx, to, fecha, deporte);
-  const fc = fechaCompact(fecha);
-  const dep = deporte || '';
 
   // Borra automáticamente las inscripciones vencidas del complejo.
   await waitlist.limpiarVencidos(ctx.clubId).catch(() => {});
@@ -1376,43 +1339,32 @@ async function _sendWaitlistMenu(ctx, to, fecha, group, duracion, deporte) {
     .filter(h => franja.test(parseInt(h)))
     .sort((a, b) => horaSortKey(a) - horaSortKey(b));
 
-  const sel = getWaitlistSel(to, { fecha, group, deporte, duracion });
-
-  // Opciones de turnos ocupados (excluye los ya anotados). Cap a 9 (+ fila confirmar).
-  const opciones = [];
+  // Una fila por turno ocupado (excluye los que el usuario ya anotó). Máx. 10.
+  const rows = [];
   for (const hora of horas) {
     for (const c of occByHour[hora]) {
       if (yaAnotado.has(`${c.fieldId}_${fecha}_${hora}`)) continue;
-      opciones.push({ slotId: buildSlotId(fecha, c.fieldId, hora, duracion), hora, c });
-      if (opciones.length >= 9) break;
+      rows.push({
+        id:          `wla_${buildSlotId(fecha, c.fieldId, hora, duracion)}`,
+        title:       `${hora} · ${nombreCancha(c.identificador, c.nombre)}`.substring(0, 24),
+        description: `${tipoCanchaCompleto(c.deporte, c.superficie)} · ocupado`.substring(0, 72),
+      });
+      if (rows.length >= 10) break;
     }
-    if (opciones.length >= 9) break;
+    if (rows.length >= 10) break;
   }
 
-  if (!opciones.length) {
-    await send({ to, type: 'text', text: { body: '✅ No hay turnos ocupados disponibles para anotarte en esa franja (o ya estás en la lista de todos). Escribí *hola* para volver al menú.' } });
+  // Sin turnos ocupados para anotarse → ofrecer reservar otro o salir.
+  if (!rows.length) {
+    await send({ to, type: 'text', text: { body: '✅ No quedan turnos ocupados para anotarte en esa franja.' } });
+    await _sendReservarOtroOSalir(ctx, to);
     return;
   }
 
-  const rows = opciones.map(({ slotId, hora, c }) => {
-    const marcado = sel.selected.has(slotId);
-    return {
-      id:          `wla_${slotId}`,
-      title:       `${marcado ? '✅' : '⬜'} ${hora} · ${nombreCancha(c.identificador, c.nombre)}`.substring(0, 24),
-      description: `${tipoCanchaCompleto(c.deporte, c.superficie)} · ocupado`.substring(0, 72),
-    };
-  });
-  const n = sel.selected.size;
-  rows.push({
-    id:          `wlc_${fc}_${group}_${dep}_${duracion}`,
-    title:       `✔️ Confirmar${n ? ` (${n})` : ''}`.substring(0, 24),
-    description: n ? 'Anotarme en los turnos tildados' : 'Primero tildá al menos un turno',
-  });
-
   await send(wa.buildRowsListMessage(to, {
     headerText:   `📋 Lista de espera · ${franja.label}`.substring(0, 60),
-    bodyText:     'Tildá los turnos ocupados que quieras (podés marcar varios). Cada toque marca/desmarca. Cuando termines, tocá *Confirmar*.',
-    footerText:   'Selección múltiple',
+    bodyText:     'Tocá un turno ocupado para anotarte en la lista de espera. Podés tocar varios; cada uno queda anotado al instante. Te avisamos si se libera alguno.',
+    footerText:   'Escribí *hola* cuando termines',
     button:       'Ver turnos ocupados',
     sectionTitle: 'Turnos ocupados',
     rows,
