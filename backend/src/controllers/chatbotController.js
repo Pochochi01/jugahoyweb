@@ -908,10 +908,10 @@ async function handleWebhook(req, res) {
             (duplicado ? 'ℹ️ Ya estabas anotado en ' : '✅ Te agregamos a la lista de espera de ') +
             `*${canchaLbl}* · ${formatFechaLabel(fecha)} ${hora} hs.` },
         });
-        // Re-mostrar los turnos ocupados restantes para anotarse en más.
+        // Tras anotar: ofrecer "Reservar otro" (re-muestra los ocupados restantes) o "Salir".
         const group = Object.keys(FRANJAS).find(g => FRANJAS[g].test(parseInt(hora)));
         const deporte = field?.deporte || 'otro';
-        if (group) await _sendWaitlistMenu(ctx, from, fecha, group, duracion, deporte);
+        if (group) await _sendReservarOtroOSalir(ctx, from, { fecha, group, deporte, duracion });
         return;
       }
 
@@ -956,13 +956,18 @@ async function handleWebhook(req, res) {
         return;
       }
 
-      // Tras confirmar la lista de espera: reservar otro turno o salir.
-      if (btnId === 'wlnext_reservar') {
-        pendingName.delete(from);
-        await _sendDaysMenu(ctx, from);
+      // Tras anotarse en la lista de espera: "Reservar otro" (re-mostrar los turnos
+      // ocupados restantes) o "Salir".
+      if (btnId.startsWith('wlmas_')) {
+        if (!(await waitlist.moduloHabilitado(ctx.clubId))) {
+          await send({ to: from, type: 'text', text: { body: 'ℹ️ La función de lista de espera no está disponible actualmente.' } });
+          return;
+        }
+        const [fc, group, deporte, dur] = btnId.replace('wlmas_', '').split('_');
+        await _sendWaitlistMenu(ctx, from, fechaFromCompact(fc), group, parseInt(dur), deporte);
         return;
       }
-      if (btnId === 'wlnext_salir') {
+      if (btnId === 'wlsalir') {
         pendingName.delete(from);
         await send({
           to: from, type: 'text',
@@ -1354,10 +1359,9 @@ async function _sendWaitlistMenu(ctx, to, fecha, group, duracion, deporte) {
     if (rows.length >= 10) break;
   }
 
-  // Sin turnos ocupados para anotarse → ofrecer reservar otro o salir.
+  // Sin turnos ocupados para anotarse → avisar y salir.
   if (!rows.length) {
-    await send({ to, type: 'text', text: { body: '✅ No quedan turnos ocupados para anotarte en esa franja.' } });
-    await _sendReservarOtroOSalir(ctx, to);
+    await send({ to, type: 'text', text: { body: '✅ No quedan turnos ocupados para anotarte en esa franja. Escribí *hola* para volver al menú.' } });
     return;
   }
 
@@ -1404,18 +1408,24 @@ async function _sendCourtsMenu(ctx, to, fecha, hora, duracion, deporte) {
   }));
 }
 
-/** Pregunta si reservar otro turno o salir (tras confirmar la lista de espera). */
-async function _sendReservarOtroOSalir(ctx, to) {
+/**
+ * Pregunta si anotarse en otro turno o salir (tras agregarse a la lista de espera).
+ * "Reservar otro" re-muestra los turnos ocupados restantes de la misma franja/deporte
+ * (el recién agregado ya no aparece). Requiere el contexto para poder re-mostrarlos.
+ */
+async function _sendReservarOtroOSalir(ctx, to, wctx) {
+  const fc = fechaCompact(wctx.fecha);
+  const masId = `wlmas_${fc}_${wctx.group}_${wctx.deporte || ''}_${wctx.duracion}`;
   await wa.sendMessage({
     to,
     type: 'interactive',
     interactive: {
       type: 'button',
-      body: { text: '¿Deseás reservar otro turno o salir para finalizar la conversación?' },
+      body: { text: '¿Querés anotarte en otro turno ocupado o salir para finalizar la conversación?' },
       action: {
         buttons: [
-          { type: 'reply', reply: { id: 'wlnext_reservar', title: '🔁 Reservar otro' } },
-          { type: 'reply', reply: { id: 'wlnext_salir',    title: '👋 Salir' } },
+          { type: 'reply', reply: { id: masId,     title: '🔁 Reservar otro' } },
+          { type: 'reply', reply: { id: 'wlsalir', title: '👋 Salir' } },
         ],
       },
     },
