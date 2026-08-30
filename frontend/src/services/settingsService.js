@@ -14,4 +14,8 @@ export const settingsService = {
   getIntegrations:    (complexId)       => api.get(`/settings/${complexId}/integrations`),
   updateIntegrations: (complexId, data) => api.put(`/settings/${complexId}/integrations`, data),
   renewMetaToken:     (complexId)       => api.post(`/settings/${complexId}/integrations/renew-meta`),
+
+  // ── Plantillas de Meta (ventana de 24 h) — solo general_admin ──
+  getWaTemplates:     (complexId)       => api.get(`/settings/${complexId}/wa-templates`),
+  updateWaTemplates:  (complexId, templates) => api.put(`/settings/${complexId}/wa-templates`, { templates }),
 };

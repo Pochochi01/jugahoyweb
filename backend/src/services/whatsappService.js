@@ -278,6 +278,30 @@ async function sendCancellationNotice(to, { fecha, hora, cancha, motivo }, creds
  * @param {string} code  OTP de 6 dígitos
  * @param {{name?:string, lang?:string, withButton?:boolean}} [opts]
  */
+/**
+ * Mensaje de plantilla genérico (para enviar FUERA de la ventana de 24 h).
+ * @param {string} to      número destino
+ * @param {string} name    nombre exacto de la plantilla aprobada en Meta
+ * @param {string} lang    código de idioma (ej. 'es_AR')
+ * @param {string[]} bodyParams  valores para las variables {{1}}, {{2}}, ... del cuerpo
+ */
+function buildTemplateMessage(to, name, lang = 'es_AR', bodyParams = []) {
+  const components = [];
+  if (bodyParams.length) {
+    components.push({ type: 'body', parameters: bodyParams.map(v => ({ type: 'text', text: String(v ?? '') })) });
+  }
+  return {
+    recipient_type: 'individual',
+    to,
+    type: 'template',
+    template: {
+      name,
+      language: { code: lang },
+      ...(components.length ? { components } : {}),
+    },
+  };
+}
+
 function buildOtpTemplate(to, code, opts = {}) {
   const name = opts.name || process.env.META_OTP_TEMPLATE_NAME || 'otp_jugahoy';
   const lang = opts.lang || process.env.META_OTP_TEMPLATE_LANG || 'es_AR';
@@ -425,4 +449,5 @@ module.exports = {
   buildContactCanchaMessage,
   sendCancellationNotice,
   buildOtpTemplate,
+  buildTemplateMessage,
 };

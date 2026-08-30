@@ -30,6 +30,8 @@ const CantinaMovimiento     = require('./CantinaMovimiento');
 const RecurringBooking      = require('./RecurringBooking');
 const BookingConsumo        = require('./BookingConsumo');
 const Waitlist              = require('./Waitlist');
+const WaConversation        = require('./WaConversation');
+const WaTemplate            = require('./WaTemplate');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -175,4 +177,6 @@ module.exports = {
   BookingConsumo,
   // Lista de espera
   Waitlist,
+  // WhatsApp: ventana de 24 h + plantillas Meta
+  WaConversation, WaTemplate,
 };

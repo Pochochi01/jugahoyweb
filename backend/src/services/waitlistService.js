@@ -11,6 +11,7 @@ const { Op } = require('sequelize');
 const { Waitlist, Complex, Field } = require('../models');
 const wa = require('./whatsappService');
 const integrations = require('./integrations.service');
+const waWindow = require('./whatsappWindowService');
 
 const soloDigitos = (t) => String(t || '').replace(/\D/g, '');
 
@@ -93,19 +94,21 @@ async function notificarLiberado(complexId, { field_id, fecha, hora, deporte }) 
     const canchaLbl = field ? (field.identificador ? `${field.nombre}` : field.nombre) : 'una cancha';
     const creds = await integrations.getMetaCredentials(complexId).catch(() => null);
 
+    const cuerpo =
+      `🔔 *¡Se liberó un turno!*\n\n` +
+      `Estabas en lista de espera y quedó disponible:\n` +
+      `🏟️ ${canchaLbl}\n📅 ${fecha}\n⏰ ${hora} hs\n\n` +
+      `Escribí *hola* y reservá desde "Turnos por WhatsApp" antes de que lo tome otra persona. 🏃`;
+
     for (const w of inscriptos) {
-      if (creds) {
-        await wa.sendMessage({
-          to: soloDigitos(w.telefono),
-          type: 'text',
-          text: { body:
-            `🔔 *¡Se liberó un turno!*\n\n` +
-            `Estabas en lista de espera y quedó disponible:\n` +
-            `🏟️ ${canchaLbl}\n📅 ${fecha}\n⏰ ${hora} hs\n\n` +
-            `Escribí *hola* y reservá desde "Turnos por WhatsApp" antes de que lo tome otra persona. 🏃`,
-          },
-        }, creds).catch(err => console.error('[waitlist] aviso:', err.message));
-      }
+      // Ramifica según la ventana de 24 h: texto libre (dentro) o plantilla Meta (fuera).
+      await waWindow.enviarConVentana(complexId, w.telefono, {
+        tipo: 'lista_espera',
+        freeText: { type: 'text', text: { body: cuerpo } },
+        templateParams: [canchaLbl, fecha, hora],
+        creds,
+        etiqueta: `waitlist #${w.id}`,
+      }).catch(err => console.error('[waitlist] aviso:', err.message));
       await w.update({ estado: 'notificado', notificado_at: new Date() });
     }
     return inscriptos.length;

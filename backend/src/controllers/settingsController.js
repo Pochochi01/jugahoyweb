@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Complex, Field, Booking } = require('../models');
+const { Complex, Field, Booking, WaTemplate } = require('../models');
 const integrations = require('../services/integrations.service');
 const { normalizeWaContacto, isValidWaContacto } = require('../utils/waPhone');
 const { superficiesValidas } = require('../utils/canchas');
@@ -235,4 +235,48 @@ async function deleteField(req, res) {
   }
 }
 
-module.exports = { getSettings, updateSettings, getFields, createField, updateField, toggleField, deleteField };
+// ─────────────────────────────────────────────────────────────
+//  Plantillas de Meta (ventana de 24 h) — SOLO administrador general
+// ─────────────────────────────────────────────────────────────
+const WA_TEMPLATE_TIPOS = ['recordatorio_turno', 'lista_espera', 'confirmacion'];
+
+async function getWaTemplates(req, res) {
+  try {
+    const { complexId } = req.params;
+    const existentes = await WaTemplate.findAll({ where: { complex_id: complexId } });
+    const byTipo = Object.fromEntries(existentes.map(t => [t.tipo, t]));
+    // Devuelve las 3 filas (con defaults si no están configuradas).
+    const data = WA_TEMPLATE_TIPOS.map(tipo => {
+      const t = byTipo[tipo];
+      return {
+        tipo,
+        nombre: t?.nombre || '',
+        idioma: t?.idioma || 'es_AR',
+        activo: t ? !!t.activo : false,
+      };
+    });
+    res.json(data);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+}
+
+async function updateWaTemplates(req, res) {
+  try {
+    const { complexId } = req.params;
+    const items = Array.isArray(req.body?.templates) ? req.body.templates : [];
+    for (const it of items) {
+      if (!WA_TEMPLATE_TIPOS.includes(it.tipo)) continue;
+      const nombre = String(it.nombre || '').trim();
+      const idioma = String(it.idioma || 'es_AR').trim() || 'es_AR';
+      const activo = !!it.activo && !!nombre;   // sin nombre no puede estar activa
+      const existente = await WaTemplate.findOne({ where: { complex_id: complexId, tipo: it.tipo } });
+      if (existente) {
+        await existente.update({ nombre, idioma, activo });
+      } else if (nombre) {
+        await WaTemplate.create({ complex_id: complexId, tipo: it.tipo, nombre, idioma, activo });
+      }
+    }
+    return getWaTemplates(req, res);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+}
+
+module.exports = { getSettings, updateSettings, getFields, createField, updateField, toggleField, deleteField, getWaTemplates, updateWaTemplates };

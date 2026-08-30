@@ -44,6 +44,7 @@ const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDepo
 const { evaluarCancelacion, avisoAlReservar, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
 const waitlist     = require('../services/waitlistService');
+const waWindow     = require('../services/whatsappWindowService');
 
 // ─────────────────────────────────────────────────────────────
 //  Helpers de fecha/hora
@@ -741,9 +742,21 @@ async function handleWebhook(req, res) {
     }
 
     if (!clubId) {
-      console.warn(`[WhatsApp] Mensaje de un número sin club asociado (phone_number_id=${phoneNumberId}). ` +
-        'Cargá la integración en club_integrations.');
+      console.warn(`[WhatsApp] Mensaje al número phone_number_id=${phoneNumberId} sin complejo asociado. ` +
+        'Cargá ese número en la integración del complejo (Configuración → WhatsApp) para que responda su chatbot.');
       return;
+    }
+    // El número se mapeó a un complejo, pero sus credenciales NO son propias de ese
+    // complejo (falta token / integración incompleta y el fallback de plataforma no
+    // aplica). Responder acá usaría el número de otro complejo → NO se responde.
+    if (!creds.configured || creds.source !== 'club') {
+      // Se permite el fallback de plataforma solo si es el complejo del .env.
+      const esComplejoEnv = process.env.CHATBOT_COMPLEX_ID && Number(clubId) === parseInt(process.env.CHATBOT_COMPLEX_ID);
+      if (!(creds.configured && esComplejoEnv)) {
+        console.warn(`[WhatsApp] Complejo ${clubId} (phone_number_id=${phoneNumberId}) con integración de WhatsApp incompleta ` +
+          `(source=${creds.source}). No se responde para no usar el número de otro complejo. Completá el token en Configuración → WhatsApp.`);
+        return;
+      }
     }
     if (creds.expired) {
       console.warn(`[WhatsApp] Token vencido para el club ${clubId} — no se responde.`);
@@ -757,8 +770,13 @@ async function handleWebhook(req, res) {
     const from    = msg.from;   // número WhatsApp del remitente
     const msgType = msg.type;
 
-    console.log(`[WhatsApp] ← club ${clubId} · mensaje de ${from} · tipo=${msgType}` +
+    // Auditoría del enrutamiento multi-tenant: qué número → qué complejo.
+    const complejoNombre = (await Complex.findByPk(clubId, { attributes: ['nombre'] }).catch(() => null))?.nombre || '?';
+    console.log(`[WhatsApp] ← phone_number_id=${phoneNumberId} → complejo ${clubId} "${complejoNombre}" · de ${from} · tipo=${msgType}` +
       (msgType === 'text' ? ` · texto="${msg.text?.body}"` : ''));
+
+    // Renueva la ventana de servicio de 24 h (define texto libre vs plantilla).
+    waWindow.registrarInbound(clubId, from).catch(() => {});
 
     // ── Mensaje de texto ───────────────────────────────────────
     if (msgType === 'text') {

@@ -13,6 +13,7 @@ const { Op } = require('sequelize');
 const { Booking, Field, Complex } = require('../models');
 const wa = require('./whatsappService');
 const integrations = require('./integrations.service');
+const waWindow = require('./whatsappWindowService');
 const { todayAR } = require('../utils/time');
 
 const DOS_HORAS = 2 * 60 * 60 * 1000;
@@ -80,17 +81,25 @@ async function enviarRecordatoriosPendientes() {
     const creds = credsCache.get(complexId);
 
     const canchaLbl = field ? field.nombre : 'la cancha';
+    const deporteLbl = depLabel(field?.deporte);
     const cuerpo =
       `⏰ *Recordatorio de turno*\n\n` +
       `Hola ${b.nombre_cliente || ''}! Te esperamos en 2 horas:\n\n` +
       `🏟️ ${canchaLbl}\n` +
-      `🎾 ${depLabel(field?.deporte)}\n` +
+      `🎾 ${deporteLbl}\n` +
       `📅 ${b.fecha}\n` +
       `⏰ ${b.hora_inicio} a ${b.hora_fin} hs (${b.duracion} min)\n\n` +
       `¡Nos vemos! 🙌`;
 
     try {
-      if (creds) await wa.sendMessage({ to: tel, type: 'text', text: { body: cuerpo } }, creds);
+      // Ramifica según la ventana de 24 h: texto libre (dentro) o plantilla Meta (fuera).
+      await waWindow.enviarConVentana(complexId, tel, {
+        tipo: 'recordatorio_turno',
+        freeText: { type: 'text', text: { body: cuerpo } },
+        templateParams: [b.nombre_cliente || '', canchaLbl, deporteLbl, b.fecha, `${b.hora_inicio} a ${b.hora_fin}`],
+        creds,
+        etiqueta: `turno #${b.id}`,
+      });
       await b.update({ recordatorio_enviado: true });
       enviados++;
     } catch (err) {

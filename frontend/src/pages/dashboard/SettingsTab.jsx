@@ -781,6 +781,82 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
   );
 }
 
+// ── Plantillas de Meta (ventana de 24 h) — SOLO general_admin ─────────────────
+const WA_TIPO_LABEL = {
+  recordatorio_turno: 'Recordatorio de turno',
+  lista_espera:       'Lista de espera',
+  confirmacion:       'Confirmación',
+};
+function WaTemplatesCard({ complexId }) {
+  const [rows, setRows]   = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk]       = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    settingsService.getWaTemplates(complexId).then(setRows).catch(() => setRows([]));
+  }, [complexId]);
+
+  const setRow = (tipo, patch) => setRows(rs => rs.map(r => r.tipo === tipo ? { ...r, ...patch } : r));
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      const updated = await settingsService.updateWaTemplates(complexId, rows);
+      setRows(updated);
+      setOk(true); setTimeout(() => setOk(false), 2500);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'No se pudo guardar.');
+    } finally { setSaving(false); }
+  };
+
+  if (!rows) return null;
+
+  return (
+    <div className="card space-y-3">
+      <div>
+        <h3 className="font-semibold flex items-center gap-1.5">
+          <MessageCircle className="w-4 h-4 text-primary" /> Plantillas de WhatsApp (Meta)
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Fuera de la ventana de 24 h, los recordatorios se envían con una plantilla aprobada por Meta.
+          Cargá el <b>nombre exacto</b> de cada plantilla registrada en tu Business Manager.
+        </p>
+      </div>
+
+      {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-3 py-2 text-sm">{error}</div>}
+
+      <div className="space-y-2">
+        {rows.map(r => (
+          <div key={r.tipo} className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold">{WA_TIPO_LABEL[r.tipo] || r.tipo}</span>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" className="accent-primary" checked={!!r.activo}
+                  onChange={e => setRow(r.tipo, { activo: e.target.checked })} />
+                Activa
+              </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input className="input text-sm sm:col-span-2" placeholder="nombre_de_plantilla_en_meta"
+                value={r.nombre} onChange={e => setRow(r.tipo, { nombre: e.target.value })} />
+              <input className="input text-sm" placeholder="es_AR"
+                value={r.idioma} onChange={e => setRow(r.tipo, { idioma: e.target.value })} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={saving} className="btn-primary text-sm py-2 px-4 flex items-center gap-1.5">
+          <Save className="w-4 h-4" /> {saving ? 'Guardando...' : 'Guardar plantillas'}
+        </button>
+        {ok && <span className="text-green-500 text-sm flex items-center gap-1"><Check className="w-4 h-4" /> Guardado</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── tab principal ─────────────────────────────────────────────────────────────
 export default function SettingsTab({ complexId, onUpdate }) {
   // MercadoPago y WhatsApp: SOLO general_admin. Límite de inasistencias: admins.
@@ -1002,6 +1078,7 @@ export default function SettingsTab({ complexId, onUpdate }) {
         <>
           <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
           <WhatsAppCard complexId={complexId} />
+          <WaTemplatesCard complexId={complexId} />
         </>
       )}
 

@@ -18,6 +18,10 @@ router.get ('/:complexId/integrations',            requireComplexAccess, require
 router.put ('/:complexId/integrations',            requireComplexAccess, requireRole('general_admin'), integrationsCtrl.updateIntegrations);
 router.post('/:complexId/integrations/renew-meta', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.renewMeta);
 
+// ── Plantillas de Meta (ventana de 24 h): SOLO el administrador general ──
+router.get('/:complexId/wa-templates', requireComplexAccess, requireRole('general_admin'), ctrl.getWaTemplates);
+router.put('/:complexId/wa-templates', requireComplexAccess, requireRole('general_admin'), ctrl.updateWaTemplates);
+
 // Leer canchas — NO requiere permiso específico: cualquier colaborador con acceso
 // al complejo necesita conocer las canchas (Agenda, etc.)
 router.get('/:complexId/fields', requireComplexAccess, ctrl.getFields);

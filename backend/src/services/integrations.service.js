@@ -82,10 +82,17 @@ async function getMetaCredentials(clubId) {
     };
   }
 
-  // Fallback de plataforma (desarrollo o instalación single-tenant)
+  // Fallback de plataforma (desarrollo / instalación single-tenant).
+  // MULTI-TENANT: SOLO se usa para el complejo declarado en CHATBOT_COMPLEX_ID
+  // (o cuando no se pidió un club puntual). NUNCA para otro club, porque
+  // devolver el número/token de .env respondería DESDE EL NÚMERO EQUIVOCADO
+  // (síntoma "todos los mensajes caen al primer número").
   const envPhone = process.env.META_PHONE_NUMBER_ID;
   const envToken = process.env.META_ACCESS_TOKEN;
-  if (envPhone && envToken) {
+  const envComplexId = process.env.CHATBOT_COMPLEX_ID ? parseInt(process.env.CHATBOT_COMPLEX_ID) : null;
+  // Para un club puntual, el fallback de .env SOLO aplica si es el complejo del env.
+  const permiteEnvFallback = !clubId || (envComplexId !== null && Number(clubId) === envComplexId);
+  if (envPhone && envToken && permiteEnvFallback) {
     return {
       phoneNumberId: envPhone,
       accessToken:   envToken,
