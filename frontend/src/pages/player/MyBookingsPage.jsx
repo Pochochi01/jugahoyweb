@@ -186,7 +186,13 @@ export default function MyBookingsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="font-semibold text-sm">{field?.nombre || 'Cancha'}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-sm">{field?.nombre || 'Cancha'}</span>
+                              {/* Canal de origen: WhatsApp o Web */}
+                              {/whatsapp/i.test(b.notas || '')
+                                ? <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(37,211,102,0.15)', color: '#25D366', border: '1px solid rgba(37,211,102,0.35)' }}>📱 WhatsApp</span>
+                                : <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)' }}>🌐 Web</span>}
+                            </div>
                             {complex && (
                               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                                 <Building2 className="w-3 h-3 shrink-0" />

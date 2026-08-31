@@ -381,8 +381,15 @@ async function getMyBookings(req, res) {
 async function cancelMyBooking(req, res) {
   const t = await sequelize.transaction();
   try {
+    // Unifica ambos canales: el turno es del jugador si user_id coincide (web) o si
+    // su telefono_cliente coincide con el WhatsApp de la cuenta (turno por WhatsApp).
+    const telDigits = String(req.user.telefono || '').replace(/\D/g, '');
+    const sig = telDigits.length >= 8 ? telDigits.slice(-10) : null;
+    const orDueno = [{ user_id: req.user.id }];
+    if (sig) orDueno.push({ telefono_cliente: { [Op.like]: `%${sig}%` } });
+
     const booking = await Booking.findOne({
-      where: { id: req.params.id, user_id: req.user.id },
+      where: { id: req.params.id, [Op.or]: orDueno },
       include: [
         { model: TimeSlot, as: 'timeSlots' },
         { model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id', 'deporte'],
