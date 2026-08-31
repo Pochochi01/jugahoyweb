@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { MapPin, ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Star, CheckCircle, XCircle, RefreshCw, Link2, Clock, Building2, LayoutGrid, X } from 'lucide-react';
+import { MapPin, ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Star, CheckCircle, XCircle, RefreshCw, Link2, Clock, Building2, LayoutGrid, X, Bell, Hourglass } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { publicService } from '../../services/publicService';
@@ -41,6 +41,13 @@ export default function ComplexSlotsPage() {
   const [toast,    setToast]    = useState(null);
   const [bloqueo,  setBloqueo]  = useState(null);   // { message, whatsapp } por reiteradas inasistencias
 
+  // ── Lista de espera ──
+  const [wlHabilitado, setWlHabilitado] = useState(false);
+  const [ocupados,     setOcupados]     = useState([]);       // turnos ocupados del día
+  const [wlSel,        setWlSel]        = useState(new Set()); // keys `${field_id}_${hora}` seleccionadas
+  const [wlSaving,     setWlSaving]     = useState(false);
+  const [wlForm,       setWlForm]       = useState({ nombre: '', telefono: '', email: '' });
+
   // Vista: agrupar por cancha o por horario (filtro pedido para móvil)
   const [viewMode,   setViewMode]   = useState('cancha'); // 'cancha' | 'horario'
   const [openCancha, setOpenCancha] = useState(null);     // id de cancha expandida (vista por cancha)
@@ -53,6 +60,24 @@ export default function ComplexSlotsPage() {
       .then(favs => setIsFav((favs || []).some(c => c.id === parseInt(id))))
       .catch(() => {});
   }, [id]);
+
+  // Prefill de datos del usuario para la lista de espera.
+  useEffect(() => {
+    if (!user) return;
+    setWlForm(f => ({
+      nombre:   f.nombre   || `${user.nombre || ''} ${user.apellido || ''}`.trim(),
+      telefono: f.telefono || user.telefono || '',
+      email:    f.email    || user.email    || '',
+    }));
+  }, [user]);
+
+  // Turnos ocupados + estado del módulo de lista de espera (por fecha).
+  useEffect(() => {
+    setWlSel(new Set());
+    publicService.getOcupados(id, date)
+      .then(d => { setWlHabilitado(!!d.habilitado); setOcupados(d.ocupados || []); })
+      .catch(() => { setWlHabilitado(false); setOcupados([]); });
+  }, [id, date]);
 
   const loadSlots = useCallback(() => {
     setLoading(true);
@@ -144,6 +169,36 @@ export default function ComplexSlotsPage() {
   const showToast = (type, msg) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  // ── Lista de espera ──
+  const wlKey = (o) => `${o.field_id}_${o.hora}`;
+  const toggleWl = (o) => setWlSel(s => {
+    const n = new Set(s); const k = wlKey(o);
+    n.has(k) ? n.delete(k) : n.add(k);
+    return n;
+  });
+
+  const submitWaitlist = async () => {
+    if (!user) { window.location.href = '/login'; return; }
+    if (wlSel.size === 0) { showToast('error', 'Elegí al menos un turno ocupado.'); return; }
+    if (!wlForm.telefono.trim() && !wlForm.email.trim()) {
+      showToast('error', 'Ingresá teléfono o email para poder avisarte.'); return;
+    }
+    setWlSaving(true);
+    try {
+      const turnos = ocupados.filter(o => wlSel.has(wlKey(o)))
+        .map(o => ({ field_id: o.field_id, fecha: o.fecha, hora: o.hora, duracion: o.duracion, deporte: o.deporte }));
+      const res = await publicService.addWaitlist(id, {
+        turnos, nombre: wlForm.nombre.trim(), telefono: wlForm.telefono.trim(), email: wlForm.email.trim(),
+      });
+      showToast('success', res?.message || 'Te anotamos en la lista de espera.');
+      setWlSel(new Set());
+      publicService.getOcupados(id, date)
+        .then(d => { setWlHabilitado(!!d.habilitado); setOcupados(d.ocupados || []); }).catch(() => {});
+    } catch (err) {
+      showToast('error', err?.response?.data?.message || 'No se pudo anotar en la lista de espera.');
+    } finally { setWlSaving(false); }
   };
 
   // Para BookingModal: construir allSlots filtrado por field
@@ -324,6 +379,66 @@ export default function ComplexSlotsPage() {
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* ── Lista de espera ── */}
+          {wlHabilitado && (
+            <div className="card mt-6" data-aos="fade-up">
+              <div className="flex items-start gap-2 mb-1">
+                <Hourglass className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <h2 className="font-bold">Lista de espera</h2>
+                  <p className="text-sm text-muted-foreground">
+                    ¿No hay turno libre? Anotate en los turnos <strong>ocupados</strong> y te avisamos si se liberan
+                    (podés elegir varios).
+                  </p>
+                </div>
+              </div>
+
+              {ocupados.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-3">No hay turnos ocupados para esta fecha.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                    {ocupados.map(o => {
+                      const sel = wlSel.has(wlKey(o));
+                      return (
+                        <button key={wlKey(o)} type="button" onClick={() => toggleWl(o)}
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border-2 text-left transition-all
+                            ${sel ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
+                          <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0
+                            ${sel ? 'bg-primary border-primary text-white' : 'border-border'}`}>
+                            {sel && <CheckCircle className="w-3.5 h-3.5" />}
+                          </span>
+                          <span className="text-lg shrink-0">{DEPORTE_ICON[o.deporte] || '🏃'}</span>
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold truncate">{o.field_nombre} · {o.hora} hs</div>
+                            <div className="text-xs text-muted-foreground capitalize">
+                              {o.deporte} · {o.hora}–{o.hora_fin} ({o.duracion} min)
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                    <input className="input" placeholder="Nombre" value={wlForm.nombre}
+                      onChange={e => setWlForm(f => ({ ...f, nombre: e.target.value }))} />
+                    <input className="input" placeholder="Teléfono" value={wlForm.telefono}
+                      onChange={e => setWlForm(f => ({ ...f, telefono: e.target.value }))} />
+                    <input className="input" placeholder="Email" value={wlForm.email}
+                      onChange={e => setWlForm(f => ({ ...f, email: e.target.value }))} />
+                  </div>
+
+                  <button onClick={submitWaitlist} disabled={wlSaving || wlSel.size === 0}
+                    className="btn-primary mt-3 flex items-center gap-2 disabled:opacity-50">
+                    <Bell className="w-4 h-4" />
+                    {wlSaving ? 'Anotando...' : `Anotarme en la lista de espera${wlSel.size ? ` (${wlSel.size})` : ''}`}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

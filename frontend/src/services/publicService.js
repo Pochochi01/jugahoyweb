@@ -10,6 +10,9 @@ export const publicService = {
   checkBloqueo:    (complexId)        => api.get(`/public/complexes/${complexId}/bloqueo-inasistencias`),
   getMyBookings:   ()                 => api.get('/public/my-bookings'),
   cancelMyBooking: (id)               => api.put(`/public/my-bookings/${id}/cancelar`),
+  // Lista de espera
+  getOcupados:     (id, date)         => api.get(`/public/complexes/${id}/ocupados`, { params: { date } }),
+  addWaitlist:     (complexId, data)  => api.post(`/public/complexes/${complexId}/waitlist`, data),
   registerComplex: (data)             => api.post('/public/register-complex', data),
 
   // Catálogo de ubicaciones para el wizard de alta de complejo

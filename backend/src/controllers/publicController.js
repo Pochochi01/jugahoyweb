@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequelize } = require('../models');
 const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
+const waitlist = require('../services/waitlistService');
 const { todayAR } = require('../utils/time');
 const { evaluarCancelacion, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
@@ -384,7 +385,7 @@ async function cancelMyBooking(req, res) {
       where: { id: req.params.id, user_id: req.user.id },
       include: [
         { model: TimeSlot, as: 'timeSlots' },
-        { model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id'],
+        { model: Field, as: 'field', attributes: ['id', 'nombre', 'complex_id', 'deporte'],
           include: [{ model: Complex, as: 'complex', attributes: ['owner_id', 'nombre'] }] },
       ],
       transaction: t,
@@ -417,6 +418,9 @@ async function cancelMyBooking(req, res) {
 
     const complexId = booking.field?.complex_id;
     const ownerId   = booking.field?.complex?.owner_id;
+    // Horas liberadas + deporte para avisar a la lista de espera tras el commit.
+    const horasLiberadas = booking.timeSlots.map(s => s.hora);
+    const deporteCancha = booking.field?.deporte;
 
     // Registrar la operación → visible en la pestaña "Operaciones" del dashboard.
     await Operation.create({
@@ -440,6 +444,12 @@ async function cancelMyBooking(req, res) {
     }
 
     await t.commit();
+
+    // Lista de espera: avisar a los inscriptos por cada hora liberada (best-effort).
+    for (const hora of horasLiberadas) {
+      waitlist.notificarLiberado(complexId, { field_id: booking.field_id, fecha: booking.fecha, hora, deporte: deporteCancha })
+        .catch(err => console.error('[waitlist] notificar:', err.message));
+    }
 
     // Push al dueño: el jugador canceló un turno
     if (ownerId) {
@@ -545,4 +555,118 @@ async function registerComplex(req, res) {
   }
 }
 
-module.exports = { getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex, checkInasistencias };
+// ── LISTA DE ESPERA (web) ─────────────────────────────────────────────────────
+
+// Inicio del turno como Date (madrugada = día siguiente del calendario).
+function inicioTurno(fecha, hora) {
+  const [h] = String(hora).split(':').map(Number);
+  const dt = new Date(`${fecha}T${hora}:00`);
+  if (h < 8) dt.setDate(dt.getDate() + 1);
+  return dt;
+}
+
+/**
+ * GET /api/public/complexes/:id/ocupados?date=
+ * Turnos OCUPADOS (futuros) del complejo para anotarse en lista de espera.
+ * Devuelve también si el módulo está habilitado.
+ */
+async function getOcupados(req, res) {
+  try {
+    const { id } = req.params;
+    const date = req.query.date || today();
+    const complex = await Complex.findOne({
+      where: { id, activo: true },
+      attributes: ['id', 'modulo_lista_recordatorios'],
+      include: [{ model: Field, as: 'fields', attributes: ['id', 'nombre', 'deporte'], where: { activa: true }, required: false }],
+    });
+    if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+
+    const habilitado = !!complex.modulo_lista_recordatorios;
+    if (!habilitado) return res.json({ habilitado: false, date, ocupados: [] });
+
+    const fields = complex.fields || [];
+    const fieldMap = new Map(fields.map(f => [f.id, f]));
+    if (!fields.length) return res.json({ habilitado: true, date, ocupados: [] });
+
+    const bookings = await Booking.findAll({
+      where: {
+        field_id: { [Op.in]: [...fieldMap.keys()] },
+        fecha: date,
+        estado: { [Op.notIn]: ['cancelado', 'rechazado'] },
+      },
+      attributes: ['id', 'field_id', 'fecha', 'hora_inicio', 'hora_fin', 'duracion'],
+      order: [['hora_inicio', 'ASC']],
+    });
+
+    const now = new Date();
+    const ocupados = bookings
+      .filter(b => inicioTurno(b.fecha, b.hora_inicio) > now)   // solo turnos futuros
+      .map(b => {
+        const f = fieldMap.get(b.field_id);
+        return {
+          field_id: b.field_id,
+          field_nombre: f?.nombre || `Cancha ${b.field_id}`,
+          deporte: f?.deporte || null,
+          fecha: b.fecha,
+          hora: b.hora_inicio,
+          hora_fin: b.hora_fin,
+          duracion: b.duracion,
+        };
+      });
+
+    res.json({ habilitado: true, date, ocupados });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+/**
+ * POST /api/public/complexes/:complexId/waitlist — requiere auth (jugador).
+ * Body: { turnos:[{field_id,fecha,hora,duracion,deporte}], nombre, telefono, email }
+ * Anota al usuario en la lista de espera de uno o varios turnos ocupados.
+ */
+async function addWaitlist(req, res) {
+  try {
+    const { complexId } = req.params;
+    if (!(await waitlist.moduloHabilitado(complexId))) {
+      return res.status(403).json({ message: 'La lista de espera no está disponible en este complejo.' });
+    }
+
+    const { turnos, nombre, telefono, email } = req.body || {};
+    if (!Array.isArray(turnos) || turnos.length === 0) {
+      return res.status(400).json({ message: 'Elegí al menos un turno ocupado.' });
+    }
+
+    // Datos del usuario: del body o de la cuenta logueada.
+    const cuenta = await User.findByPk(req.user.id, { attributes: ['id', 'nombre', 'apellido', 'telefono', 'email'] });
+    const nombreF   = (nombre   || `${cuenta?.nombre || ''} ${cuenta?.apellido || ''}`.trim() || null);
+    const telefonoF = (telefono || cuenta?.telefono || '').toString().trim();
+    const emailF    = (email    || cuenta?.email || null);
+    if (!telefonoF && !emailF) {
+      return res.status(400).json({ message: 'Necesitamos un teléfono o email para avisarte cuando se libere el turno.' });
+    }
+
+    let agregados = 0, duplicados = 0;
+    for (const tno of turnos) {
+      if (!tno?.field_id || !tno?.fecha || !tno?.hora) continue;
+      const { duplicado } = await waitlist.agregar(complexId, {
+        field_id: tno.field_id, deporte: tno.deporte || null,
+        fecha: tno.fecha, hora: tno.hora, duracion: parseInt(tno.duracion) || 60,
+        nombre: nombreF, telefono: telefonoF, email: emailF,
+        user_id: req.user.id, origen: 'web',
+      });
+      duplicado ? duplicados++ : agregados++;
+    }
+
+    res.status(201).json({
+      message: agregados
+        ? `Te anotamos en la lista de espera de ${agregados} turno${agregados !== 1 ? 's' : ''}.`
+        : 'Ya estabas anotado en los turnos seleccionados.',
+      agregados, duplicados,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex, checkInasistencias, getOcupados, addWaitlist };
