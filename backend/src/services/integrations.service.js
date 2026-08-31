@@ -70,16 +70,27 @@ function isExpired(integration) {
 async function getMetaCredentials(clubId) {
   const integ = await getIntegration(clubId);
 
-  if (integ?.meta_phone_number_id && integ?.meta_access_token && integ.activo !== false) {
-    return {
-      phoneNumberId: integ.meta_phone_number_id,
-      accessToken:   integ.meta_access_token,
-      appSecret:     integ.meta_app_secret     || process.env.META_APP_SECRET || null,
-      verifyToken:   integ.meta_webhook_verify_token || process.env.META_WEBHOOK_VERIFY_TOKEN || null,
-      configured:    true,
-      expired:       isExpired(integ),
-      source:        'club',
-    };
+  // ── Escenario A (números propios de la plataforma) ──────────────────────────
+  // El NÚMERO es propio del club (su meta_phone_number_id). El access token puede
+  // ser uno propio del club o, si no cargó, el System User COMPARTIDO de plataforma
+  // (.env META_ACCESS_TOKEN), que se asigna AUTOMÁTICAMENTE. Nunca se toma el
+  // NÚMERO del env para un club: eso respondería desde el número equivocado.
+  if (integ?.meta_phone_number_id && integ.activo !== false) {
+    const clubToken = integ.meta_access_token && String(integ.meta_access_token).trim();
+    const token = clubToken || process.env.META_ACCESS_TOKEN || null;
+    if (token) {
+      return {
+        phoneNumberId: integ.meta_phone_number_id,
+        accessToken:   token,
+        appSecret:     integ.meta_app_secret || process.env.META_APP_SECRET || null,
+        verifyToken:   integ.meta_webhook_verify_token || process.env.META_WEBHOOK_VERIFY_TOKEN || null,
+        configured:    true,
+        // El token de plataforma (System User) no vence; solo se evalúa el del club.
+        expired:       clubToken ? isExpired(integ) : false,
+        source:        'club',                          // el número es del club
+        tokenSource:   clubToken ? 'club' : 'env',      // de dónde salió el token
+      };
+    }
   }
 
   // Fallback de plataforma (desarrollo / instalación single-tenant).
@@ -101,6 +112,7 @@ async function getMetaCredentials(clubId) {
       configured:    true,
       expired:       false,
       source:        'env',
+      tokenSource:   'env',
     };
   }
 

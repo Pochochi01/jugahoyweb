@@ -36,6 +36,10 @@ async function getIntegrations(req, res) {
         origen:           meta.source,                 // 'club' | 'env' | 'none'
         phone_number_id:  meta.phoneNumberId || null,  // no es secreto
         access_token:     mask(meta.accessToken),
+        token_origen:     meta.tokenSource || null,    // 'club' | 'env'
+        token_automatico: meta.tokenSource === 'env',  // asignado desde la plataforma
+        // ¿Hay un System User token de plataforma disponible para autoasignar?
+        token_plataforma: Boolean(process.env.META_ACCESS_TOKEN),
         verify_token_set: Boolean(integ?.meta_webhook_verify_token),
         app_secret_set:   Boolean(integ?.meta_app_secret),
         vencido:          meta.expired,

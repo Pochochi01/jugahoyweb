@@ -164,11 +164,7 @@ const CANCHA_INICIAL = {
 // ── Tarjeta de WhatsApp / Meta (credenciales propias del club) ───────────────
 function WhatsAppCard({ complexId }) {
   const [estado, setEstado] = useState(null);   // respuesta de getIntegrations
-  const [form,   setForm]   = useState({
-    meta_phone_number_id: '', meta_access_token: '',
-    meta_webhook_verify_token: '', meta_app_secret: '',
-  });
-  const [show,   setShow]   = useState(false);
+  const [phoneId, setPhoneId] = useState('');
   const [saving, setSaving] = useState(false);
   const [ok,     setOk]     = useState(false);
   const [err,    setErr]    = useState('');
@@ -180,34 +176,24 @@ function WhatsAppCard({ complexId }) {
 
   const cargar = () => {
     settingsService.getIntegrations(complexId)
-      .then(d => {
-        setEstado(d);
-        setForm(f => ({ ...f, meta_phone_number_id: d?.whatsapp?.phone_number_id || '' }));
-      })
+      .then(d => { setEstado(d); setPhoneId(d?.whatsapp?.phone_number_id || ''); })
       .catch(() => setEstado(null));
   };
   useEffect(() => { cargar(); }, [complexId]);
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
   const guardar = async () => {
     setSaving(true); setErr('');
     try {
-      // Solo se envían los campos completados: los secretos vacíos NO se pisan
-      const payload = {};
-      if (form.meta_phone_number_id.trim())      payload.meta_phone_number_id      = form.meta_phone_number_id.trim();
-      if (form.meta_access_token.trim())         payload.meta_access_token         = form.meta_access_token.trim();
-      if (form.meta_webhook_verify_token.trim()) payload.meta_webhook_verify_token = form.meta_webhook_verify_token.trim();
-      if (form.meta_app_secret.trim())           payload.meta_app_secret           = form.meta_app_secret.trim();
-
-      if (!Object.keys(payload).length) { setErr('Completá al menos un campo para guardar.'); return; }
-
-      await settingsService.updateIntegrations(complexId, payload);
-      setForm(f => ({ ...f, meta_access_token: '', meta_webhook_verify_token: '', meta_app_secret: '' }));
+      const val = phoneId.trim();
+      if (!val) { setErr('Ingresá el Phone Number ID del número de este club.'); return; }
+      if (!/^\d{5,}$/.test(val)) { setErr('El Phone Number ID debe ser numérico (ID del número en Meta).'); return; }
+      // Escenario A: solo se envía el número. El access token se asigna automáticamente
+      // (System User de plataforma). Verify token y App Secret son de la App (globales).
+      await settingsService.updateIntegrations(complexId, { meta_phone_number_id: val });
       setOk(true); setTimeout(() => setOk(false), 2500);
       cargar();
     } catch (e) {
-      setErr(e?.response?.data?.message || e.message || 'Error al guardar las credenciales.');
+      setErr(e?.response?.data?.message || e.message || 'Error al guardar el número.');
     } finally { setSaving(false); }
   };
 
@@ -227,9 +213,9 @@ function WhatsAppCard({ complexId }) {
         {wa?.configurado
           ? <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-0.5 rounded-full">Configurado</span>
           : <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-full">Sin configurar</span>}
-        {wa?.origen === 'env' && (
-          <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full">
-            Usando credenciales globales
+        {wa?.token_automatico && (
+          <span className="text-xs bg-blue-100 text-blue-700 font-medium px-2 py-0.5 rounded-full">
+            Token automático (plataforma)
           </span>
         )}
         {wa?.vencido && (
@@ -240,8 +226,9 @@ function WhatsAppCard({ complexId }) {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Cargá el número de WhatsApp Business de <strong>este club</strong>. Cada club responde
-        con su propio número: los mensajes entrantes se enrutan por el <em>Phone Number ID</em>.
+        Cargá el <strong>Phone Number ID</strong> del número de WhatsApp Business de <strong>este club</strong>.
+        Cada club responde con su propio número (se enruta por ese ID). El <strong>token de acceso se asigna
+        automáticamente</strong> desde la cuenta de plataforma; no hace falta cargarlo.
       </p>
 
       {/* URL del webhook para cargar en Meta */}
@@ -259,50 +246,31 @@ function WhatsAppCard({ complexId }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="label">Phone Number ID</label>
-          <input className="input font-mono text-sm" placeholder="Ej: 123456789012345"
-            value={form.meta_phone_number_id}
-            onChange={e => set('meta_phone_number_id', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Access Token {wa?.access_token && <span className="text-xs text-muted-foreground">(actual: {wa.access_token})</span>}</label>
-          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
-            placeholder={wa?.access_token ? 'Dejar vacío para no cambiarlo' : 'EAAG...'}
-            value={form.meta_access_token}
-            onChange={e => set('meta_access_token', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Verify Token {wa?.verify_token_set && <span className="text-xs text-green-600">(cargado)</span>}</label>
-          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
-            placeholder="El que pongas en Meta"
-            value={form.meta_webhook_verify_token}
-            onChange={e => set('meta_webhook_verify_token', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">App Secret {wa?.app_secret_set && <span className="text-xs text-green-600">(cargado)</span>}</label>
-          <input type={show ? 'text' : 'password'} className="input font-mono text-sm" autoComplete="off"
-            placeholder="Valida la firma del webhook"
-            value={form.meta_app_secret}
-            onChange={e => set('meta_app_secret', e.target.value)} />
-        </div>
+      <div>
+        <label className="label">Phone Number ID</label>
+        <input className="input font-mono text-sm sm:max-w-xs" placeholder="Ej: 123456789012345"
+          value={phoneId} onChange={e => setPhoneId(e.target.value)} />
       </div>
 
-      <button type="button" onClick={() => setShow(s => !s)}
-        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
-        {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-        {show ? 'Ocultar' : 'Ver'} los valores que escribo
-      </button>
+      {/* Aviso si NO hay token de plataforma configurado en el servidor */}
+      {wa && wa.token_plataforma === false && (
+        <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Falta configurar el <strong>token de plataforma</strong> en el servidor (variable
+            <code className="mx-1">META_ACCESS_TOKEN</code> del <code>.env</code>). Sin él, el número no podrá responder.
+          </span>
+        </div>
+      )}
 
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3">
         <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
         <span>
-          Los tokens se guardan en el servidor y nunca se devuelven completos (solo los últimos 4). Dejá
-          un campo vacío para conservar el valor actual.{' '}
+          El System User token, el Verify Token y el App Secret son de la <strong>App de Meta</strong> (compartidos
+          para todos los clubes) y se configuran una sola vez en el servidor.{' '}
           <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer"
             className="text-primary hover:underline inline-flex items-center gap-0.5">
-            Obtener credenciales <ExternalLink className="w-3 h-3" />
+            Panel de Meta <ExternalLink className="w-3 h-3" />
           </a>
         </span>
       </div>
@@ -312,7 +280,7 @@ function WhatsAppCard({ complexId }) {
       <button onClick={guardar} disabled={saving}
         className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-600 text-white' : 'btn-primary'}`}>
         <Save className="w-4 h-4" />
-        {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar credenciales'}
+        {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar número'}
       </button>
     </div>
   );
