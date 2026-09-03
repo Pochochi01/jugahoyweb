@@ -1668,7 +1668,12 @@ async function _handleTextCancel(ctx, from, bookingId) {
       transaction: t,
     });
 
-    if (!booking || booking.telefono_cliente !== from) {
+    // Match por últimos 10 dígitos (formato-agnóstico): permite cancelar tanto los
+    // turnos hechos por WhatsApp como los sacados por la WEB con el mismo celular.
+    const dig = s => String(s || '').replace(/\D/g, '');
+    const sigFrom = dig(from).slice(-10);
+    const sigBooking = dig(booking?.telefono_cliente).slice(-10);
+    if (!booking || !sigFrom || sigBooking !== sigFrom) {
       await t.rollback();
       await send({
         to: from, type: 'text',
@@ -1731,6 +1736,15 @@ async function _handleTextCancel(ctx, from, bookingId) {
       to: from, type: 'text',
       text: { body: `✅ Reserva *#${bookingId}* cancelada.\n\nEscribí *hola* para volver al menú.` },
     });
+
+    // ── Lista de espera: avisar a los inscriptos por cada hora liberada ──
+    try {
+      const fieldWl = await Field.findByPk(booking.field_id, { attributes: ['deporte'] });
+      for (const hora of booking.timeSlots.map(s => s.hora)) {
+        waitlist.notificarLiberado(ctx.clubId, { field_id: booking.field_id, fecha: booking.fecha, hora, deporte: fieldWl?.deporte })
+          .catch(err => console.error('[waitlist] notificar:', err.message));
+      }
+    } catch (e) { console.error('[chatbot._handleTextCancel] waitlist:', e.message); }
 
     // ── Notificación + push al dueño del complejo (mismo mecanismo que la PWA) ──
     try {

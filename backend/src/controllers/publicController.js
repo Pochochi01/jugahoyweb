@@ -255,9 +255,10 @@ async function playerReserve(req, res) {
     // Ciclo de vida según el pago elegido:
     //  - MercadoPago (seña/total) → 'pendiente_pago': retiene el slot mientras paga;
     //    la reconciliación (webhook/sync) lo confirma o libera.
-    //  - complejo / otros         → 'pendiente': a pagar en sitio / confirmar por admin.
+    //  - complejo / otros         → 'confirmado': la reserva web NO requiere que el
+    //    administrador/colaborador la confirme (queda agendada de inmediato).
     const esMP          = tipo_pago === 'seña' || tipo_pago === 'total';
-    const estadoInicial = esMP ? 'pendiente_pago' : 'pendiente';
+    const estadoInicial = esMP ? 'pendiente_pago' : 'confirmado';
     const metodoFinal   = esMP ? 'mercadopago'
                         : tipo_pago === 'complejo' ? 'efectivo'
                         : (metodo_pago || 'efectivo');
@@ -284,22 +285,25 @@ async function playerReserve(req, res) {
       );
     }
 
+    const esConfirmada = estadoInicial === 'confirmado';
     await Operation.create({
       complex_id:  complexId,
       tipo:        'reserva',
-      descripcion: `Solicitud web (pendiente): ${clientName} — ${fecha} ${hora}→${horaFin} (${duracion}min)`,
+      descripcion: `${esConfirmada ? 'Reserva web confirmada' : 'Solicitud web (pago pendiente)'}: ${clientName} — ${fecha} ${hora}→${horaFin} (${duracion}min)`,
       usuario_id:  req.user.id,
       monto:       monto || 0,
     }, { transaction: t });
 
-    // Notificar al dueño del complejo para que confirme o rechace
+    // Avisar al dueño del complejo (informativo; la reserva web NO requiere confirmación)
     const complex = await Complex.findByPk(complexId, { attributes: ['owner_id', 'nombre'], transaction: t });
     if (complex?.owner_id) {
       await Notification.create({
         user_id:    complex.owner_id,
         tipo:       'nueva_reserva',
-        titulo:     '🔔 Nueva solicitud de turno',
-        mensaje:    `${clientName} solicita un turno para el ${fecha} de ${hora} a ${horaFin} (${duracion} min). Entrá a la Agenda para confirmar o rechazar.`,
+        titulo:     esConfirmada ? '✅ Nuevo turno reservado' : '🔔 Nueva reserva (pago pendiente)',
+        mensaje:    esConfirmada
+          ? `${clientName} reservó un turno el ${fecha} de ${hora} a ${horaFin} (${duracion} min). Ya quedó agendado.`
+          : `${clientName} inició una reserva para el ${fecha} de ${hora} a ${horaFin} (${duracion} min), a la espera del pago.`,
         booking_id: booking.id,
       }, { transaction: t });
     }
@@ -310,14 +314,10 @@ async function playerReserve(req, res) {
     if (complex?.owner_id) {
       notifService.sendToUserAsync(complex.owner_id, {
         tipo:   'reserva',
-        titulo: '🔔 Nueva solicitud de turno',
-        body:   `${clientName} pidió ${fecha} ${hora}–${horaFin} en ${field.nombre}.`,
+        titulo: esConfirmada ? '✅ Nuevo turno reservado' : '🔔 Nueva reserva (pago pendiente)',
+        body:   `${clientName} — ${fecha} ${hora}–${horaFin} en ${field.nombre}.`,
         url:    '/dashboard',
         data:   { cancha_id: field.id, cancha_nombre: field.nombre, fecha, hora, booking_id: booking.id },
-        actions: [
-          { action: 'confirmar', title: 'Confirmar reserva' },
-          { action: 'rechazar',  title: 'Rechazar turno' },
-        ],
       });
     }
 

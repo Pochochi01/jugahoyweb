@@ -25,6 +25,8 @@ export default function ComplexSlotsPage() {
 
   // Filtrado por cancha invitada: viene de /invite/:token vía query param ?field=X
   const inviteFieldId = searchParams.get('field') ? parseInt(searchParams.get('field')) : null;
+  // Teléfono enviado en el link (ej. ?tel=549...) para autocompletar el formulario.
+  const telFromLink = (searchParams.get('tel') || '').trim();
   const inviteContext = (() => {
     try { return JSON.parse(sessionStorage.getItem('inviteContext') || 'null'); } catch { return null; }
   })();
@@ -61,15 +63,14 @@ export default function ComplexSlotsPage() {
       .catch(() => {});
   }, [id]);
 
-  // Prefill de datos del usuario para la lista de espera.
+  // Prefill de datos del usuario para la lista de espera (teléfono del link si vino).
   useEffect(() => {
-    if (!user) return;
     setWlForm(f => ({
-      nombre:   f.nombre   || `${user.nombre || ''} ${user.apellido || ''}`.trim(),
-      telefono: f.telefono || user.telefono || '',
-      email:    f.email    || user.email    || '',
+      nombre:   f.nombre   || `${user?.nombre || ''} ${user?.apellido || ''}`.trim(),
+      telefono: f.telefono || telFromLink || user?.telefono || '',
+      email:    f.email    || user?.email    || '',
     }));
-  }, [user]);
+  }, [user, telFromLink]);
 
   // Turnos ocupados + estado del módulo de lista de espera (por fecha).
   useEffect(() => {
@@ -514,7 +515,7 @@ export default function ComplexSlotsPage() {
           onClose={() => setSelected(null)}
           playerMode
           mpEnabled={!!complex?.mp_enabled}
-          playerData={{ nombre: `${user?.nombre} ${user?.apellido}`, telefono: user?.telefono }}
+          playerData={{ nombre: `${user?.nombre} ${user?.apellido}`, telefono: telFromLink || user?.telefono }}
         />
       )}
 
