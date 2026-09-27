@@ -286,6 +286,92 @@ function WhatsAppCard({ complexId }) {
   );
 }
 
+// ── Canal de WhatsApp para avisos salientes (torneos): Meta o Baileys ────────
+function WaProviderCard({ complexId }) {
+  const [provider, setProvider] = useState('meta');
+  const [baileys, setBaileys]   = useState(null);   // { disponible, estado, qr }
+  const [err, setErr] = useState('');
+
+  const cargarBaileys = () => settingsService.baileysEstado(complexId).then(setBaileys).catch(() => setBaileys(null));
+  useEffect(() => {
+    settingsService.getIntegrations(complexId).then(d => setProvider(d?.wa_provider || 'meta')).catch(() => {});
+    cargarBaileys();
+  }, [complexId]);
+
+  // Mientras se espera el escaneo del QR, refrescar el estado
+  useEffect(() => {
+    if (!['qr', 'conectando'].includes(baileys?.estado)) return;
+    const t = setInterval(cargarBaileys, 3000);
+    return () => clearInterval(t);
+  }, [baileys?.estado]);
+
+  const elegir = async (p) => {
+    setErr('');
+    try { await settingsService.updateIntegrations(complexId, { wa_provider: p }); setProvider(p); }
+    catch (e) { setErr(e?.message || 'No se pudo guardar.'); }
+  };
+  const conectar = async () => {
+    setErr('');
+    try { setBaileys(await settingsService.baileysConectar(complexId)); } catch (e) { setErr(e?.message || 'Error'); }
+  };
+  const desvincular = async () => {
+    if (!confirm('¿Desvincular el número de WhatsApp de este club?')) return;
+    await settingsService.baileysDesconectar(complexId).catch(() => {});
+    cargarBaileys();
+  };
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-2">
+        <MessageCircle className="w-5 h-5 text-primary" />
+        <h3 className="font-semibold">Canal de avisos (torneos)</h3>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Por dónde salen los mensajes automáticos a jugadores (inscripción, partidos, resultados).
+      </p>
+      <div className="flex gap-2">
+        {[['meta', 'Meta (Cloud API)'], ['baileys', 'Baileys (WhatsApp Web)']].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => elegir(k)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors
+              ${provider === k ? 'bg-primary text-white border-primary' : 'border-border hover:bg-muted'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {provider === 'baileys' && (
+        <div className="space-y-3">
+          {baileys?.disponible === false ? (
+            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Baileys no está instalado en el servidor: <code>npm install @whiskeysockets/baileys@^6</code></span>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm">Estado: <strong>{baileys?.estado || '—'}</strong></p>
+              {baileys?.qr && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Escaneá desde WhatsApp → Dispositivos vinculados.</p>
+                  <img src={baileys.qr} alt="QR de vinculación" className="w-56 h-56 bg-white p-2 rounded-lg" />
+                </div>
+              )}
+              <div className="flex gap-2">
+                {baileys?.estado !== 'conectado' && (
+                  <button type="button" onClick={conectar} className="btn-primary text-sm">Vincular número</button>
+                )}
+                {baileys?.estado && baileys.estado !== 'desconectado' && (
+                  <button type="button" onClick={desvincular} className="btn-outline text-sm">Desvincular</button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {err && <p className="text-sm text-red-500">{err}</p>}
+    </div>
+  );
+}
+
 // ── formulario crear/editar ───────────────────────────────────────────────────
 function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit = false, nextId = '' }) {
   const [form, setForm] = useState({ ...CANCHA_INICIAL, ...initial });
@@ -754,6 +840,7 @@ const WA_TIPO_LABEL = {
   recordatorio_turno: 'Recordatorio de turno',
   lista_espera:       'Lista de espera',
   confirmacion:       'Confirmación',
+  torneo:             'Torneos (1 variable {{1}} con el aviso)',
 };
 function WaTemplatesCard({ complexId }) {
   const [rows, setRows]   = useState(null);
@@ -1046,6 +1133,7 @@ export default function SettingsTab({ complexId, onUpdate }) {
         <>
           <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
           <WhatsAppCard complexId={complexId} />
+          <WaProviderCard complexId={complexId} />
           <WaTemplatesCard complexId={complexId} />
         </>
       )}

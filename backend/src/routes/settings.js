@@ -17,6 +17,10 @@ router.put('/:complexId', requireComplexAccess, requirePermission('configuracion
 router.get ('/:complexId/integrations',            requireComplexAccess, requireRole('general_admin'), integrationsCtrl.getIntegrations);
 router.put ('/:complexId/integrations',            requireComplexAccess, requireRole('general_admin'), integrationsCtrl.updateIntegrations);
 router.post('/:complexId/integrations/renew-meta', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.renewMeta);
+// Baileys (WhatsApp Web): estado + QR de vinculación, conectar, desvincular
+router.get   ('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysEstado);
+router.post  ('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysConectar);
+router.delete('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysDesconectar);
 
 // ── Plantillas de Meta (ventana de 24 h): SOLO el administrador general ──
 router.get('/:complexId/wa-templates', requireComplexAccess, requireRole('general_admin'), ctrl.getWaTemplates);

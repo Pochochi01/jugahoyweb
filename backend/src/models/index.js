@@ -32,6 +32,16 @@ const BookingConsumo        = require('./BookingConsumo');
 const Waitlist              = require('./Waitlist');
 const WaConversation        = require('./WaConversation');
 const WaTemplate            = require('./WaTemplate');
+// Torneos de pádel
+const Torneo            = require('./Torneo');
+const TorneoOrganizador = require('./TorneoOrganizador');
+const TorneoCancha      = require('./TorneoCancha');
+const TorneoZona        = require('./TorneoZona');
+const TorneoPareja      = require('./TorneoPareja');
+const TorneoJugador     = require('./TorneoJugador');
+const TorneoPartido     = require('./TorneoPartido');
+const TorneoResultado   = require('./TorneoResultado');
+const TorneoTicket      = require('./TorneoTicket');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -150,6 +160,41 @@ BookingConsumo.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'prod
 Waitlist.belongsTo(Field,   { foreignKey: 'field_id',   as: 'field' });
 Waitlist.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
 
+// ── Torneos de pádel ──
+Complex.hasMany(Torneo,            { foreignKey: 'id_tenant', as: 'torneos' });
+Torneo.belongsTo(Complex,          { foreignKey: 'id_tenant', as: 'club' });
+Complex.hasMany(TorneoOrganizador, { foreignKey: 'id_tenant', as: 'organizadores' });
+TorneoOrganizador.belongsTo(Complex, { foreignKey: 'id_tenant', as: 'club' });
+
+Torneo.hasMany(TorneoCancha,   { foreignKey: 'torneo_id', as: 'canchas', onDelete: 'CASCADE' });
+TorneoCancha.belongsTo(Torneo, { foreignKey: 'torneo_id', as: 'torneo' });
+TorneoCancha.belongsTo(Field,  { foreignKey: 'field_id',  as: 'field' });
+
+Torneo.hasMany(TorneoZona,     { foreignKey: 'torneo_id', as: 'zonas', onDelete: 'CASCADE' });
+TorneoZona.belongsTo(Torneo,   { foreignKey: 'torneo_id', as: 'torneo' });
+
+Torneo.hasMany(TorneoPareja,   { foreignKey: 'torneo_id', as: 'parejas', onDelete: 'CASCADE' });
+TorneoPareja.belongsTo(Torneo, { foreignKey: 'torneo_id', as: 'torneo' });
+TorneoZona.hasMany(TorneoPareja, { foreignKey: 'zona_id', as: 'parejas' });
+TorneoPareja.belongsTo(TorneoZona, { foreignKey: 'zona_id', as: 'zona' });
+
+TorneoPareja.hasMany(TorneoJugador,   { foreignKey: 'pareja_id', as: 'jugadores', onDelete: 'CASCADE' });
+TorneoJugador.belongsTo(TorneoPareja, { foreignKey: 'pareja_id', as: 'pareja' });
+
+Torneo.hasMany(TorneoPartido,     { foreignKey: 'torneo_id', as: 'partidos', onDelete: 'CASCADE' });
+TorneoPartido.belongsTo(Torneo,   { foreignKey: 'torneo_id', as: 'torneo' });
+TorneoZona.hasMany(TorneoPartido, { foreignKey: 'zona_id', as: 'partidos' });
+TorneoPartido.belongsTo(TorneoZona,   { foreignKey: 'zona_id',    as: 'zona' });
+TorneoPartido.belongsTo(TorneoPareja, { foreignKey: 'pareja1_id', as: 'pareja1' });
+TorneoPartido.belongsTo(TorneoPareja, { foreignKey: 'pareja2_id', as: 'pareja2' });
+TorneoPartido.belongsTo(Field,        { foreignKey: 'field_id',   as: 'field' });
+TorneoPartido.hasOne(TorneoResultado, { foreignKey: 'partido_id', as: 'resultado', onDelete: 'CASCADE' });
+TorneoResultado.belongsTo(TorneoPartido, { foreignKey: 'partido_id', as: 'partido' });
+
+TorneoJugador.hasOne(TorneoTicket,   { foreignKey: 'jugador_id', as: 'ticket', onDelete: 'CASCADE' });
+TorneoTicket.belongsTo(TorneoJugador, { foreignKey: 'jugador_id', as: 'jugador' });
+TorneoTicket.belongsTo(Torneo,        { foreignKey: 'torneo_id',  as: 'torneo' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -179,4 +224,7 @@ module.exports = {
   Waitlist,
   // WhatsApp: ventana de 24 h + plantillas Meta
   WaConversation, WaTemplate,
+  // Torneos de pádel
+  Torneo, TorneoOrganizador, TorneoCancha, TorneoZona, TorneoPareja,
+  TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket,
 };

@@ -9,6 +9,9 @@ async function authenticate(req, res, next) {
   const token = header.split(' ')[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // Los tokens de organizador de torneos (tipo 'organizador') NO son usuarios:
+    // su id apunta a torneo_organizadores, nunca a users.
+    if (payload.tipo) return res.status(401).json({ message: 'Token no válido para esta sección' });
     const user = await User.findByPk(payload.id);
     if (!user || !user.activo) return res.status(401).json({ message: 'Usuario no válido' });
     req.user = user;

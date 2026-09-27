@@ -28,6 +28,7 @@
     "nodemailer": "^9.0.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "qrcode": "^1.5.4",
     "sequelize": "^6.37.3",
     "web-push": "^3.6.7"
   },

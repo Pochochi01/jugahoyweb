@@ -35,6 +35,10 @@ const ClubIntegration = sequelize.define('ClubIntegration', {
   // Vencimiento del token de acceso (para avisos y refresco)
   fecha_expiracion_token: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
 
+  // Proveedor de WhatsApp para mensajes salientes: Cloud API de Meta o Baileys
+  // (sesión de WhatsApp Web). Solo lo edita el superadmin.
+  wa_provider: { type: DataTypes.ENUM('meta', 'baileys'), allowNull: false, defaultValue: 'meta' },
+
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {
   tableName: 'club_integrations',

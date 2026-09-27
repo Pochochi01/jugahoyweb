@@ -8,7 +8,7 @@ import {
 const PERMISOS_DEF = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
-  cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false,
+  cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false, torneos: false,
 };
 const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
@@ -16,6 +16,7 @@ const PERMISOS_LABELS = {
   cancelar_turnos: 'Cancelar turnos',
   cantina_gestion: 'Cantina — Gestión (stock/productos)',
   cantina_ventas: 'Cantina — Ventas',
+  torneos: 'Torneos de pádel',
 };
 
 const FORM_INICIAL = {

@@ -238,7 +238,7 @@ async function deleteField(req, res) {
 // ─────────────────────────────────────────────────────────────
 //  Plantillas de Meta (ventana de 24 h) — SOLO administrador general
 // ─────────────────────────────────────────────────────────────
-const WA_TEMPLATE_TIPOS = ['recordatorio_turno', 'lista_espera', 'confirmacion'];
+const WA_TEMPLATE_TIPOS = ['recordatorio_turno', 'lista_espera', 'confirmacion', 'torneo'];
 
 async function getWaTemplates(req, res) {
   try {

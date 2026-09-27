@@ -14,6 +14,9 @@ export const settingsService = {
   getIntegrations:    (complexId)       => api.get(`/settings/${complexId}/integrations`),
   updateIntegrations: (complexId, data) => api.put(`/settings/${complexId}/integrations`, data),
   renewMetaToken:     (complexId)       => api.post(`/settings/${complexId}/integrations/renew-meta`),
+  baileysEstado:      (complexId)       => api.get(`/settings/${complexId}/integrations/baileys`),
+  baileysConectar:    (complexId)       => api.post(`/settings/${complexId}/integrations/baileys`),
+  baileysDesconectar: (complexId)       => api.delete(`/settings/${complexId}/integrations/baileys`),
 
   // ── Plantillas de Meta (ventana de 24 h) — solo general_admin ──
   getWaTemplates:     (complexId)       => api.get(`/settings/${complexId}/wa-templates`),

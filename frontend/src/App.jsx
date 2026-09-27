@@ -20,6 +20,8 @@ import InvitePage         from './pages/InvitePage';
 import PrivacyPage        from './pages/PrivacyPage';
 import ProtectedRoute     from './components/ProtectedRoute';
 import PWABadge           from './components/PWABadge';
+import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/torneos/TorneoPublicPages';
+import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
 
 export default function App() {
   useEffect(() => {
@@ -48,6 +50,15 @@ export default function App() {
       <Route path="/reserva/exito"     element={<ReservaResultadoPage variant="exito" />} />
       <Route path="/reserva/error"     element={<ReservaResultadoPage variant="error" />} />
       <Route path="/reserva/pendiente" element={<ReservaResultadoPage variant="pendiente" />} />
+
+      {/* Torneos de pádel — públicas */}
+      <Route path="/torneos"                element={<TorneosListPage />} />
+      <Route path="/torneos/ticket/:codigo" element={<TorneoTicketPage />} />
+      <Route path="/torneos/:id"            element={<TorneoPublicPage />} />
+      <Route path="/torneos/:id/pago"       element={<TorneoPublicPage />} />
+      {/* Organizadores de torneos (login propio) */}
+      <Route path="/organizador/login"      element={<OrganizadorLogin />} />
+      <Route path="/organizador"            element={<OrganizadorPanel />} />
 
       {/* Player — requiere login */}
       <Route path="/canchas" element={

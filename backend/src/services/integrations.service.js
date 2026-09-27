@@ -212,6 +212,7 @@ async function upsertIntegration(clubId, data = {}) {
   const permitidos = [
     'meta_phone_number_id', 'meta_access_token', 'meta_webhook_verify_token', 'meta_app_secret',
     'mercadopago_access_token', 'mercadopago_refresh_token', 'fecha_expiracion_token', 'activo',
+    'wa_provider',
   ];
   const patch = {};
   for (const k of permitidos) if (data[k] !== undefined) patch[k] = data[k];

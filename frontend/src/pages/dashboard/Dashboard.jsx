@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -18,6 +18,7 @@ import StatsTab         from './StatsTab';
 import UsersTab         from './UsersTab';
 import InvitesTab       from './InvitesTab';
 import CantinaTab       from './CantinaTab';
+import TorneosTab       from './TorneosTab';
 
 // permiso: clave usada en Collaborator.permisos
 const TABS = [
@@ -26,6 +27,8 @@ const TABS = [
   { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones' },
   { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja' },
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
+  // Solo para complejos con canchas de pádel (ver requiresPadel)
+  { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos', requiresPadel: true },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas' },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
@@ -56,7 +59,9 @@ export default function Dashboard() {
 
   // Tabs visibles según rol y permisos del complejo seleccionado (memoizado)
   const visibleTabs = useMemo(() => {
+    const tienePadel = (selectedComplex?.fields || []).some(f => f.deporte === 'padel');
     return TABS.filter(tab => {
+      if (tab.requiresPadel && !tienePadel) return false;
       if (tab.adminOnly) return isGeneralAdmin;
       if (user?.rol === 'general_admin' || user?.rol === 'complex_admin') return true;
       if (isCollaborator && selectedComplex) {
@@ -67,7 +72,7 @@ export default function Dashboard() {
       }
       return false;
     });
-  }, [user?.rol, isGeneralAdmin, isCollaborator, selectedComplex?.id, getCollaboratorPermisos]);
+  }, [user?.rol, isGeneralAdmin, isCollaborator, selectedComplex?.id, selectedComplex?.fields, getCollaboratorPermisos]);
 
   // Cuando cambian los tabs disponibles, activar el primero si el actual ya no está
   useEffect(() => {
@@ -124,6 +129,7 @@ export default function Dashboard() {
       case 'operaciones':   return <OperationsTab {...props} />;
       case 'caja':          return <CashTab {...props} />;
       case 'cantina':       return <CantinaTab {...props} />;
+      case 'torneos':       return <TorneosTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return <SettingsTab {...props} onUpdate={c => setSelectedComplex(c)} />;
       case 'colaboradores': return <CollaboratorsTab {...props} />;
