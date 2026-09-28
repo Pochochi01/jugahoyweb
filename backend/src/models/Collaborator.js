@@ -17,6 +17,7 @@ const Collaborator = sequelize.define('Collaborator', {
       colaboradores: false,
       estadisticas: false,
       torneos: false,
+      profesores: false,
     },
   },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },

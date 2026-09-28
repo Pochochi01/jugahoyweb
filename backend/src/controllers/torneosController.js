@@ -121,7 +121,12 @@ async function cambiarEstado(req, res) {
       const canchas = await TorneoCancha.count({ where: { torneo_id: t.id } });
       if (!canchas) return res.status(400).json({ message: 'Asigná canchas y horarios antes de abrir la inscripción.' });
     }
-    await t.update({ estado });
+    // Cancelar libera las canchas en la agenda; salir de 'cancelado' las vuelve a bloquear
+    await svc.conTransaccion(async (tx) => {
+      const eraCancelado = t.estado === 'cancelado';
+      await t.update({ estado }, { transaction: tx });
+      if (estado === 'cancelado' || eraCancelado) await svc.sincronizarAgenda(t, tx);
+    });
     res.json(t);
   } catch (err) { send(res, err); }
 }

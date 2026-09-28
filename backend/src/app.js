@@ -29,6 +29,7 @@ const paymentRoutes    = require('./routes/payment.routes');
 const verificationRoutes = require('./routes/verification');
 const cantinaRoutes      = require('./routes/cantina');
 const torneosRoutes      = require('./routes/torneos');
+const profesoresRoutes   = require('./routes/profesores');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -96,6 +97,7 @@ app.use('/api/payments',      paymentRoutes);
 app.use('/api/verification',  verificationRoutes);
 app.use('/api/cantina',       cantinaRoutes);
 app.use('/api/torneos',       torneosRoutes);
+app.use('/api/profesores',    profesoresRoutes);
 
 // ── Frontend estático (modo mismo-servidor) ───────────────────
 // Activar con SERVE_FRONTEND=true en .env.production cuando el frontend

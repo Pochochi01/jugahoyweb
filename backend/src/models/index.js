@@ -42,6 +42,11 @@ const TorneoJugador     = require('./TorneoJugador');
 const TorneoPartido     = require('./TorneoPartido');
 const TorneoResultado   = require('./TorneoResultado');
 const TorneoTicket      = require('./TorneoTicket');
+// Profesores de pádel
+const Profesor          = require('./Profesor');
+const ProfesorCancha    = require('./ProfesorCancha');
+const HorarioProfesor   = require('./HorarioProfesor');
+const Alumno            = require('./Alumno');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -195,6 +200,22 @@ TorneoJugador.hasOne(TorneoTicket,   { foreignKey: 'jugador_id', as: 'ticket', o
 TorneoTicket.belongsTo(TorneoJugador, { foreignKey: 'jugador_id', as: 'jugador' });
 TorneoTicket.belongsTo(Torneo,        { foreignKey: 'torneo_id',  as: 'torneo' });
 
+// ── Profesores de pádel ──
+Complex.hasMany(Profesor,   { foreignKey: 'id_tenant', as: 'profesores' });
+Profesor.belongsTo(Complex, { foreignKey: 'id_tenant', as: 'club' });
+Profesor.hasMany(ProfesorCancha,   { foreignKey: 'profesor_id', as: 'disponibilidad', onDelete: 'CASCADE' });
+ProfesorCancha.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+ProfesorCancha.belongsTo(Field,    { foreignKey: 'field_id', as: 'field' });
+Profesor.hasMany(HorarioProfesor,   { foreignKey: 'profesor_id', as: 'horarios', onDelete: 'CASCADE' });
+HorarioProfesor.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+HorarioProfesor.belongsTo(Field,    { foreignKey: 'field_id', as: 'field' });
+HorarioProfesor.hasMany(Alumno,     { foreignKey: 'id_horario', as: 'alumnos', onDelete: 'CASCADE' });
+Alumno.belongsTo(HorarioProfesor,   { foreignKey: 'id_horario', as: 'horario' });
+
+// ── Turnos de la agenda ocupados por clases / partidos de torneo ──
+TimeSlot.belongsTo(HorarioProfesor, { foreignKey: 'horario_profesor_id', as: 'clase' });
+TimeSlot.belongsTo(TorneoPartido,   { foreignKey: 'torneo_partido_id',   as: 'partidoTorneo' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -227,4 +248,6 @@ module.exports = {
   // Torneos de pádel
   Torneo, TorneoOrganizador, TorneoCancha, TorneoZona, TorneoPareja,
   TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket,
+  // Profesores de pádel
+  Profesor, ProfesorCancha, HorarioProfesor, Alumno,
 };

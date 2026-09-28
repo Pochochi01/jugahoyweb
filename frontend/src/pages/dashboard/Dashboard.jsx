@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap,
 } from 'lucide-react';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
@@ -19,6 +19,7 @@ import UsersTab         from './UsersTab';
 import InvitesTab       from './InvitesTab';
 import CantinaTab       from './CantinaTab';
 import TorneosTab       from './TorneosTab';
+import ProfesoresTab    from './ProfesoresTab';
 
 // permiso: clave usada en Collaborator.permisos
 const TABS = [
@@ -29,6 +30,7 @@ const TABS = [
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
   // Solo para complejos con canchas de pádel (ver requiresPadel)
   { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos', requiresPadel: true },
+  { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', requiresPadel: true },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas' },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
@@ -130,6 +132,7 @@ export default function Dashboard() {
       case 'caja':          return <CashTab {...props} />;
       case 'cantina':       return <CantinaTab {...props} />;
       case 'torneos':       return <TorneosTab {...props} />;
+      case 'profesores':    return <ProfesoresTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return <SettingsTab {...props} onUpdate={c => setSelectedComplex(c)} />;
       case 'colaboradores': return <CollaboratorsTab {...props} />;

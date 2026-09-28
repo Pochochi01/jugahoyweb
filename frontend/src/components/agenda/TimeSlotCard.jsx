@@ -1,4 +1,4 @@
-import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle, DollarSign } from 'lucide-react';
+import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle, DollarSign, GraduationCap, Trophy } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
 import { waLink } from '../../utils/whatsapp';
 
@@ -47,6 +47,9 @@ const STYLES = {
     card:   { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
     text:   'text-white/40',
   },
+  // Clase de profesor (violeta) / partido de torneo (azul): ocupan la cancha sin ser reservas
+  clase:  { card: { background: 'rgba(168,85,247,0.10)', border: '1px solid rgba(168,85,247,0.35)' }, icon: 'text-purple-400', text: 'text-purple-200' },
+  torneo: { card: { background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.35)' }, icon: 'text-blue-400',   text: 'text-blue-200' },
   past: {
     card:   { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: 0.35, cursor: 'not-allowed' },
     icon:   'text-white/20', text: 'text-white/25',
@@ -57,7 +60,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
   const isLibre     = slot.estado === 'libre';
   const isOcupado   = slot.estado === 'ocupado';
   const isPast      = slot.past && !isOcupado;
-  const isSecondary = isOcupado && !slot.isFirstOfBooking;
+  const bloqueo     = isOcupado && !slot.booking ? slot.bloqueo : null;   // clase / partido de torneo
+  const isBloqueo   = Boolean(bloqueo) && slot.isFirstOfBloque;
+  const isSecondary = isOcupado && !slot.isFirstOfBooking && !isBloqueo;
   const isPendiente  = isOcupado && slot.booking?.estado === 'pendiente';
   const isNoAsistido = isOcupado && slot.booking?.estado === 'no_asistido';
   const isConfirmado = isOcupado && slot.booking?.estado === 'confirmado';
@@ -78,6 +83,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
   let baseStyle;
   if (isPast)              baseStyle = STYLES.past.card;
   else if (isLibre)        baseStyle = STYLES.libre.card;
+  else if (isBloqueo)      baseStyle = STYLES[bloqueo.tipo].card;
   else if (isSecondary)    baseStyle = STYLES.secondary.card;
   else                     baseStyle = { ...ES.card, ...(esGestionable ? { cursor: 'pointer' } : {}) };
 
@@ -113,7 +119,29 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
       }}
       {...wrapperProps}
     >
-      {isOcupado && slot.isFirstOfBooking && slot.booking ? (
+      {isBloqueo ? (
+        /* ── Clase de profesor / partido de torneo ── */
+        <div className="px-3 sm:px-4 py-2.5 space-y-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {bloqueo.tipo === 'clase'
+              ? <GraduationCap className={`w-3.5 h-3.5 shrink-0 ${STYLES.clase.icon}`} />
+              : <Trophy className={`w-3.5 h-3.5 shrink-0 ${STYLES.torneo.icon}`} />}
+            <span className={`text-sm tabular-nums font-semibold ${STYLES[bloqueo.tipo].text}`}>{bloqueo.hora_inicio} → {bloqueo.hora_fin}</span>
+            <span className={`text-xs font-medium truncate ${STYLES[bloqueo.tipo].text}`}>· {bloqueo.titulo}</span>
+          </div>
+          {bloqueo.detalle && (
+            <div className="text-xs text-white/70 truncate">
+              {bloqueo.tipo === 'clase' ? 'Alumnos: ' : ''}{bloqueo.detalle}
+            </div>
+          )}
+          {bloqueo.profesor?.whatsapp && waLink(bloqueo.profesor.whatsapp) && (
+            <a href={waLink(bloqueo.profesor.whatsapp)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-xs text-purple-300 hover:underline">
+              <MessageCircle className="w-3 h-3 shrink-0" /> Prof. {bloqueo.profesor.nombre} · {bloqueo.profesor.whatsapp}
+            </a>
+          )}
+        </div>
+      ) : isOcupado && slot.isFirstOfBooking && slot.booking ? (
         /* ── Reserva (primer slot): layout de 2 filas, sin superposición en móvil ── */
         <div className="px-3 sm:px-4 py-2.5">
 

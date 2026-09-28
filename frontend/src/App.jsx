@@ -22,6 +22,7 @@ import ProtectedRoute     from './components/ProtectedRoute';
 import PWABadge           from './components/PWABadge';
 import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/torneos/TorneoPublicPages';
 import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
+import { ProfesorLogin, ProfesorPanel } from './pages/profesor/ProfesorPages';
 
 export default function App() {
   useEffect(() => {
@@ -59,6 +60,10 @@ export default function App() {
       {/* Organizadores de torneos (login propio) */}
       <Route path="/organizador/login"      element={<OrganizadorLogin />} />
       <Route path="/organizador"            element={<OrganizadorPanel />} />
+
+      {/* Profesores de pádel (login por DNI) */}
+      <Route path="/profesor/login"         element={<ProfesorLogin />} />
+      <Route path="/profesor"               element={<ProfesorPanel />} />
 
       {/* Player — requiere login */}
       <Route path="/canchas" element={

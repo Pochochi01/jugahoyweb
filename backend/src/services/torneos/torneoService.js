@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
-  TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking,
+  TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
 } = require('../../models');
 const fx = require('./fixtureService');
 const notifier = require('./torneoNotifier');
@@ -173,7 +173,20 @@ async function slotsDisponibles(torneo) {
   if (canchas.length === 0) throw httpError(400, 'Asigná canchas y horarios al torneo antes de armar el fixture.');
   const fieldIds = canchas.map(c => c.field_id);
 
-  // Reservas del complejo en esas canchas → esos horarios no se usan
+  // Turnos ocupados de la agenda (reservas, clases de profesores, otros torneos).
+  // Los del PROPIO torneo se ignoran: se reescriben al (re)programar.
+  const propios = (await TorneoPartido.findAll({ where: { torneo_id: torneo.id }, attributes: ['id'], raw: true })).map(p => p.id);
+  const turnos = await TimeSlot.findAll({
+    where: {
+      field_id: fieldIds,
+      fecha: { [Op.between]: [torneo.fecha_inicio, torneo.fecha_fin] },
+      estado: 'ocupado',
+      ...(propios.length ? { [Op.or]: [{ torneo_partido_id: null }, { torneo_partido_id: { [Op.notIn]: propios } }] } : {}),
+    },
+    attributes: ['field_id', 'fecha', 'hora'],
+    raw: true,
+  });
+  // Reservas (compatibilidad con reservas sin time_slots)
   const reservas = await Booking.findAll({
     where: {
       field_id: fieldIds,
@@ -190,12 +203,58 @@ async function slotsDisponibles(torneo) {
   });
   const ocupados = [
     ...reservas,
+    ...turnos.map(s => ({ field_id: s.field_id, fecha: s.fecha, hora_inicio: s.hora, hora_fin: fx.toHHMM(fx.toMin(s.hora) + 60) })),
     ...otros.map(p => ({
       field_id: p.field_id, fecha: p.fecha, hora_inicio: p.hora,
       hora_fin: fx.toHHMM(fx.toMin(p.hora) + p.torneo.duracion_partido),
     })),
   ];
   return fx.generarSlots(canchas, torneo, ocupados);
+}
+
+/**
+ * Sincroniza la agenda general (time_slots) con la programación del torneo:
+ * borra los turnos del torneo y escribe uno 'ocupado' por cada hora que toca
+ * cada partido programado, para que los jugadores no puedan reservar encima.
+ *
+ * Se reescribe el torneo COMPLETO (no partido por partido) porque la agenda es
+ * horaria: dos partidos de 90 min seguidos (09:00 y 10:30) comparten la hora
+ * 10:00 y una fila solo puede apuntar a un partido.
+ *
+ * @throws 409 si alguna hora ya la tomó una reserva / clase / otro torneo
+ */
+async function sincronizarAgenda(torneo, transaction) {
+  const partidos = await TorneoPartido.findAll({ where: { torneo_id: torneo.id }, transaction });
+  const ids = partidos.map(p => p.id);
+  if (ids.length) await TimeSlot.destroy({ where: { torneo_partido_id: ids }, transaction });
+  if (torneo.estado === 'cancelado') return;
+
+  const escritas = new Set();
+  const campos = await Field.findAll({ where: { id: [...new Set(partidos.map(p => p.field_id).filter(Boolean))] }, attributes: ['id', 'nombre', 'identificador'], transaction });
+  for (const p of partidos) {
+    if (!p.field_id || !p.fecha || !p.hora || p.es_bye) continue;
+    const ini = fx.toMin(p.hora), fin = ini + torneo.duracion_partido;
+    for (let m = Math.floor(ini / 60) * 60; m < fin && m < 1440; m += 60) {
+      const hora = fx.toHHMM(m);
+      const k = `${p.field_id}|${p.fecha}|${hora}`;
+      if (escritas.has(k)) continue;
+      escritas.add(k);
+      const fila = await TimeSlot.findOne({ where: { field_id: p.field_id, fecha: p.fecha, hora }, lock: transaction.LOCK.UPDATE, transaction });
+      if (fila?.estado === 'ocupado') {
+        throw httpError(409, `${canchaLabel(campos.find(f => f.id === p.field_id))} el ${p.fecha} a las ${hora} ya está reservada: reprogramá ese partido o volvé a armar el fixture.`);
+      }
+      if (fila) await fila.update({ estado: 'ocupado', booking_id: null, horario_profesor_id: null, torneo_partido_id: p.id }, { transaction });
+      else await TimeSlot.create({ field_id: p.field_id, fecha: p.fecha, hora, estado: 'ocupado', torneo_partido_id: p.id }, { transaction });
+    }
+  }
+}
+
+/** Ejecuta fn en una transacción y traduce el choque del índice único de time_slots. */
+async function conTransaccion(fn) {
+  try { return await sequelize.transaction(fn); } catch (err) {
+    if (err.name === 'SequelizeUniqueConstraintError') throw httpError(409, 'Una cancha se reservó mientras se programaba el torneo: intentá de nuevo.');
+    throw err;
+  }
 }
 
 /** Agenda y slots ya usados por los partidos programados de este torneo. */
@@ -239,7 +298,7 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
   const slots = await slotsDisponibles(torneo);
   const porId = new Map(parejas.map(p => [p.id, p]));
 
-  const sinProgramar = await sequelize.transaction(async (t) => {
+  const sinProgramar = await conTransaccion(async (t) => {
     await TorneoPartido.destroy({ where: { torneo_id: torneo.id }, transaction: t });
     await TorneoPareja.update({ zona_id: null }, { where: { torneo_id: torneo.id }, transaction: t });
     await TorneoZona.destroy({ where: { torneo_id: torneo.id }, transaction: t });
@@ -267,6 +326,7 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
     }), { transaction: t });
 
     await torneo.update({ estado: 'zonas' }, { transaction: t });
+    await sincronizarAgenda(torneo, t);
     return pendientes;
   });
 
@@ -343,7 +403,7 @@ async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
     descanso: torneo.descanso_minimo, agenda, usados, minAbs: maxAbs + torneo.descanso_minimo,
   });
 
-  await sequelize.transaction(async (t) => {
+  await conTransaccion(async (t) => {
     await TorneoPartido.destroy({ where: { torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' } }, transaction: t });
     const idPorKey = new Map();
     // De la final hacia atrás, para conocer el id del partido siguiente
@@ -361,6 +421,7 @@ async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
       idPorKey.set(p.key, creado.id);
     }
     await torneo.update({ estado: 'llaves' }, { transaction: t });
+    await sincronizarAgenda(torneo, t);
   });
 
   if (notificar) {
@@ -524,7 +585,10 @@ async function reprogramarPartido(torneo, partidoId, { field_id, fecha, hora }, 
 
   const parejas = await TorneoPareja.findAll({ where: { id: [partido.pareja1_id, partido.pareja2_id].filter(Boolean) } });
   const fuera = !parejas.every(p => fx.encajaPreferencia(p, slot));
-  await partido.update({ field_id: slot.field_id, fecha, hora, estado: 'programado', fuera_preferencia: fuera });
+  await conTransaccion(async (t) => {
+    await partido.update({ field_id: slot.field_id, fecha, hora, estado: 'programado', fuera_preferencia: fuera }, { transaction: t });
+    await sincronizarAgenda(torneo, t);
+  });
 
   if (notificar && partido.pareja1_id && partido.pareja2_id) await despacharAvisos(torneo, [{ tipo: 'proximo', partidoId: partido.id }]);
   return partido;
@@ -559,7 +623,7 @@ async function fixture(torneo, { publico = true } = {}) {
 
 module.exports = {
   httpError, canchaLabel, incluirPartido,
-  inscribirPareja, confirmarPago, emitirTickets,
+  inscribirPareja, confirmarPago, emitirTickets, sincronizarAgenda, conTransaccion,
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   ganadorPorSets, registrarResultado, notificarProximos, reprogramarPartido, fixture,
 };

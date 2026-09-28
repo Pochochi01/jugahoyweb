@@ -3,7 +3,65 @@ const {
   Agenda, Field, User, Operation, TimeSlot, Booking, Notification, Complex,
   RecurringBooking, BookingConsumo, CantinaProducto, CantinaVenta,
   CantinaDetalleVenta, CantinaMovimiento, sequelize,
+  HorarioProfesor, Profesor, Alumno, TorneoPartido, Torneo, TorneoPareja, TorneoJugador,
 } = require('../models');
+
+// ── Turnos ocupados por una clase de profesor o un partido de torneo ──
+// No son reservas (sin booking): se devuelven como `bloqueo` para mostrar quién
+// ocupa la cancha. El admin no los cobra ni cancela desde la agenda: se gestionan
+// en los módulos Profesores / Torneos.
+const INCLUDE_BLOQUEOS = [
+  {
+    model: HorarioProfesor, as: 'clase', required: false,
+    include: [
+      { model: Profesor, as: 'profesor', attributes: ['id', 'nombre', 'apellido', 'dni', 'whatsapp'] },
+      { model: Alumno, as: 'alumnos', attributes: ['nombre', 'celular'] },
+    ],
+  },
+  {
+    model: TorneoPartido, as: 'partidoTorneo', required: false,
+    include: [
+      { model: Torneo, as: 'torneo', attributes: ['id', 'nombre', 'duracion_partido'] },
+      ...['pareja1', 'pareja2'].map(as => ({
+        model: TorneoPareja, as, attributes: ['id'],
+        include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre'] }],
+      })),
+    ],
+  },
+];
+
+const nombrePareja = (p) => (p?.jugadores || []).slice().sort((a, b) => a.id - b.id).map(j => j.nombre).join(' / ') || 'A definir';
+
+/** Datos de la clase / partido que ocupa un time_slot (o null si es una reserva). */
+function bloqueoDe(slot) {
+  const c = slot?.clase;
+  if (c) {
+    return {
+      tipo: 'clase',
+      id: c.id,
+      titulo: `Clase · Prof. ${c.profesor?.nombre} ${c.profesor?.apellido}`,
+      profesor: c.profesor ? { id: c.profesor.id, nombre: `${c.profesor.nombre} ${c.profesor.apellido}`, dni: c.profesor.dni, whatsapp: c.profesor.whatsapp } : null,
+      detalle: (c.alumnos || []).map(a => a.nombre).join(', '),
+      alumnos: c.alumnos,
+      hora_inicio: c.hora_inicio,
+      hora_fin: c.hora_fin,
+    };
+  }
+  const p = slot?.partidoTorneo;
+  if (p) {
+    return {
+      tipo: 'torneo',
+      id: p.id,
+      torneo_id: p.torneo?.id,
+      titulo: `Torneo · ${p.torneo?.nombre}`,
+      detalle: `${nombrePareja(p.pareja1)} vs ${nombrePareja(p.pareja2)}`,
+      ronda: p.ronda,
+      hora_inicio: p.hora,
+      hora_fin: addMinutes(p.hora, p.torneo?.duracion_partido || 90),
+    };
+  }
+  return null;
+}
 const recurring = require('../services/recurringService');
 const caja = require('../services/cajaService');
 const waitlist = require('../services/waitlistService');
@@ -82,7 +140,7 @@ async function getSlotsForField(req, res) {
         as: 'booking',
         where: { estado: { [Op.ne]: 'cancelado' } },
         required: false,
-      }],
+      }, ...INCLUDE_BLOQUEOS],
     });
 
     const slotMap = {};
@@ -92,6 +150,10 @@ async function getSlotsForField(req, res) {
       const existing = slotMap[hora];
       const past     = isPast(date, hora, apertura);
       const booking  = existing?.booking ?? null;
+      const bloqueo  = booking ? null : bloqueoDe(existing);
+      // Primer turno del bloque: la hora anterior no pertenece a la misma clase/partido
+      const previo = bloqueoDe(slotMap[addMinutes(hora, -60)]);
+      const esPrimeroBloque = Boolean(bloqueo) && !(previo && previo.tipo === bloqueo.tipo && previo.id === bloqueo.id);
 
       return {
         hora,
@@ -103,7 +165,10 @@ async function getSlotsForField(req, res) {
         // primer slot de una reserva: es donde se muestra el botón de cancelar
         isFirstOfBooking: booking ? booking.hora_inicio === hora : false,
         // hora de fin real de la reserva (puede abarcar varios slots)
-        hora_fin_reserva: booking?.hora_fin ?? null,
+        hora_fin_reserva: booking?.hora_fin ?? bloqueo?.hora_fin ?? null,
+        // Clase de profesor / partido de torneo que ocupa el turno (sin booking)
+        bloqueo,
+        isFirstOfBloque:  esPrimeroBloque,
         past,
         field_id: parseInt(fieldId),
         fecha:    date,
