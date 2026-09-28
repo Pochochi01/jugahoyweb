@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Trophy, Plus, UserCog, QrCode, Pencil, Trash2, X } from 'lucide-react';
+import { Trophy, Plus, UserCog, QrCode, Pencil, Trash2, X, ListOrdered } from 'lucide-react';
+import RankingAnual from '../../components/torneos/RankingAnual';
 import api from '../../services/api';
 import { torneosStaff } from '../../services/torneosService';
 import TorneoManager from '../../components/torneos/TorneoManager';
@@ -21,7 +22,7 @@ export default function TorneosTab({ complexId }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><Trophy className="w-5 h-5 text-primary" /> Torneos de pádel</h2>
-        {[['torneos', 'Torneos', Trophy], ['organizadores', 'Organizadores', UserCog], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
+        {[['torneos', 'Torneos', Trophy], ['ranking', 'Ranking anual', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-white' : 'bg-muted'}`}>
             <Icon className="w-4 h-4" /> {l}
@@ -29,6 +30,7 @@ export default function TorneosTab({ complexId }) {
         ))}
       </div>
       {vista === 'torneos' && <ListaTorneos svc={svc} onOpen={setAbierto} />}
+      {vista === 'ranking' && <RankingAnual svc={svc} />}
       {vista === 'organizadores' && <Organizadores svc={svc} />}
       {vista === 'tickets' && <ValidarTicket svc={svc} />}
     </div>
@@ -63,7 +65,7 @@ export function ListaTorneos({ svc, onOpen }) {
               <span className="font-semibold">{t.nombre}</span>
               <span className={ESTADO_TORNEO[t.estado].cls}>{ESTADO_TORNEO[t.estado].label}</span>
             </div>
-            <div className="text-xs text-muted-foreground">{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
+            <div className="text-xs text-muted-foreground">{t.tipo === 'anual' ? 'Anual · ' : ''}{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
             <div className="text-xs">{t.inscriptas}/{t.cupo_parejas} parejas · {t.pagadas} pagadas</div>
           </button>
         ))}

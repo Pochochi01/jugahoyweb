@@ -20,6 +20,11 @@ const Torneo = sequelize.define('Torneo', {
   duracion_partido:   { type: DataTypes.INTEGER, defaultValue: 90 },   // minutos
   descanso_minimo:    { type: DataTypes.INTEGER, defaultValue: 60 },   // minutos entre partidos de una pareja
   imagen_evento:      { type: DataTypes.STRING(255) },
+  // 'unico' → zonas por sorteo · 'anual' → zonas por ranking (cabezas de serie) y suma puntos
+  tipo:               { type: DataTypes.ENUM('unico', 'anual'), defaultValue: 'unico' },
+  // 3er set: set normal o súper tie-break (a 10, diferencia de 2)
+  tercer_set:         { type: DataTypes.ENUM('set', 'super_tiebreak'), defaultValue: 'set' },
+  puntos_asignados:   { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'torneos' });
 
 module.exports = Torneo;

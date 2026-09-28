@@ -42,6 +42,8 @@ const TorneoJugador     = require('./TorneoJugador');
 const TorneoPartido     = require('./TorneoPartido');
 const TorneoResultado   = require('./TorneoResultado');
 const TorneoTicket      = require('./TorneoTicket');
+const TorneoTablaPosicion = require('./TorneoTablaPosicion');
+const RankingJugador    = require('./RankingJugador');
 // Profesores de pádel
 const Profesor          = require('./Profesor');
 const ProfesorCancha    = require('./ProfesorCancha');
@@ -199,6 +201,9 @@ TorneoResultado.belongsTo(TorneoPartido, { foreignKey: 'partido_id', as: 'partid
 TorneoJugador.hasOne(TorneoTicket,   { foreignKey: 'jugador_id', as: 'ticket', onDelete: 'CASCADE' });
 TorneoTicket.belongsTo(TorneoJugador, { foreignKey: 'jugador_id', as: 'jugador' });
 TorneoTicket.belongsTo(Torneo,        { foreignKey: 'torneo_id',  as: 'torneo' });
+TorneoZona.hasMany(TorneoTablaPosicion, { foreignKey: 'zona_id', as: 'tabla', onDelete: 'CASCADE' });
+TorneoTablaPosicion.belongsTo(TorneoPareja, { foreignKey: 'pareja_id', as: 'pareja' });
+Complex.hasMany(RankingJugador, { foreignKey: 'id_tenant', as: 'ranking' });
 
 // ── Profesores de pádel ──
 Complex.hasMany(Profesor,   { foreignKey: 'id_tenant', as: 'profesores' });
@@ -247,7 +252,7 @@ module.exports = {
   WaConversation, WaTemplate,
   // Torneos de pádel
   Torneo, TorneoOrganizador, TorneoCancha, TorneoZona, TorneoPareja,
-  TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket,
+  TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket, TorneoTablaPosicion, RankingJugador,
   // Profesores de pádel
   Profesor, ProfesorCancha, HorarioProfesor, Alumno,
 };

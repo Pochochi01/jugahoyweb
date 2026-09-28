@@ -5,7 +5,7 @@
  * avance en la llave, armado automático de cruces, avisos) vive en torneoService.
  */
 const { Op } = require('sequelize');
-const { TorneoPartido, TorneoResultado } = require('../models');
+const { TorneoPartido } = require('../models');
 const svc = require('../services/torneos/torneoService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
@@ -34,16 +34,7 @@ async function upsert(req, res) {
 
 /** Borra un resultado de zona (solo antes de armar la llave). */
 async function remove(req, res) {
-  try {
-    const p = await TorneoPartido.findOne({ where: { id: req.params.partidoId, torneo_id: req.torneo.id } });
-    if (!p) return res.status(404).json({ message: 'Partido no encontrado' });
-    if (p.ronda !== 'zona' || req.torneo.estado !== 'zonas') {
-      return res.status(409).json({ message: 'Solo se pueden borrar resultados de zona antes de generar la llave.' });
-    }
-    await TorneoResultado.destroy({ where: { partido_id: p.id } });
-    await p.update({ estado: p.fecha ? 'programado' : 'pendiente' });
-    res.json({ ok: true });
-  } catch (err) { send(res, err); }
+  try { res.json(await svc.quitarResultado(req.torneo, req.params.partidoId)); } catch (err) { send(res, err); }
 }
 
 module.exports = { list, upsert, remove };

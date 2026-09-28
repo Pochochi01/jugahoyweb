@@ -68,7 +68,9 @@ function fechaLarga(fecha) {
   return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 }
 const RONDA_LABEL = { zona: 'Fase de zonas', octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'FINAL' };
-const setsTxt = (sets) => (sets || []).map(([a, b]) => `${a}-${b}`).join(' ');
+// 7-6 muestra el tie-break del perdedor del set entre paréntesis: 6-3 7-6(5)
+const setsTxt = (sets, tbs = []) => (sets || []).map(([a, b], i) =>
+  `${a}-${b}${tbs?.[i] ? `(${Math.min(...tbs[i])})` : ''}`).join(' ');
 const linkTorneo = (t) => frontendUrl(`/torneos/${t.id}`);
 
 // ── Catálogo de mensajes ──────────────────────────────────────
@@ -93,7 +95,7 @@ const mensajes = {
   resultado(torneo, partido, resultado, ganador) {
     return `📊 *Resultado — ${torneo.nombre}*\n\n${RONDA_LABEL[partido.ronda]}\n` +
       `${nombrePareja(partido.pareja1)} vs ${nombrePareja(partido.pareja2)}\n` +
-      `${partido.estado === 'walkover' ? 'W.O.' : setsTxt(resultado.sets)}\n🏆 Ganó: *${nombrePareja(ganador)}*\n\n` +
+      `${partido.estado === 'walkover' ? 'W.O.' : setsTxt(resultado.sets, resultado.tie_breaks)}\n🏆 Ganó: *${nombrePareja(ganador)}*\n\n` +
       `Posiciones: ${linkTorneo(torneo)}`;
   },
   finalistas(torneo, pareja) {

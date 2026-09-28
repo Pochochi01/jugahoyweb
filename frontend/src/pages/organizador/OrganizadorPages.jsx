@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Trophy, LogOut, QrCode } from 'lucide-react';
+import { Trophy, LogOut, QrCode, ListOrdered } from 'lucide-react';
+import RankingAnual from '../../components/torneos/RankingAnual';
 import { orgApi, organizadorAuth, torneosStaff } from '../../services/torneosService';
 import TorneoManager from '../../components/torneos/TorneoManager';
 import { ListaTorneos, ValidarTicket } from '../dashboard/TorneosTab';
@@ -48,6 +49,7 @@ export function OrganizadorPanel() {
   const svc = useMemo(() => (cid ? torneosStaff(orgApi, cid) : null), [cid]);
   const [abierto, setAbierto] = useState(null);
   const [tickets, setTickets] = useState(false);
+  const [ranking, setRanking] = useState(false);
 
   if (!svc || !localStorage.getItem('org_token')) return <Navigate to="/organizador/login" replace />;
   const salir = () => { localStorage.removeItem('org_token'); localStorage.removeItem('org_session'); navigate('/organizador/login'); };
@@ -60,11 +62,13 @@ export function OrganizadorPanel() {
           <div className="font-bold truncate">{sesion.club?.nombre}</div>
           <div className="text-xs text-muted-foreground">Organizador: {sesion.organizador.nombre || sesion.organizador.usuario}</div>
         </div>
+        <button className={`p-2 rounded-lg hover:bg-muted ${ranking ? 'text-primary' : ''}`} title="Ranking anual" onClick={() => setRanking(r => !r)}><ListOrdered className="w-5 h-5" /></button>
         <button className="p-2 rounded-lg hover:bg-muted" title="Validar ticket" onClick={() => setTickets(t => !t)}><QrCode className="w-5 h-5" /></button>
         <button className="p-2 rounded-lg hover:bg-muted text-red-400" title="Salir" onClick={salir}><LogOut className="w-5 h-5" /></button>
       </header>
       <main className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
         {tickets && <ValidarTicket svc={svc} />}
+        {ranking && <RankingAnual svc={svc} />}
         {abierto
           ? <TorneoManager svc={svc} torneoId={abierto} onBack={() => setAbierto(null)} />
           : <ListaTorneos svc={svc} onOpen={setAbierto} />}

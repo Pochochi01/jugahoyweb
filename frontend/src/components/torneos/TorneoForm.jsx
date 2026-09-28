@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { CATEGORIAS, catLabel, GENEROS, errMsg } from '../../utils/torneos';
+import { CATEGORIAS, catLabel, GENEROS, TIPO_TORNEO, errMsg } from '../../utils/torneos';
 
 const INICIAL = {
+  tipo: 'unico', tercer_set: 'set',
   nombre: '', descripcion: '', categoria: 6, genero: 'masculino', fecha_inicio: '', fecha_fin: '',
   cupo_parejas: 16, precio_inscripcion: 0, parejas_por_zona: 3, clasifican_por_zona: 2,
   duracion_partido: 90, descanso_minimo: 60,
@@ -33,6 +34,22 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
     <form onSubmit={submit} className="card space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
         <Campo label="Nombre del torneo"><input className="input" value={f.nombre} onChange={e => set('nombre', e.target.value)} required /></Campo>
+        <div className="grid grid-cols-2 gap-2">
+          <Campo label="Tipo de torneo">
+            <select className="input" value={f.tipo} disabled={bloqueado} onChange={e => set('tipo', e.target.value)}>
+              {Object.entries(TIPO_TORNEO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </Campo>
+          <Campo label="3er set">
+            <select className="input" value={f.tercer_set} disabled={bloqueado} onChange={e => set('tercer_set', e.target.value)}>
+              <option value="set">Set completo</option>
+              <option value="super_tiebreak">Súper tie-break (a 10)</option>
+            </select>
+          </Campo>
+        </div>
+        <p className="md:col-span-2 -mt-2 text-[11px] text-muted-foreground">
+          {TIPO_TORNEO[f.tipo]?.hint}. {f.tipo === 'anual' && 'Los puntos de cada pareja salen del ranking anual (suma de ambos jugadores) y al finalizar se suman los nuevos.'}
+        </p>
         <div className="grid grid-cols-2 gap-2">
           <Campo label="Categoría">
             <select className="input" value={f.categoria} disabled={bloqueado} onChange={num('categoria')}>

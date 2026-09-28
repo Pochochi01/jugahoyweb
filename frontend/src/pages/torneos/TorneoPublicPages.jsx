@@ -3,9 +3,9 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Trophy, CalendarDays, Users, CreditCard, Download, MapPin } from 'lucide-react';
 import { torneosPublic, uploadUrl } from '../../services/torneosService';
 import InscripcionForm from '../../components/torneos/InscripcionForm';
-import { TablaZona, PartidoRow, Bracket, RankingJugadores } from '../../components/torneos/FixtureViews';
+import { TablaZona, ZonaGrilla, Bracket, RankingJugadores } from '../../components/torneos/FixtureViews';
 import {
-  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, catLabel, money, fechaCorta, setsTxt, RONDA_LABEL, errMsg,
+  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, setsTxt, RONDA_LABEL, errMsg,
 } from '../../utils/torneos';
 
 const Wrap = ({ children }) => <div className="min-h-screen bg-background"><div className="max-w-5xl mx-auto p-4 md:p-6 space-y-5">{children}</div></div>;
@@ -94,24 +94,19 @@ export function TorneoPublicPage() {
         <div className="grid md:grid-cols-3 gap-3">
           <div className="card"><div className="text-xs text-muted-foreground">Inscripción por pareja</div><div className="text-xl font-bold">{Number(torneo.precio_inscripcion) > 0 ? money(torneo.precio_inscripcion) : 'Sin cargo'}</div></div>
           <div className="card"><div className="text-xs text-muted-foreground">Cupos libres</div><div className="text-xl font-bold">{torneo.cupos_libres} / {torneo.cupo_parejas}</div></div>
-          <div className="card"><div className="text-xs text-muted-foreground">Formato</div><div className="text-sm">Zonas de {torneo.parejas_por_zona}, clasifican {torneo.clasifican_por_zona} a la llave</div></div>
+          <div className="card"><div className="text-xs text-muted-foreground">Formato · {TIPO_TORNEO[torneo.tipo]?.label}</div><div className="text-sm">Zonas de {torneo.parejas_por_zona} ({TIPO_TORNEO[torneo.tipo]?.hint.toLowerCase()}), clasifican {torneo.clasifican_por_zona} a la llave{torneo.tercer_set === 'super_tiebreak' ? ' · 3er set: súper tie-break' : ''}</div></div>
           {torneo.descripcion && <div className="card md:col-span-3 text-sm whitespace-pre-line">{torneo.descripcion}</div>}
         </div>
       )}
       {tab === 'inscripcion' && <Inscripcion torneo={torneo} />}
       {tab === 'mi' && <MisPartidos torneoId={id} />}
       {tab === 'fixture' && (fx?.zonas?.length
-        ? <div className="space-y-5">{fx.zonas.map(z => (
-            <div key={z.zona_id} className="space-y-2">
-              <h3 className="font-semibold">{z.nombre}</h3>
-              {z.partidos.map(p => <PartidoRow key={p.id} p={p} />)}
-            </div>))}
-          </div>
+        ? <div className="grid lg:grid-cols-2 gap-4 items-start">{fx.zonas.map(z => <ZonaGrilla key={z.zona_id} zona={z} />)}</div>
         : <p className="text-sm text-muted-foreground">El fixture se publica al cerrar la inscripción.</p>)}
       {tab === 'llave' && <Bracket llave={fx?.llave} campeonId={fx?.campeon} />}
       {tab === 'posiciones' && (
         <div className="space-y-5">
-          <div className="grid lg:grid-cols-2 gap-4">{fx?.zonas?.map(z => <TablaZona key={z.zona_id} zona={z} />)}</div>
+          <div className="grid lg:grid-cols-2 gap-4">{fx?.zonas?.map(z => <TablaZona key={z.zona_id} zona={z} mostrarRanking={torneo.tipo === 'anual'} />)}</div>
           <h3 className="font-semibold">Ranking por jugador</h3>
           <RankingJugadores filas={ranking} />
         </div>

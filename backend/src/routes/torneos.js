@@ -32,6 +32,7 @@ const pagos       = require('../controllers/torneoPagosController');
 const resultados  = require('../controllers/torneoResultadosController');
 const comunicacion = require('../controllers/torneoComunicacionController');
 const pub         = require('../controllers/torneoPublicController');
+const ranking     = require('../controllers/torneoRankingController');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
 
 // ── Upload de la imagen del evento ────────────────────────────
@@ -73,6 +74,11 @@ club.get   ('/organizadores',     requireClubAdmin, orgs.list);
 club.post  ('/organizadores',     requireClubAdmin, orgs.create);
 club.put   ('/organizadores/:id', requireClubAdmin, orgs.update);
 club.delete('/organizadores/:id', requireClubAdmin, orgs.remove);
+
+// Ranking anual (base de los cabezas de serie en torneos 'anual')
+club.get   ('/ranking',     ranking.list);
+club.put   ('/ranking',     ranking.upsert);
+club.delete('/ranking/:id', ranking.remove);
 
 // Tickets: validación en la entrada
 club.post('/tickets/validar', inscr.validarTicket);

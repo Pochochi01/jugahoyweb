@@ -14,6 +14,9 @@ const TorneoPartido = sequelize.define('TorneoPartido', {
   es_bye:     { type: DataTypes.BOOLEAN, defaultValue: false },
   siguiente_partido_id: { type: DataTypes.INTEGER, allowNull: true },
   siguiente_slot: { type: DataTypes.TINYINT, allowNull: true },
+  // Zonas de 4: el PERDEDOR también avanza (P1/P2 → P3/P4)
+  perdedor_partido_id: { type: DataTypes.INTEGER, allowNull: true },
+  perdedor_slot: { type: DataTypes.TINYINT, allowNull: true },
   field_id:   { type: DataTypes.INTEGER, allowNull: true },
   fecha:      { type: DataTypes.DATEONLY, allowNull: true },
   hora:       { type: DataTypes.STRING(5), allowNull: true },

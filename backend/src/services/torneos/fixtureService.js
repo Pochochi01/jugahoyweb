@@ -4,8 +4,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Motor PURO del torneo (sin acceso a BD → fácil de testear):
  *
- *   armarZonas()        reparte parejas en zonas agrupando horarios compatibles
- *   roundRobin()        todos contra todos dentro de una zona
+ *   armarZonas()        zonas por sorteo (único) o por ranking en serpentina (anual)
+ *   crucesZona4()       zonas de 4: 1v3, 2v4, G1 v P2, G2 v P1
+ *   roundRobin()        todos contra todos (zonas de 2, 3, 5+)
+ *   validarResultado()  sets 6-x / 7-5 / 7-6 + tie-break, súper tie-break opcional
  *   generarSlots()      turnos libres de las canchas cedidas (menos reservas existentes)
  *   programar()         asigna cancha + horario a cada partido respetando:
  *                         · disponibilidad de la cancha
@@ -22,6 +24,8 @@
  *     fecha null = todos los días del torneo.
  *   - Tiempo absoluto de un slot: minutos desde el inicio del torneo (día*1440 + min).
  */
+
+const crypto = require('crypto');
 
 const PUNTOS_VICTORIA = 2;
 const PUNTOS_DERROTA  = 1;   // en pádel se suele premiar el partido jugado
@@ -75,41 +79,150 @@ function validarFranjas(franjas, { fechaInicio, fechaFin, requerida = false } = 
 function badRequest(msg) { const e = new Error(msg); e.status = 400; return e; }
 
 // ── Zonas ─────────────────────────────────────────────────────
-/** Primer minuto absoluto en que la pareja puede jugar (Infinity = sin preferencia). */
-function inicioPreferido(pareja, dias) {
-  let best = Infinity;
-  for (const f of pareja.horarios_preferidos || []) {
-    const idx = f.fecha ? dias.indexOf(f.fecha) : 0;
-    if (idx < 0) continue;
-    best = Math.min(best, idx * 1440 + toMin(f.desde));
+/** Cantidad de zonas: n / parejas por zona, redondeado (18 parejas de a 3 → 6 zonas). */
+function cantidadZonas(n, parejasPorZona) {
+  if (n < 2) throw badRequest('Se necesitan al menos 2 parejas para armar zonas.');
+  return Math.max(1, Math.round(n / Math.max(2, parejasPorZona)));
+}
+
+/** Mezcla Fisher–Yates con azar criptográfico (sorteo auditable, sin sesgo de Math.random). */
+function mezclar(lista) {
+  const a = [...lista];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return best;
+  return a;
 }
 
 /**
- * Reparte parejas en zonas de tamaño parejo (diferencia máx. 1).
- * Agrupa por horario preferido para que las parejas de una zona puedan
- * coincidir. Las parejas sin preferencia (flexibles) completan huecos al final.
- * @param {Array<{id, horarios_preferidos}>} parejas
- * @returns {Array<Array<pareja>>}
+ * Distribución en SERPENTINA sobre k zonas:
+ *   ronda 1 (ascendente):  1→A, 2→B, … k→último
+ *   ronda 2 (descendente): k+1→último, … 2k→A
+ *   ronda 3 (ascendente) … y así hasta ubicar a todas.
+ * Con 18 parejas y 6 zonas: A={1,12,13}, B={2,11,14}, … F={6,7,18}.
+ * Cada pareja recibe `numero_zona` = orden de llegada a su zona (1 = cabeza de serie).
+ *
+ * @param {Array} ordenadas  parejas ya ordenadas (ranking o sorteo)
+ * @returns {Array<Array<{...pareja, numero_zona}>>}
  */
-function armarZonas(parejas, parejasPorZona, dias) {
-  const n = parejas.length;
-  if (n < 2) throw badRequest('Se necesitan al menos 2 parejas para armar zonas.');
-  const k = Math.max(1, Math.round(n / Math.max(2, parejasPorZona)));
-  const ordenadas = [...parejas].sort((a, b) =>
-    (inicioPreferido(a, dias) - inicioPreferido(b, dias)) || (a.id - b.id));
-
-  const base = Math.floor(n / k);
-  let resto = n % k;
-  const zonas = [];
-  let i = 0;
-  for (let z = 0; z < k; z++) {
-    const tam = base + (resto-- > 0 ? 1 : 0);
-    zonas.push(ordenadas.slice(i, i + tam));
-    i += tam;
-  }
+function serpentina(ordenadas, k) {
+  const zonas = Array.from({ length: k }, () => []);
+  ordenadas.forEach((p, i) => {
+    const ronda = Math.floor(i / k);
+    const pos = i % k;
+    const z = ronda % 2 === 0 ? pos : k - 1 - pos;
+    zonas[z].push({ ...p, numero_zona: zonas[z].length + 1 });
+  });
   return zonas;
+}
+
+/**
+ * Arma las zonas según el tipo de torneo.
+ *  - 'unico': sorteo aleatorio (el número dentro de la zona también sale del sorteo).
+ *  - 'anual': ranking por `puntos_totales` (suma de ambos jugadores) descendente;
+ *    los primeros k son cabezas de serie (1→A, 2→B…) y el resto sigue en serpentina.
+ *    Empates de puntos se desempatan por sorteo.
+ * @param {Array<{id, puntos_totales?}>} parejas
+ * @param {{tipo:'unico'|'anual', parejasPorZona:number}} opts
+ */
+function armarZonas(parejas, { tipo = 'unico', parejasPorZona = 3 } = {}) {
+  const k = cantidadZonas(parejas.length, parejasPorZona);
+  const orden = tipo === 'anual'
+    // mezclar primero y ordenar después (sort estable) → empates sorteados
+    ? mezclar(parejas).sort((a, b) => (b.puntos_totales || 0) - (a.puntos_totales || 0))
+    : mezclar(parejas);
+  return serpentina(orden, k);
+}
+
+/**
+ * Cruces de una zona de 4 (según número de pareja en la zona):
+ *   P1: 1 vs 3 · P2: 2 vs 4 · P3: ganador P1 vs perdedor P2 · P4: ganador P2 vs perdedor P1
+ * @param {number[]} ids  ids de pareja ordenados por numero_zona (1..4)
+ * @returns {Array<{n, pareja1_id, pareja2_id, ganador?:{n,slot}, perdedor?:{n,slot}, despuesDe:number[]}>}
+ */
+function crucesZona4([p1, p2, p3, p4]) {
+  return [
+    { n: 1, pareja1_id: p1, pareja2_id: p3, ganador: { n: 3, slot: 1 }, perdedor: { n: 4, slot: 2 }, despuesDe: [] },
+    { n: 2, pareja1_id: p2, pareja2_id: p4, ganador: { n: 4, slot: 1 }, perdedor: { n: 3, slot: 2 }, despuesDe: [] },
+    { n: 3, pareja1_id: null, pareja2_id: null, despuesDe: [1, 2] },
+    { n: 4, pareja1_id: null, pareja2_id: null, despuesDe: [1, 2] },
+  ];
+}
+
+// ── Validación de resultados ──────────────────────────────────
+const esEntero = (v) => Number.isInteger(v) && v >= 0;
+
+/**
+ * Tie-break: termina cuando alguien llega a `min` puntos con 2 de diferencia.
+ * Si se pasa de `min` (ej. 8-6, 12-10), la diferencia debe ser EXACTAMENTE 2.
+ * @returns {1|2} lado ganador
+ */
+function validarTieBreak(tb, min = 7, etiqueta = 'tie-break') {
+  if (!Array.isArray(tb) || tb.length !== 2) throw badRequest(`Cargá el resultado del ${etiqueta}.`);
+  const [x, y] = tb.map(Number);
+  if (!esEntero(x) || !esEntero(y)) throw badRequest(`${etiqueta}: puntos inválidos.`);
+  const [w, l] = x > y ? [x, y] : [y, x];
+  if (w < min) throw badRequest(`${etiqueta} ${x}-${y}: el ganador debe llegar a ${min}.`);
+  if (w - l < 2) throw badRequest(`${etiqueta} ${x}-${y}: se gana por 2 puntos de diferencia.`);
+  if (w > min && w - l !== 2) throw badRequest(`${etiqueta} ${x}-${y}: pasados los ${min} puntos termina al sacar 2 de ventaja.`);
+  return x > y ? 1 : 2;
+}
+
+/**
+ * Valida un set de pádel. Valores 0 a 7; resultados válidos:
+ *   6-0 … 6-4 · 7-5 · 7-6 (con tie-break a 7, dif. 2)
+ * Se rechaza todo lo demás (6-5, 6-6, 7-4, 5-3, 8-6…).
+ * @returns {1|2} lado ganador
+ */
+function validarSet(set, tb, nro) {
+  const [x, y] = (set || []).map(Number);
+  const pref = `Set ${nro} (${x}-${y})`;
+  if (!esEntero(x) || !esEntero(y) || x > 7 || y > 7) throw badRequest(`${pref}: cada set va de 0 a 7 games.`);
+  const [w, l] = x > y ? [x, y] : [y, x];
+  const valido = (w === 6 && l <= 4) || (w === 7 && (l === 5 || l === 6));
+  if (!valido) {
+    throw badRequest(w === 7
+      ? `${pref}: el 7 solo va con 5 (7-5) o con 6 (7-6 con tie-break).`
+      : `${pref}: un set se gana 6-0 a 6-4, 7-5 o 7-6.`);
+  }
+  const lado = x > y ? 1 : 2;
+  if (w === 7 && l === 6) {
+    if (validarTieBreak(tb, 7, `Tie-break del set ${nro}`) !== lado) {
+      throw badRequest(`${pref}: el tie-break lo tiene que ganar quien ganó el set.`);
+    }
+  } else if (tb != null) {
+    throw badRequest(`${pref}: solo un 7-6 lleva tie-break.`);
+  }
+  return lado;
+}
+
+/**
+ * Valida el resultado completo (mejor de 3 sets).
+ * @param {number[][]} sets
+ * @param {Array<number[]|null>} tieBreaks  alineado con sets
+ * @param {'set'|'super_tiebreak'} tercerSet  el 3º puede ser súper tie-break a 10
+ * @returns {{ lado: 1|2, sets: number[][], tie_breaks: Array<number[]|null> }}
+ */
+function validarResultado(sets, tieBreaks = [], tercerSet = 'set') {
+  if (!Array.isArray(sets) || sets.length < 2 || sets.length > 3) throw badRequest('Cargá 2 o 3 sets.');
+  let a = 0, b = 0;
+  const tbs = [];
+  sets.forEach((s, i) => {
+    if (a === 2 || b === 2) throw badRequest('Hay sets de más: el partido ya estaba definido en 2 sets.');
+    const tb = tieBreaks?.[i] ?? null;
+    let lado;
+    if (i === 2 && tercerSet === 'super_tiebreak') {
+      if (tb != null) throw badRequest('El súper tie-break se carga como 3er set (ej. 10-8).');
+      lado = validarTieBreak(s, 10, 'Súper tie-break');
+    } else {
+      lado = validarSet(s, tb, i + 1);
+    }
+    tbs.push(tb ? tb.map(Number) : null);
+    lado === 1 ? a++ : b++;
+  });
+  if (a !== 2 && b !== 2) throw badRequest('El resultado no define un ganador (mejor de 3 sets).');
+  return { lado: a === 2 ? 1 : 2, sets: sets.map(s => s.map(Number)), tie_breaks: tbs };
 }
 
 function nombreZona(i) { return `Zona ${String.fromCharCode(65 + i)}`; }
@@ -182,6 +295,7 @@ function encajaPreferencia(pareja, slot) {
  *   - agenda:   Map<parejaId, Array<[ini,fin]>> partidos ya programados (se respeta)
  *   - usados:   Set<'field|abs'> slots ya tomados
  *   - minAbs:   ningún partido antes de este minuto absoluto
+ *   - previos:  Map<key, asignación> de una pasada anterior (para despuesDe)
  * @returns {Map<key, {field_id, fecha, hora, abs, fuera_preferencia} | null>}
  */
 function programar(partidos, slots, parejas, opts = {}) {
@@ -189,7 +303,7 @@ function programar(partidos, slots, parejas, opts = {}) {
   const agenda = opts.agenda || new Map();
   const usados = opts.usados || new Set();
   const minAbs = opts.minAbs || 0;
-  const asignado = new Map();
+  const asignado = new Map(opts.previos || []);
 
   const libre = (s) => !usados.has(`${s.field_id}|${s.abs}`) && s.abs >= minAbs;
   const sinChoque = (pid, s) => (agenda.get(pid) || [])
@@ -393,7 +507,8 @@ function armarLlave(clasificados) {
 module.exports = {
   PUNTOS_VICTORIA, PUNTOS_DERROTA, ORDEN_RONDAS,
   toMin, toHHMM, diasEntre, validarFranjas,
-  armarZonas, nombreZona, roundRobin,
+  armarZonas, serpentina, cantidadZonas, crucesZona4, nombreZona, roundRobin,
+  validarSet, validarTieBreak, validarResultado,
   generarSlots, encajaPreferencia, programar,
   resumenSets, tablaZona, rankingClasificados,
   ordenSiembra, armarLlave,

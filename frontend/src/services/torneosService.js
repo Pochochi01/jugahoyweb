@@ -41,6 +41,11 @@ export function torneosStaff(client, cid) {
     deleteOrganizador:  (id)        => client.delete(`${b}/organizadores/${id}`),
     validarTicket:      (codigo)    => client.post(`${b}/tickets/validar`, { codigo }),
 
+    // Ranking anual (temporada + categoría + género)
+    ranking_list:   (params)    => client.get(`${b}/ranking`, { params }),
+    ranking_upsert: (d)         => client.put(`${b}/ranking`, d),
+    ranking_delete: (id)        => client.delete(`${b}/ranking/${id}`),
+
     // Torneos
     list:          ()          => client.get(`${b}/torneos`),
     get:           (tid)       => client.get(t(tid)),

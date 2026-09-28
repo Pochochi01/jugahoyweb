@@ -13,7 +13,7 @@ const fx  = require('../services/torneos/fixtureService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
 
-const CAMPOS = ['nombre', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas',
+const CAMPOS = ['nombre', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set',
   'precio_inscripcion', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'descanso_minimo'];
 
 // Transiciones de estado que el organizador puede pedir a mano
@@ -41,6 +41,8 @@ function validarTorneo(body, actual = {}) {
   if (v.parejas_por_zona != null && !(v.parejas_por_zona >= 2 && v.parejas_por_zona <= 6)) throw err('Parejas por zona: 2 a 6.');
   if (v.clasifican_por_zona != null && !(v.clasifican_por_zona >= 1 && v.clasifican_por_zona <= 4)) throw err('Clasifican por zona: 1 a 4.');
   if (v.duracion_partido != null && !(v.duracion_partido >= 30 && v.duracion_partido <= 180)) throw err('Duración de partido: 30 a 180 min.');
+  if (v.tipo != null && !['unico', 'anual'].includes(v.tipo)) throw err('Tipo de torneo inválido (único o anual).');
+  if (v.tercer_set != null && !['set', 'super_tiebreak'].includes(v.tercer_set)) throw err('Tercer set inválido.');
   return d;
 }
 
@@ -89,7 +91,7 @@ async function update(req, res) {
     const data = validarTorneo(req.body, t.toJSON());
     // Con fixture armado no se tocan los parámetros que lo determinan
     if (!['borrador', 'inscripcion'].includes(t.estado)) {
-      for (const k of ['categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido']) {
+      for (const k of ['categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
         if (data[k] !== undefined && String(data[k]) !== String(t[k])) {
           return res.status(409).json({ message: `No se puede cambiar "${k}" con el fixture armado.` });
         }
@@ -105,7 +107,7 @@ async function remove(req, res) {
     const t = req.torneo;
     const pagadas = await TorneoPareja.count({ where: { torneo_id: t.id, estado_pago: 'pagado' } });
     if (pagadas > 0) return res.status(409).json({ message: 'Hay inscripciones pagadas: cancelá el torneo y reembolsá en lugar de eliminarlo.' });
-    await t.destroy();
+    await svc.eliminarTorneo(t);
     res.json({ ok: true });
   } catch (err) { send(res, err); }
 }

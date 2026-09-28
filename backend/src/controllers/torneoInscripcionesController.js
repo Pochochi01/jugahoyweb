@@ -25,7 +25,15 @@ async function list(req, res) {
       order: [['createdAt', 'ASC']],
     });
     const activas = parejas.filter(p => ['pendiente', 'pagado'].includes(p.estado_pago)).length;
+    // Anual: puntos de ranking EN VIVO (suma de ambos jugadores) → así quedarán los cabezas de serie
+    if (req.torneo.tipo === 'anual') {
+      const pts = await svc.puntosRanking(req.torneo);
+      for (const p of parejas) {
+        p.setDataValue('puntos_ranking', p.jugadores.reduce((a, j) => a + (pts.get(j.dni) || 0), 0));
+      }
+    }
     res.json({
+      tipo: req.torneo.tipo,
       cupo: req.torneo.cupo_parejas, ocupados: activas, libres: Math.max(0, req.torneo.cupo_parejas - activas),
       recaudado: parejas.filter(p => p.estado_pago === 'pagado').reduce((a, p) => a + Number(p.monto || 0), 0),
       parejas,
