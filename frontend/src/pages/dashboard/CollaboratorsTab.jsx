@@ -14,8 +14,8 @@ const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
   configuracion: 'Configuración', colaboradores: 'Colaboradores', estadisticas: 'Estadísticas',
   cancelar_turnos: 'Cancelar turnos',
-  cantina_gestion: 'Cantina — Gestión (stock/productos)',
-  cantina_ventas: 'Cantina — Ventas',
+  cantina_gestion: 'Cantina / Almacén — Gestión (stock, productos, pedidos a proveedores)',
+  cantina_ventas: 'Cantina / Almacén — Ventas y pedidos de clientes',
   torneos: 'Torneos de pádel',
   profesores: 'Profesores de pádel',
 };

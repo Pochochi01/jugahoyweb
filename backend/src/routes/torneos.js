@@ -34,6 +34,7 @@ const comunicacion = require('../controllers/torneoComunicacionController');
 const pub         = require('../controllers/torneoPublicController');
 const ranking     = require('../controllers/torneoRankingController');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
+const { requireCanchas } = require('../middlewares/canchas');
 
 // ── Upload de la imagen del evento ────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/torneos');
@@ -65,7 +66,7 @@ router.post('/organizador/login', orgs.login);
 
 // ── Staff del club ────────────────────────────────────────────
 const club = require('express').Router({ mergeParams: true });
-router.use('/club/:complexId', authTorneoStaff, club);
+router.use('/club/:complexId', authTorneoStaff, requireCanchas, club);
 
 club.get('/organizador/me', orgs.me);
 

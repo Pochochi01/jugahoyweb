@@ -6,8 +6,9 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store,
 } from 'lucide-react';
+import { esAlmacen, nombreComercio } from '../../utils/modoComplejo';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
 import CashTab          from './CashTab';
@@ -22,16 +23,19 @@ import TorneosTab       from './TorneosTab';
 import ProfesoresTab    from './ProfesoresTab';
 
 // permiso: clave usada en Collaborator.permisos
+// deportivo: módulo que requiere canchas → oculto en complejos sin canchas (modo Almacén)
 const TABS = [
-  { key: 'agenda',        label: 'Agenda',        icon: Calendar,    permiso: 'agenda' },
-  { key: 'invitaciones',  label: 'Invitaciones',  icon: Link2,       permiso: 'agenda' },
-  { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones' },
-  { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja' },
+  { key: 'agenda',        label: 'Agenda',        icon: Calendar,    permiso: 'agenda',       deportivo: true },
+  { key: 'invitaciones',  label: 'Invitaciones',  icon: Link2,       permiso: 'agenda',       deportivo: true },
+  { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones',  deportivo: true },
+  // En modo Almacén la caja se usa desde adentro del módulo Almacén (subpestaña)
+  { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja',         deportivo: true },
+  // "Cantina" con canchas / "Almacén" sin canchas (ver utils/modoComplejo)
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
   // Solo para complejos con canchas de pádel (ver requiresPadel)
   { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos', requiresPadel: true },
   { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', requiresPadel: true },
-  { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas' },
+  { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas', deportivo: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
   { key: 'imagenes',      label: 'Imágenes',      icon: Image,       permiso: null, adminOnly: true },
@@ -59,11 +63,20 @@ export default function Dashboard() {
       .finally(() => setLoadingComplexes(false));
   }, []);
 
+  // Tabs que APLICAN al complejo seleccionado según sus canchas:
+  //  - sin canchas (modo Almacén): fuera los módulos deportivos; "Cantina" → "Almacén"
+  //  - sin canchas de pádel: fuera torneos y profesores
+  const almacen = esAlmacen(selectedComplex);
+  const tabsDelComplejo = useMemo(() => {
+    const tienePadel = (selectedComplex?.fields || []).some(f => f.deporte === 'padel');
+    return TABS
+      .filter(tab => !(almacen && tab.deportivo) && !(tab.requiresPadel && !tienePadel))
+      .map(tab => (tab.key === 'cantina' && almacen ? { ...tab, label: nombreComercio(selectedComplex), icon: Store } : tab));
+  }, [almacen, selectedComplex?.fields]);
+
   // Tabs visibles según rol y permisos del complejo seleccionado (memoizado)
   const visibleTabs = useMemo(() => {
-    const tienePadel = (selectedComplex?.fields || []).some(f => f.deporte === 'padel');
-    return TABS.filter(tab => {
-      if (tab.requiresPadel && !tienePadel) return false;
+    return tabsDelComplejo.filter(tab => {
       if (tab.adminOnly) return isGeneralAdmin;
       if (user?.rol === 'general_admin' || user?.rol === 'complex_admin') return true;
       if (isCollaborator && selectedComplex) {
@@ -74,7 +87,7 @@ export default function Dashboard() {
       }
       return false;
     });
-  }, [user?.rol, isGeneralAdmin, isCollaborator, selectedComplex?.id, selectedComplex?.fields, getCollaboratorPermisos]);
+  }, [tabsDelComplejo, user?.rol, isGeneralAdmin, isCollaborator, selectedComplex?.id, getCollaboratorPermisos]);
 
   // Cuando cambian los tabs disponibles, activar el primero si el actual ya no está
   useEffect(() => {
@@ -86,6 +99,13 @@ export default function Dashboard() {
       setActiveTab(visibleTabs[0].key);
     }
   }, [visibleTabs]);
+
+  // Actualiza el complejo seleccionado (y su copia en la lista del selector).
+  // Cargar la primera cancha / borrar la última cambia el modo y el menú al instante.
+  const actualizarComplejo = (patch) => {
+    setSelectedComplex(prev => (prev ? { ...prev, ...patch } : prev));
+    setComplexes(list => list.map(c => (c.id === selectedComplex?.id ? { ...c, ...patch } : c)));
+  };
 
   const renderTab = () => {
     // Tabs sin complejo
@@ -134,7 +154,11 @@ export default function Dashboard() {
       case 'torneos':       return <TorneosTab {...props} />;
       case 'profesores':    return <ProfesoresTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
-      case 'configuracion': return <SettingsTab {...props} onUpdate={c => setSelectedComplex(c)} />;
+      case 'configuracion': return (
+        <SettingsTab {...props}
+          onUpdate={c => actualizarComplejo({ ...c, fields: c.fields ?? selectedComplex.fields })}
+          onFieldsChange={fields => actualizarComplejo({ fields })} />
+      );
       case 'colaboradores': return <CollaboratorsTab {...props} />;
       default:              return null;
     }
@@ -209,7 +233,7 @@ export default function Dashboard() {
 
           {/* Tabs sin permiso (solo visibles, no accesibles) */}
           {isCollaborator && selectedComplex && (
-            TABS.filter(t => !t.adminOnly && !visibleTabs.find(vt => vt.key === t.key)).map(({ key, label, icon: Icon }) => (
+            tabsDelComplejo.filter(t => !t.adminOnly && !visibleTabs.find(vt => vt.key === t.key)).map(({ key, label, icon: Icon }) => (
               <div key={key}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground/40 cursor-not-allowed select-none"
                 title="Sin permiso">
@@ -296,7 +320,7 @@ export default function Dashboard() {
 
                 {/* tabs sin permiso (visibles, no accesibles) */}
                 {isCollaborator && selectedComplex &&
-                  TABS.filter(t => !t.adminOnly && !visibleTabs.find(vt => vt.key === t.key)).map(({ key, label, icon: Icon }) => (
+                  tabsDelComplejo.filter(t => !t.adminOnly && !visibleTabs.find(vt => vt.key === t.key)).map(({ key, label, icon: Icon }) => (
                     <div key={key} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/25 cursor-not-allowed select-none">
                       <Icon className="w-4 h-4 shrink-0" /> {label} <Lock className="w-3 h-3 ml-auto" />
                     </div>

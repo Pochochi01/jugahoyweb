@@ -913,7 +913,7 @@ function WaTemplatesCard({ complexId }) {
 }
 
 // ── tab principal ─────────────────────────────────────────────────────────────
-export default function SettingsTab({ complexId, onUpdate }) {
+export default function SettingsTab({ complexId, onUpdate, onFieldsChange }) {
   // MercadoPago y WhatsApp: SOLO general_admin. Límite de inasistencias: admins.
   const { isGeneralAdmin, isComplexAdmin } = useAuth();
   const [form,          setForm]          = useState(null);
@@ -931,6 +931,12 @@ export default function SettingsTab({ complexId, onUpdate }) {
       setFields(data.fields || []);
     }).catch(() => {});
   }, [complexId]);
+
+  // Avisar al Dashboard cuando cambian las canchas: cargar la primera (o borrar
+  // la última) cambia el modo del complejo (deportivo ↔ almacén) y el menú.
+  useEffect(() => {
+    if (form) onFieldsChange?.(fields);
+  }, [fields]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveComplex = async (e) => {
     e.preventDefault();

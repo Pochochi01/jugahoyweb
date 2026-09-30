@@ -8,6 +8,9 @@ import {
   CheckCircle, RotateCcw, Pencil, Filter, ClipboardList,
 } from 'lucide-react';
 import PedidosView from './cantina/PedidosView';
+import CashTab from './CashTab';
+import { esAlmacen, nombreComercio } from '../../utils/modoComplejo';
+import { Store, DollarSign as CajaIcon } from 'lucide-react';
 
 const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 const CATEGORIAS = ['bebidas', 'comidas_rapidas', 'snacks', 'postres', 'otros'];
@@ -474,7 +477,7 @@ function VentasView({ complexId, toast, puedeGestionar }) {
 // ══════════════════════════════════════════════════════════════════
 //  REPORTES
 // ══════════════════════════════════════════════════════════════════
-function ReportesView({ complexId }) {
+function ReportesView({ complexId, nombre = 'Cantina' }) {
   const [prod, setProd] = useState(null);
   const [caja, setCaja] = useState(null);
   const mes = () => { const n = new Date(); return { desde: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10), hasta: new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10) }; };
@@ -497,7 +500,7 @@ function ReportesView({ complexId }) {
 
       {caja && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
-          <div className="card py-3"><div className="text-xl font-bold text-green-400">{money(caja.ingresos_cantina)}</div><div className="text-xs text-muted-foreground">Ingresos cantina</div></div>
+          <div className="card py-3"><div className="text-xl font-bold text-green-400">{money(caja.ingresos_cantina)}</div><div className="text-xs text-muted-foreground">Ingresos {nombre.toLowerCase()}</div></div>
 
           {/* Ingresos por turnos + desglose por método de pago */}
           <div className="card py-3">
@@ -574,10 +577,18 @@ function Modal({ title, onClose, children }) {
 // ══════════════════════════════════════════════════════════════════
 //  MAIN TAB
 // ══════════════════════════════════════════════════════════════════
+/**
+ * Módulo comercial del complejo. Mismo módulo con dos nombres:
+ *   - "Cantina" en complejos con canchas
+ *   - "Almacén" en complejos sin canchas (modo Almacén): además incluye la Caja
+ *     como subpestaña, porque la pestaña Caja del menú se oculta en ese modo.
+ */
 export default function CantinaTab({ complexId, complex }) {
   const { hasPermission } = useAuth();
   const gestion = hasPermission(complexId, 'cantina_gestion');
   const ventas  = hasPermission(complexId, 'cantina_ventas');
+  const almacen = esAlmacen(complex);
+  const nombre  = nombreComercio(complex);
 
   const SUBTABS = [
     { key: 'dashboard', label: 'Inicio',    icon: LayoutDashboard, show: gestion || ventas },
@@ -586,6 +597,7 @@ export default function CantinaTab({ complexId, complex }) {
     { key: 'stock',     label: 'Stock',      icon: Boxes,           show: gestion },
     { key: 'ventas',    label: 'Ventas',     icon: Receipt,         show: gestion || ventas },
     { key: 'pedidos',   label: 'Pedidos',    icon: ClipboardList,   show: gestion || ventas },
+    { key: 'caja',      label: 'Caja',       icon: CajaIcon,        show: almacen && hasPermission(complexId, 'caja') },
     { key: 'reportes',  label: 'Reportes',   icon: BarChart2,       show: gestion },
   ].filter(t => t.show);
 
@@ -595,7 +607,9 @@ export default function CantinaTab({ complexId, complex }) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-primary" /> Cantina</h2>
+      <h2 className="text-xl font-bold flex items-center gap-2">
+        {almacen ? <Store className="w-5 h-5 text-primary" /> : <ShoppingCart className="w-5 h-5 text-primary" />} {nombre}
+      </h2>
 
       {/* Sub-navegación */}
       <div className="flex gap-2 flex-wrap border-b border-border pb-2">
@@ -613,7 +627,8 @@ export default function CantinaTab({ complexId, complex }) {
       {active === 'productos' && <ProductosView complexId={complexId} toast={showToast} />}
       {active === 'stock'     && <StockView complexId={complexId} toast={showToast} />}
       {active === 'ventas'    && <VentasView complexId={complexId} toast={showToast} puedeGestionar={gestion} />}
-      {active === 'reportes'  && <ReportesView complexId={complexId} />}
+      {active === 'reportes'  && <ReportesView complexId={complexId} nombre={nombre} />}
+      {active === 'caja'      && <CashTab complexId={complexId} complex={complex} />}
       {active === 'pedidos'   && <PedidosView complexId={complexId} clubNombre={complex?.nombre} toast={showToast} gestion={gestion} />}
 
       {toast && (

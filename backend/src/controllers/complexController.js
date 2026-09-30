@@ -1,4 +1,9 @@
 const { Complex, Field, User, Collaborator } = require('../models');
+const { modoDesdeCantidad } = require('../utils/modoComplejo');
+
+// Agrega el modo de operación (deportivo / almacén) según las canchas cargadas.
+// El frontend arma el menú con esto: sin canchas → solo "Almacén".
+const conModo = (c) => ({ ...c.toJSON(), ...modoDesdeCantidad((c.fields || []).length) });
 
 async function getAll(req, res) {
   try {
@@ -9,7 +14,7 @@ async function getAll(req, res) {
         include: [{ model: Field, as: 'fields' }],
         order: [['nombre', 'ASC']],
       });
-      return res.json(complexes);
+      return res.json(complexes.map(conModo));
     }
 
     if (rol === 'complex_admin') {
@@ -18,7 +23,7 @@ async function getAll(req, res) {
         include: [{ model: Field, as: 'fields' }],
         order: [['nombre', 'ASC']],
       });
-      return res.json(complexes);
+      return res.json(complexes.map(conModo));
     }
 
     if (rol === 'collaborator') {
@@ -33,7 +38,7 @@ async function getAll(req, res) {
         }],
       });
       const complexes = assignments.map(a => a.complex).filter(Boolean);
-      return res.json(complexes);
+      return res.json(complexes.map(conModo));
     }
 
     res.json([]);
@@ -51,7 +56,7 @@ async function getOne(req, res) {
       ],
     });
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
-    res.json(complex);
+    res.json(conModo(complex));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

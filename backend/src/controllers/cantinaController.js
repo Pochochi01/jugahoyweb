@@ -10,6 +10,7 @@ const {
 } = require('../models');
 const caja = require('../services/cajaService');
 const { aplicarMovimiento } = require('../services/cantinaStockService');
+const { modoComplejo, nombreComercio } = require('../utils/modoComplejo');
 
 const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
 
@@ -137,7 +138,7 @@ async function crearMovimiento(req, res) {
     // Si es una compra (entrada) con costo → egreso en caja (best-effort).
     if (tipo === 'entrada' && (motivo === 'compra' || motivo === 'reposicion') && num(producto.precio_costo) > 0) {
       await caja.registrarEnCaja(complexId, {
-        tipo: 'egreso', concepto: `Compra cantina: ${producto.nombre} x${cant}`,
+        tipo: 'egreso', concepto: `Compra ${(await nombreComercio(producto.complex_id)).toLowerCase()}: ${producto.nombre} x${cant}`,
         monto: num(producto.precio_costo) * cant, metodo_pago: 'efectivo',
         categoria: 'cantina_compra', usuario_id: req.user.id,
       }, t);
@@ -229,7 +230,7 @@ async function crearVenta(req, res) {
 
     // Ingreso en la caja diaria (best-effort si hay caja abierta)
     const tx = await caja.registrarEnCaja(complexId, {
-      tipo: 'ingreso', concepto: `Venta cantina #${venta.id}`, monto: total,
+      tipo: 'ingreso', concepto: `Venta ${(await nombreComercio(complexId)).toLowerCase()} #${venta.id}`, monto: total,
       metodo_pago: metodo_pago || 'efectivo', categoria: 'cantina', usuario_id: req.user.id,
     }, t);
     if (tx) await venta.update({ cash_transaction_id: tx.id }, { transaction: t });
@@ -290,7 +291,7 @@ async function devolverVenta(req, res) {
 
     // Egreso en caja por la devolución (best-effort)
     await caja.registrarEnCaja(complexId, {
-      tipo: 'egreso', concepto: `Devolución cantina venta #${venta.id}`, monto: num(venta.total),
+      tipo: 'egreso', concepto: `Devolución ${(await nombreComercio(venta.complex_id)).toLowerCase()} venta #${venta.id}`, monto: num(venta.total),
       metodo_pago: venta.metodo_pago, categoria: 'cantina_devolucion', usuario_id: req.user.id,
     }, t);
 
@@ -398,7 +399,11 @@ async function getDashboard(req, res) {
       where: { complex_id: complexId, activo: true, [Op.or]: [{ stock: { [Op.lte]: 0 } }, sequelize.where(sequelize.col('stock'), Op.lte, sequelize.col('stock_minimo'))] },
       attributes: ['id', 'nombre', 'stock', 'stock_minimo'], limit: 20,
     });
+    const modo = await modoComplejo(complexId);
     res.json({
+      // Nombre visible del módulo: "Cantina" (con canchas) o "Almacén" (sin canchas)
+      modulo: modo.nombre_comercio,
+      modo: modo.modo,
       ventas_dia: { cantidad: parseInt(ventasHoy?.n || 0), total: num(ventasHoy?.total) },
       productos_activos: activos,
       sin_stock: alertasCount,

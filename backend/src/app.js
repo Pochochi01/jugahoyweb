@@ -96,6 +96,7 @@ app.use('/api/invites',       invitesRoutes);
 app.use('/api/payments',      paymentRoutes);
 app.use('/api/verification',  verificationRoutes);
 app.use('/api/cantina',       cantinaRoutes);
+app.use('/api/almacen',       cantinaRoutes);   // mismo módulo con el nombre de los complejos sin canchas
 app.use('/api/torneos',       torneosRoutes);
 app.use('/api/profesores',    profesoresRoutes);
 

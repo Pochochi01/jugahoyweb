@@ -24,6 +24,7 @@ const panel = require('../controllers/profesorPanelController');
 const { authenticate } = require('../middlewares/auth');
 const { requireComplexAccess, requirePermission } = require('../middlewares/roles');
 const { authProfesor, profesorEnClub, requirePadel } = require('../middlewares/profesorAuth');
+const { requireCanchas } = require('../middlewares/canchas');
 
 // ── Profesor ──────────────────────────────────────────────────
 router.post('/login', panel.login);
@@ -39,7 +40,7 @@ me.delete('/clases/:id',  panel.cancelarClase);
 
 // ── Administrador del complejo ────────────────────────────────
 const club = require('express').Router({ mergeParams: true });
-router.use('/club/:complexId', authenticate, requireComplexAccess, requirePermission('profesores'), requirePadel,
+router.use('/club/:complexId', authenticate, requireComplexAccess, requirePermission('profesores'), requireCanchas, requirePadel,
   (req, _res, next) => { req.clubId = Number(req.params.complexId); next(); }, club);
 
 club.get   ('/canchas',                            admin.canchas);

@@ -3,12 +3,13 @@ const router = require('express').Router();
 const ctrl   = require('../controllers/inviteController');
 const { authenticate } = require('../middlewares/auth');
 const { requireRole }  = require('../middlewares/roles');
+const { requireCanchas } = require('../middlewares/canchas');
 
 const adminCollab = requireRole('general_admin', 'complex_admin', 'collaborator');
 
 // ── Rutas con auth (rutas específicas primero, antes del wildcard /:token) ──
-router.post('/generate',           authenticate, adminCollab, ctrl.generateLink);
-router.get ('/list/:complexId',    authenticate, adminCollab, ctrl.listInvites);
+router.post('/generate',           authenticate, adminCollab, requireCanchas, ctrl.generateLink);
+router.get ('/list/:complexId',    authenticate, adminCollab, requireCanchas, ctrl.listInvites);
 router.patch('/:id/revoke',        authenticate, adminCollab, ctrl.revokeInvite);
 
 // Reclamar invitación: cualquier usuario autenticado (típicamente un player)
