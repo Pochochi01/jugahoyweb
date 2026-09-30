@@ -16,18 +16,26 @@
  * con el pedido de origen). Los productos se bloquean FOR UPDATE: dos entregas
  * simultáneas no pueden vender el mismo stock.
  *
+ * Compras con catálogo por proveedor (cantina_producto_proveedor):
+ *   - solo se piden productos que el proveedor tiene en su catálogo, a SU precio
+ *     (precio efectivo: con descuento y respetando el mínimo de compra);
+ *   - antes de generar/editar el pedido se compara contra los otros proveedores:
+ *     si alguno es más barato → 409 HAY_MEJOR_PRECIO con el detalle, y el usuario
+ *     decide (reenviar con acepto_precios: true, o modificar el pedido).
+ *
  * El envío por WhatsApp lo hace el usuario desde su teléfono (wa.me + portapapeles):
  * el backend no envía mensajes.
  */
 const { Op } = require('sequelize');
 const {
   sequelize, CantinaProducto, CantinaProveedor, CantinaCliente,
-  CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,
+  CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido, CantinaProductoProveedor,
 } = require('../models');
 const { aplicarMovimiento, num } = require('../services/cantinaStockService');
+const precios = require('../services/cantinaPreciosService');
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
-const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
+const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.code ? { code: err.code } : {}), ...(err.extra || {}) });
 const cid = (req) => Number(req.params.complexId);
 const hoy = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const likeAny = (q, campos) => ({ [Op.or]: campos.map(c => ({ [c]: { [Op.like]: `%${q}%` } })) });
@@ -100,6 +108,87 @@ async function deleteProveedor(req, res) {
     }
     await p.destroy();
     res.json({ ok: true });
+  } catch (err) { send(res, err); }
+}
+
+// ── Catálogo de productos y precios del proveedor ─────────────
+async function proveedorDelComplejo(req) {
+  const p = await CantinaProveedor.findOne({ where: { id: req.params.id, complex_id: cid(req) } });
+  if (!p) throw httpError(404, 'Proveedor no encontrado');
+  return p;
+}
+
+/** GET /proveedores/:id/productos → catálogo con precio efectivo y el mejor precio de otros proveedores. */
+async function getCatalogo(req, res) {
+  try {
+    const prov = await proveedorDelComplejo(req);
+    const filas = await precios.catalogoProveedor(cid(req), prov.id);
+    // Referencia: precio más bajo del mismo producto en OTROS proveedores activos (a su cantidad mínima)
+    const otros = await CantinaProductoProveedor.findAll({
+      where: { producto_id: filas.map(f => f.producto_id), proveedor_id: { [Op.ne]: prov.id } },
+      include: [{ model: CantinaProveedor, as: 'proveedor', where: { estado: 'activo', complex_id: cid(req) }, attributes: ['id', 'nombre'] }],
+    });
+    res.json(filas.map(f => {
+      const mejor = otros.filter(o => o.producto_id === f.producto_id)
+        .map(o => ({ precio: precios.precioEfectivo(o, Math.max(num(o.minimo_compra), 1)), proveedor: o.proveedor }))
+        .filter(o => o.precio != null)
+        .sort((a, b) => a.precio - b.precio)[0] || null;
+      return {
+        ...f.toJSON(),
+        precio_efectivo: precios.precioEfectivo(f, Math.max(num(f.minimo_compra), 1)),
+        mejor_otro: mejor && { precio: mejor.precio, proveedor: { id: mejor.proveedor.id, nombre: mejor.proveedor.nombre } },
+      };
+    }));
+  } catch (err) { send(res, err); }
+}
+
+/** PUT /proveedores/:id/productos/:productoId { precio_compra, precio_venta?, minimo_compra?, descuento_pct?, condiciones? } */
+async function upsertProductoProveedor(req, res) {
+  try {
+    const prov = await proveedorDelComplejo(req);
+    const producto = await CantinaProducto.findOne({ where: { id: req.params.productoId, complex_id: cid(req) } });
+    if (!producto) throw httpError(404, 'Producto no encontrado');
+    const b = req.body || {};
+    const opcional = (v) => (v === '' || v == null ? null : num(v, NaN));
+    const d = {
+      precio_compra: num(b.precio_compra, NaN),
+      precio_venta:  opcional(b.precio_venta),
+      minimo_compra: opcional(b.minimo_compra),
+      descuento_pct: opcional(b.descuento_pct),
+      condiciones:   String(b.condiciones || '').trim().slice(0, 255) || null,
+    };
+    if (!(d.precio_compra > 0)) throw httpError(400, 'El precio de compra debe ser mayor a 0.');
+    if (Number.isNaN(d.precio_venta) || (d.precio_venta != null && d.precio_venta < 0)) throw httpError(400, 'Precio de venta inválido.');
+    if (Number.isNaN(d.minimo_compra) || (d.minimo_compra != null && d.minimo_compra < 0)) throw httpError(400, 'Mínimo de compra inválido.');
+    if (Number.isNaN(d.descuento_pct) || (d.descuento_pct != null && (d.descuento_pct < 0 || d.descuento_pct >= 100))) throw httpError(400, 'Descuento: de 0 a 99 %.');
+    const [fila, creado] = await CantinaProductoProveedor.findOrCreate({
+      where: { producto_id: producto.id, proveedor_id: prov.id }, defaults: d,
+    });
+    if (!creado) await fila.update(d);
+    res.status(creado ? 201 : 200).json(fila);
+  } catch (err) { send(res, err); }
+}
+
+async function deleteProductoProveedor(req, res) {
+  try {
+    const prov = await proveedorDelComplejo(req);
+    const n = await CantinaProductoProveedor.destroy({ where: { proveedor_id: prov.id, producto_id: req.params.productoId } });
+    if (!n) throw httpError(404, 'El producto no estaba en el catálogo del proveedor.');
+    res.json({ ok: true });
+  } catch (err) { send(res, err); }
+}
+
+/** GET /productos/:productoId/proveedores → quién lo vende y a cuánto (comparativa, más barato primero). */
+async function getProveedoresDeProducto(req, res) {
+  try {
+    const producto = await CantinaProducto.findOne({ where: { id: req.params.productoId, complex_id: cid(req) } });
+    if (!producto) throw httpError(404, 'Producto no encontrado');
+    const filas = await CantinaProductoProveedor.findAll({
+      where: { producto_id: producto.id },
+      include: [{ model: CantinaProveedor, as: 'proveedor', attributes: ['id', 'nombre', 'whatsapp', 'estado'] }],
+    });
+    res.json(filas.map(f => ({ ...f.toJSON(), precio_efectivo: precios.precioEfectivo(f, Math.max(num(f.minimo_compra), 1)) }))
+      .sort((a, b) => a.precio_efectivo - b.precio_efectivo));
   } catch (err) { send(res, err); }
 }
 
@@ -195,7 +284,7 @@ async function cargarPedido(tipo, req, transaction) {
  * Normaliza los ítems: productos del complejo, cantidades > 0, sin repetidos
  * (se suman). El precio queda "congelado" al generar el pedido (costo o venta).
  */
-async function validarItems(tipo, complexId, items) {
+async function validarItems(tipo, complexId, items, proveedorId = null) {
   if (!Array.isArray(items) || !items.length) throw httpError(400, 'Agregá al menos un producto.');
   const porProducto = new Map();
   for (const it of items) {
@@ -207,12 +296,55 @@ async function validarItems(tipo, complexId, items) {
   }
   const productos = await CantinaProducto.findAll({ where: { id: [...porProducto.keys()], complex_id: complexId } });
   if (productos.length !== porProducto.size) throw httpError(400, 'Algún producto no existe en este complejo.');
+
+  if (tipo === 'proveedor') {
+    // Compras: el producto tiene que estar en el catálogo del proveedor y el precio es el suyo
+    const links = await CantinaProductoProveedor.findAll({ where: { proveedor_id: proveedorId, producto_id: [...porProducto.keys()] } });
+    return productos.map(p => {
+      const link = links.find(l => l.producto_id === p.id);
+      if (!link) throw httpError(400, `"${p.nombre}" no está en el catálogo de este proveedor: asocialo con su precio en Proveedores.`);
+      const { cantidad } = porProducto.get(p.id);
+      const unit = precios.precioEfectivo(link, cantidad);
+      if (unit == null) throw httpError(400, `El proveedor pide un mínimo de ${num(link.minimo_compra)} para "${p.nombre}" (pediste ${cantidad}).`);
+      return { producto_id: p.id, cantidad, precio_unitario: unit };
+    });
+  }
+
   return productos.map(p => {
     const { cantidad, precio } = porProducto.get(p.id);
     const unit = precio != null && precio !== '' ? num(precio) : num(p[TIPOS[tipo].precio]);
     if (unit < 0) throw httpError(400, 'Precio inválido.');
     return { producto_id: p.id, cantidad, precio_unitario: unit };
   });
+}
+
+const sumaAhorro = (alertas) => Math.round(alertas.reduce((a, x) => a + x.ahorro_total, 0) * 100) / 100;
+
+/**
+ * Si algún ítem está más barato en otro proveedor y el usuario todavía no lo
+ * aceptó, corta con 409 HAY_MEJOR_PRECIO y el detalle para mostrar la alerta.
+ */
+async function exigirRevisionDePrecios(complexId, proveedorId, items, aceptado) {
+  if (aceptado) return;
+  const alertas = await precios.compararPrecios(complexId, proveedorId, items);
+  if (alertas.length) {
+    throw Object.assign(httpError(409, 'Hay productos más baratos en otros proveedores.'), {
+      code: 'HAY_MEJOR_PRECIO',
+      extra: { alertas, ahorro_total: sumaAhorro(alertas) },
+    });
+  }
+}
+
+/** POST /pedidos-proveedor/validar-precios { proveedor_id, items } → alertas (sin crear nada). */
+async function validarPreciosPedido(req, res) {
+  try {
+    const complexId = cid(req);
+    const prov = await CantinaProveedor.findOne({ where: { id: req.body?.proveedor_id, complex_id: complexId } });
+    if (!prov) throw httpError(400, 'Elegí un proveedor válido.');
+    const items = await validarItems('proveedor', complexId, req.body.items, prov.id);
+    const alertas = await precios.compararPrecios(complexId, prov.id, items);
+    res.json({ alertas, ahorro_total: sumaAhorro(alertas) });
+  } catch (err) { send(res, err); }
 }
 
 // ── CRUD genérico de pedidos (proveedor / cliente) ────────────
@@ -259,7 +391,8 @@ const createPedido = (tipo) => async (req, res) => {
     const contacto = await Contacto.findOne({ where: { id: req.body?.[fk], complex_id: complexId } });
     if (!contacto) throw httpError(400, `Elegí un ${tipo} válido.`);
     if (contacto.estado !== 'activo') throw httpError(409, `El ${tipo} está inactivo.`);
-    const items = await validarItems(tipo, complexId, req.body.items);
+    const items = await validarItems(tipo, complexId, req.body.items, contacto.id);
+    if (tipo === 'proveedor') await exigirRevisionDePrecios(complexId, contacto.id, items, req.body.acepto_precios === true);
 
     const id = await sequelize.transaction(async (t) => {
       const p = await Pedido.create({
@@ -280,7 +413,8 @@ const updatePedido = (tipo) => async (req, res) => {
     const { itemFk } = TIPOS[tipo];
     const p = await cargarPedido(tipo, req);
     if (p.estado !== 'pendiente') throw httpError(409, 'Solo se puede editar un pedido pendiente.');
-    const items = req.body.items ? await validarItems(tipo, cid(req), req.body.items) : null;
+    const items = req.body.items ? await validarItems(tipo, cid(req), req.body.items, p.proveedor_id) : null;
+    if (items && tipo === 'proveedor') await exigirRevisionDePrecios(cid(req), p.proveedor_id, items, req.body.acepto_precios === true);
     await sequelize.transaction(async (t) => {
       await p.update({
         ...(req.body.notas !== undefined ? { notas: req.body.notas?.trim() || null } : {}),
@@ -386,6 +520,7 @@ async function entregarPedidoCliente(req, res) {
 
 module.exports = {
   listProveedores, createProveedor, updateProveedor, deleteProveedor,
+  getCatalogo, upsertProductoProveedor, deleteProductoProveedor, getProveedoresDeProducto, validarPreciosPedido,
   listClientes, createCliente, updateCliente, deleteCliente,
   listPedidosProveedor: listPedidos('proveedor'), getPedidoProveedor: getPedido('proveedor'),
   createPedidoProveedor: createPedido('proveedor'), updatePedidoProveedor: updatePedido('proveedor'),

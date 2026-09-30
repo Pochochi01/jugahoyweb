@@ -29,6 +29,13 @@ export const cantinaService = {
   createProveedor:  (cid, d)      => api.post(`/cantina/${cid}/proveedores`, d),
   updateProveedor:  (cid, id, d)  => api.put(`/cantina/${cid}/proveedores/${id}`, d),
   deleteProveedor:  (cid, id)     => api.delete(`/cantina/${cid}/proveedores/${id}`),
+  // Catálogo de precios por proveedor (producto ↔ proveedor)
+  catalogoProveedor:    (cid, provId)         => api.get(`/cantina/${cid}/proveedores/${provId}/productos`),
+  guardarPrecio:        (cid, provId, prodId, d) => api.put(`/cantina/${cid}/proveedores/${provId}/productos/${prodId}`, d),
+  quitarDelCatalogo:    (cid, provId, prodId) => api.delete(`/cantina/${cid}/proveedores/${provId}/productos/${prodId}`),
+  proveedoresDeProducto:(cid, prodId)         => api.get(`/cantina/${cid}/productos/${prodId}/proveedores`),
+  validarPrecios:       (cid, d)              => api.post(`/cantina/${cid}/pedidos-proveedor/validar-precios`, d),
+
   listClientes:     (cid, params) => api.get(`/cantina/${cid}/clientes`, { params }),
   createCliente:    (cid, d)      => api.post(`/cantina/${cid}/clientes`, d),
   updateCliente:    (cid, id, d)  => api.put(`/cantina/${cid}/clientes/${id}`, d),

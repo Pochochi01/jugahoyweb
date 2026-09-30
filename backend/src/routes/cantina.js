@@ -44,6 +44,13 @@ router.post  ('/:complexId/proveedores',      acceso, gestion, pedidos.createPro
 router.put   ('/:complexId/proveedores/:id',  acceso, gestion, pedidos.updateProveedor);
 router.delete('/:complexId/proveedores/:id',  acceso, gestion, pedidos.deleteProveedor);
 
+// Catálogo de precios por proveedor (producto ↔ proveedor)
+router.get   ('/:complexId/proveedores/:id/productos',             acceso, gestion, pedidos.getCatalogo);
+router.put   ('/:complexId/proveedores/:id/productos/:productoId', acceso, gestion, pedidos.upsertProductoProveedor);
+router.delete('/:complexId/proveedores/:id/productos/:productoId', acceso, gestion, pedidos.deleteProductoProveedor);
+router.get   ('/:complexId/productos/:productoId/proveedores',     acceso, gestion, pedidos.getProveedoresDeProducto);
+
+router.post('/:complexId/pedidos-proveedor/validar-precios', acceso, gestion, pedidos.validarPreciosPedido);
 router.get ('/:complexId/pedidos-proveedor',               acceso, gestion, pedidos.listPedidosProveedor);
 router.post('/:complexId/pedidos-proveedor',               acceso, gestion, pedidos.createPedidoProveedor);
 router.get ('/:complexId/pedidos-proveedor/:id',           acceso, gestion, pedidos.getPedidoProveedor);

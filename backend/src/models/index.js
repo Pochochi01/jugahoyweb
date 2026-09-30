@@ -34,6 +34,7 @@ const WaConversation        = require('./WaConversation');
 const WaTemplate            = require('./WaTemplate');
 const {
   CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,
+  CantinaProductoProveedor,
 } = require('./CantinaPedidos');
 // Torneos de pádel
 const Torneo            = require('./Torneo');
@@ -168,6 +169,11 @@ CantinaPedidoCliente.hasMany(CantinaItemPedido,   { foreignKey: 'pedido_cliente_
 CantinaItemPedido.belongsTo(CantinaProducto,      { foreignKey: 'producto_id', as: 'producto' });
 CantinaPedidoProveedor.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
 CantinaPedidoCliente.belongsTo(User,   { foreignKey: 'usuario_id', as: 'usuario' });
+// Catálogo de precios por proveedor (N:N)
+CantinaProveedor.hasMany(CantinaProductoProveedor, { foreignKey: 'proveedor_id', as: 'catalogo', onDelete: 'CASCADE' });
+CantinaProducto.hasMany(CantinaProductoProveedor,  { foreignKey: 'producto_id', as: 'proveedores', onDelete: 'CASCADE' });
+CantinaProductoProveedor.belongsTo(CantinaProveedor, { foreignKey: 'proveedor_id', as: 'proveedor' });
+CantinaProductoProveedor.belongsTo(CantinaProducto,  { foreignKey: 'producto_id', as: 'producto' });
 
 // ── Turnos fijos ──
 RecurringBooking.belongsTo(Field, { foreignKey: 'field_id', as: 'field' });
@@ -257,6 +263,7 @@ module.exports = {
   // Cantina
   CantinaProducto, CantinaVenta, CantinaDetalleVenta, CantinaMovimiento,
   CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,
+  CantinaProductoProveedor,
   // Turnos fijos
   RecurringBooking,
   // Consumos por turno

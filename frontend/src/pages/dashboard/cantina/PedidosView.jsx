@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, Plus, Minus, X, Trash2, Pencil, Copy, Check, MessageCircle, Truck, Users, ClipboardList,
-  PackageCheck, Ban, UserPlus, ChevronRight,
+  PackageCheck, Ban, UserPlus, ChevronRight, Tags,
 } from 'lucide-react';
 import { cantinaService } from '../../../services/cantinaService';
 import { mensajePedido, telefonoPedido, waPedidoLink, copiarTexto } from '../../../utils/pedidoWhatsapp';
@@ -138,65 +138,91 @@ function ListaPedidos({ tipo, complexId, clubNombre, toast }) {
 //  NUEVO PEDIDO
 // ══════════════════════════════════════════════════════════════════
 function NuevoPedido({ tipo, complexId, onClose, onCreado }) {
+  const compra = tipo === 'proveedor';
   const [contacto, setContacto] = useState(null);
   const [proveedores, setProveedores] = useState([]);
-  const [productos, setProductos] = useState([]);
-  const [items, setItems] = useState([]);           // [{ producto, cantidad, precio }]
+  const [productos, setProductos] = useState([]);    // venta: stock del complejo
+  const [catalogo, setCatalogo] = useState(null);    // compra: catálogo del proveedor elegido
+  const [items, setItems] = useState([]);            // [{ producto, cantidad, precio, link? }]
   const [qProd, setQProd] = useState('');
   const [notas, setNotas] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [alerta, setAlerta] = useState(null);        // respuesta 409 HAY_MEJOR_PRECIO
 
   useEffect(() => {
-    cantinaService.listProductos(complexId).then(setProductos).catch(() => {});
-    if (tipo === 'proveedor') cantinaService.listProveedores(complexId, { estado: 'activo' }).then(setProveedores).catch(() => {});
-  }, [complexId, tipo]);
+    if (compra) cantinaService.listProveedores(complexId, { estado: 'activo' }).then(setProveedores).catch(() => {});
+    else cantinaService.listProductos(complexId).then(setProductos).catch(() => {});
+  }, [complexId, compra]);
 
-  const campoPrecio = tipo === 'proveedor' ? 'precio_costo' : 'precio_venta';
+  // Compra: al elegir proveedor se cargan SOLO sus productos con sus precios
+  const elegirProveedor = (prov) => {
+    if (items.length && prov?.id !== contacto?.id && !confirm('Cambiar de proveedor vacía la lista de productos. ¿Continuar?')) return;
+    setContacto(prov);
+    setItems([]);
+    setCatalogo(null);
+    if (prov) cantinaService.catalogoProveedor(complexId, prov.id).then(setCatalogo).catch(() => setCatalogo([]));
+  };
+
   const sugeridos = useMemo(() => {
     const q = normalize(qProd.trim());
     if (!q) return [];
+    if (compra) return (catalogo || []).filter(l => l.producto.activo !== false && normalize(l.producto.nombre).includes(q)).slice(0, 8);
     return productos.filter(p => p.activo !== false && normalize(p.nombre).includes(q)).slice(0, 8);
-  }, [productos, qProd]);
+  }, [productos, catalogo, qProd, compra]);
 
-  const agregar = (p) => {
+  const agregar = (x) => {
+    const producto = compra ? x.producto : x;
     setItems(its => {
-      const i = its.findIndex(x => x.producto.id === p.id);
-      if (i >= 0) return its.map((x, j) => (j === i ? { ...x, cantidad: Number(x.cantidad) + 1 } : x));
-      return [...its, { producto: p, cantidad: 1, precio: Number(p[campoPrecio]) }];
+      const i = its.findIndex(it => it.producto.id === producto.id);
+      if (i >= 0) return its.map((it, j) => (j === i ? { ...it, cantidad: Number(it.cantidad) + 1 } : it));
+      return [...its, compra
+        // Compra: arranca en el mínimo del proveedor (si tiene) y con su precio efectivo
+        ? { producto, link: x, cantidad: Math.max(Number(x.minimo_compra) || 1, 1), precio: precioEfectivo(x) }
+        : { producto, cantidad: 1, precio: Number(producto.precio_venta) }];
     });
     setQProd('');
   };
   const setItem = (i, k, v) => setItems(its => its.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const total = items.reduce((a, i) => a + Number(i.cantidad || 0) * Number(i.precio || 0), 0);
+  const bajoMinimo = (i) => compra && Number(i.link?.minimo_compra) > 0 && Number(i.cantidad) < Number(i.link.minimo_compra);
 
-  const guardar = async () => {
+  const enviar = async (aceptoPrecios = false) => {
     setError('');
     if (!contacto) return setError(`Elegí ${tipo === 'cliente' ? 'un cliente' : 'un proveedor'}.`);
     if (!items.length) return setError('Agregá al menos un producto.');
     if (items.some(i => !(Number(i.cantidad) > 0))) return setError('Las cantidades deben ser mayores a 0.');
-    // Venta: avisar (no bloquear) si hoy no alcanza el stock; se valida al entregar
+    if (items.some(bajoMinimo)) return setError('Hay productos por debajo del mínimo de compra del proveedor.');
     setGuardando(true);
     try {
       const p = await cantinaService.createPedido(complexId, tipo, {
-        [tipo === 'cliente' ? 'cliente_id' : 'proveedor_id']: contacto.id,
+        [compra ? 'proveedor_id' : 'cliente_id']: contacto.id,
         notas,
-        items: items.map(i => ({ producto_id: i.producto.id, cantidad: Number(i.cantidad), precio_unitario: Number(i.precio) })),
+        // En compras el precio lo pone el catálogo del proveedor (el backend ignora el enviado)
+        items: items.map(i => ({ producto_id: i.producto.id, cantidad: Number(i.cantidad), ...(compra ? {} : { precio_unitario: Number(i.precio) }) })),
+        ...(aceptoPrecios ? { acepto_precios: true } : {}),
       });
+      setAlerta(null);
       onCreado(p);
-    } catch (e) { setError(errMsg(e)); } finally { setGuardando(false); }
+    } catch (e) {
+      // Validación automática de precios: hay proveedores más baratos → decidir
+      if (e?.code === 'HAY_MEJOR_PRECIO') setAlerta(e);
+      else setError(errMsg(e));
+    } finally { setGuardando(false); }
   };
 
+  const quitarProductos = (ids) => { setItems(its => its.filter(i => !ids.includes(i.producto.id))); setAlerta(null); };
+
   return (
-    <Panel titulo={tipo === 'cliente' ? 'Nuevo pedido de cliente' : 'Nuevo pedido a proveedor'} onClose={onClose}>
+    <Panel titulo={compra ? 'Nuevo pedido a proveedor' : 'Nuevo pedido de cliente'} onClose={onClose}>
       <div className="space-y-4">
         {/* Contacto */}
-        {tipo === 'cliente'
+        {!compra
           ? <ClienteBuscador complexId={complexId} value={contacto} onChange={setContacto} />
           : (
             <label className="block">
               <span className="text-xs text-muted-foreground">Proveedor</span>
-              <select className="input" value={contacto?.id || ''} onChange={e => setContacto(proveedores.find(p => p.id === Number(e.target.value)) || null)}>
+              <select className="input" value={contacto?.id || ''} onChange={e => elegirProveedor(proveedores.find(p => p.id === Number(e.target.value)) || null)}>
                 <option value="">Elegí un proveedor…</option>
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.contacto ? ` (${p.contacto})` : ''}</option>)}
               </select>
@@ -205,41 +231,61 @@ function NuevoPedido({ tipo, complexId, onClose, onCreado }) {
           )}
 
         {/* Productos */}
-        <div>
-          <span className="text-xs text-muted-foreground">Productos</span>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input className="input pl-9" placeholder="Buscar producto para agregar…" value={qProd} onChange={e => setQProd(e.target.value)} />
-            {sugeridos.length > 0 && (
-              <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-xl max-h-64 overflow-y-auto">
-                {sugeridos.map(p => (
-                  <button key={p.id} type="button" onClick={() => agregar(p)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between gap-2">
-                    <span className="truncate">{p.nombre}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">stock {cant(p.stock)} · {money(p[campoPrecio])}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+        {compra && !contacto ? (
+          <p className="text-xs text-muted-foreground">Elegí el proveedor para ver sus productos y precios.</p>
+        ) : compra && catalogo?.length === 0 ? (
+          <p className="text-sm text-amber-400">Este proveedor no tiene productos asociados. Cargalos en Proveedores → Productos y precios.</p>
+        ) : (
+          <div>
+            <span className="text-xs text-muted-foreground">{compra ? `Productos de ${contacto.nombre}` : 'Productos'}</span>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input className="input pl-9" placeholder="Buscar producto para agregar…" value={qProd} onChange={e => setQProd(e.target.value)} />
+              {sugeridos.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-xl max-h-64 overflow-y-auto">
+                  {sugeridos.map(x => {
+                    const p = compra ? x.producto : x;
+                    return (
+                      <button key={p.id} type="button" onClick={() => agregar(x)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between gap-2">
+                        <span className="truncate">{p.nombre}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          stock {cant(p.stock)} · {money(compra ? precioEfectivo(x) : p.precio_venta)}
+                          {compra && Number(x.minimo_compra) > 0 && ` · mín. ${cant(x.minimo_compra)}`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {items.length > 0 && (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {items.map((i, idx) => {
-              const faltaStock = tipo === 'cliente' && Number(i.cantidad) > Number(i.producto.stock);
+              const faltaStock = !compra && Number(i.cantidad) > Number(i.producto.stock);
+              const otroMasBarato = compra && i.link?.mejor_otro && i.link.mejor_otro.precio < Number(i.precio);
               return (
-                <div key={i.producto.id} className="flex items-center gap-2 text-sm">
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate">{i.producto.nombre}</div>
-                    {faltaStock && <div className="text-[11px] text-amber-400">Hoy hay {cant(i.producto.stock)}: se valida al entregar</div>}
+                <div key={i.producto.id} className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0 truncate">{i.producto.nombre}</div>
+                    <button type="button" className="p-1 rounded hover:bg-muted" onClick={() => setItem(idx, 'cantidad', Math.max(1, Number(i.cantidad) - 1))} aria-label="Menos"><Minus className="w-3.5 h-3.5" /></button>
+                    <input className="input !w-16 text-center !px-1" inputMode="decimal" value={i.cantidad} onChange={e => setItem(idx, 'cantidad', e.target.value)} aria-label="Cantidad" />
+                    <button type="button" className="p-1 rounded hover:bg-muted" onClick={() => setItem(idx, 'cantidad', Number(i.cantidad) + 1)} aria-label="Más"><Plus className="w-3.5 h-3.5" /></button>
+                    {compra
+                      ? <span className="w-24 text-right text-muted-foreground" title="Precio del proveedor">{money(i.precio)}</span>
+                      : <input className="input !w-24 text-right !px-2" inputMode="decimal" value={i.precio} onChange={e => setItem(idx, 'precio', e.target.value)} aria-label="Precio unitario" />}
+                    <button type="button" className="p-1 text-red-400 hover:bg-red-500/10 rounded" onClick={() => setItems(its => its.filter((_, j) => j !== idx))} aria-label="Quitar"><Trash2 className="w-4 h-4" /></button>
                   </div>
-                  <button type="button" className="p-1 rounded hover:bg-muted" onClick={() => setItem(idx, 'cantidad', Math.max(1, Number(i.cantidad) - 1))} aria-label="Menos"><Minus className="w-3.5 h-3.5" /></button>
-                  <input className="input !w-16 text-center !px-1" inputMode="decimal" value={i.cantidad} onChange={e => setItem(idx, 'cantidad', e.target.value)} aria-label="Cantidad" />
-                  <button type="button" className="p-1 rounded hover:bg-muted" onClick={() => setItem(idx, 'cantidad', Number(i.cantidad) + 1)} aria-label="Más"><Plus className="w-3.5 h-3.5" /></button>
-                  <input className="input !w-24 text-right !px-2" inputMode="decimal" value={i.precio} onChange={e => setItem(idx, 'precio', e.target.value)}
-                    aria-label={tipo === 'proveedor' ? 'Costo unitario' : 'Precio unitario'} title={tipo === 'proveedor' ? 'Costo unitario' : 'Precio unitario'} />
-                  <button type="button" className="p-1 text-red-400 hover:bg-red-500/10 rounded" onClick={() => setItems(its => its.filter((_, j) => j !== idx))} aria-label="Quitar"><Trash2 className="w-4 h-4" /></button>
+                  <div className="text-[11px] space-x-2">
+                    {faltaStock && <span className="text-amber-400">Hoy hay {cant(i.producto.stock)}: se valida al entregar</span>}
+                    {bajoMinimo(i) && <span className="text-red-400">Mínimo de compra: {cant(i.link.minimo_compra)}</span>}
+                    {compra && Number(i.link?.descuento_pct) > 0 && <span className="text-green-400">{Number(i.link.descuento_pct)}% off sobre {money(i.link.precio_compra)}</span>}
+                    {compra && i.link?.condiciones && <span className="text-muted-foreground">{i.link.condiciones}</span>}
+                    {otroMasBarato && <span className="text-amber-400">💡 {money(i.link.mejor_otro.precio)} en {i.link.mejor_otro.proveedor.nombre}</span>}
+                  </div>
                 </div>
               );
             })}
@@ -249,7 +295,166 @@ function NuevoPedido({ tipo, complexId, onClose, onCreado }) {
 
         <textarea className="input min-h-[60px]" placeholder="Notas (opcional): entrega, forma de pago…" value={notas} onChange={e => setNotas(e.target.value)} />
         {error && <p className="text-sm text-red-400">{error}</p>}
-        <button className="btn-primary w-full" disabled={guardando} onClick={guardar}>{guardando ? 'Generando…' : 'Generar pedido'}</button>
+        <button className="btn-primary w-full" disabled={guardando} onClick={() => enviar(false)}>{guardando ? 'Generando…' : 'Generar pedido'}</button>
+      </div>
+
+      {alerta && (
+        <AlertaPrecios alerta={alerta} proveedor={contacto} guardando={guardando}
+          onContinuar={() => enviar(true)} onModificar={() => setAlerta(null)} onQuitar={quitarProductos} />
+      )}
+    </Panel>
+  );
+}
+
+/** Precio efectivo del catálogo (mismo cálculo que el backend): lista − descuento. */
+function precioEfectivo(link) {
+  const desc = Math.min(Math.max(Number(link.descuento_pct) || 0, 0), 100);
+  return Math.round(Number(link.precio_compra) * (1 - desc / 100) * 100) / 100;
+}
+
+/**
+ * Alerta previa a generar un pedido de compra: productos que están más baratos
+ * en otro proveedor. El usuario decide: seguir con este proveedor, modificar el
+ * pedido, o quitar esos productos (para pedirlos al proveedor más barato).
+ */
+function AlertaPrecios({ alerta, proveedor, guardando, onContinuar, onModificar, onQuitar }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="alertdialog" aria-labelledby="alerta-precios-titulo">
+      <div className="absolute inset-0 bg-black/70" onClick={onModificar} />
+      <div className="relative z-10 card w-full max-w-xl max-h-[85vh] overflow-y-auto space-y-4 border-amber-500/40">
+        <div>
+          <h3 id="alerta-precios-titulo" className="font-bold text-amber-400">Hay precios mejores en otros proveedores</h3>
+          <p className="text-sm text-muted-foreground">
+            Pidiendo lo mismo a los proveedores más baratos ahorrarías <strong className="text-foreground">{money(alerta.ahorro_total)}</strong>.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted-foreground text-left">
+              <tr>
+                <th className="py-1.5 pr-2">Producto</th>
+                <th className="py-1.5 px-2 text-right">{proveedor?.nombre}</th>
+                <th className="py-1.5 px-2 text-right">Mejor precio</th>
+                <th className="py-1.5 pl-2">Proveedor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alerta.alertas.map(a => (
+                <tr key={a.producto_id} className="border-t border-border">
+                  <td className="py-2 pr-2">{a.producto}<div className="text-[11px] text-muted-foreground">× {cant(a.cantidad)} · ahorro {money(a.ahorro_total)}</div></td>
+                  <td className="py-2 px-2 text-right">{money(a.precio_actual)}</td>
+                  <td className="py-2 px-2 text-right font-semibold text-green-400">{money(a.mejor_precio)}</td>
+                  <td className="py-2 pl-2">{a.mejor_proveedor.nombre}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button className="btn-outline text-sm flex-1" onClick={onModificar}>Modificar pedido</button>
+          <button className="btn-outline text-sm flex-1" onClick={() => onQuitar(alerta.alertas.map(a => a.producto_id))}>Quitar esos productos</button>
+          <button className="btn-primary text-sm flex-1" disabled={guardando} onClick={onContinuar}>{guardando ? 'Generando…' : 'Continuar igual'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Catálogo de un proveedor: qué productos le compramos y a qué precio
+ * (precio de compra, venta sugerida, mínimo, descuento y condiciones).
+ * Muestra el mejor precio de otros proveedores como referencia.
+ */
+function CatalogoProveedor({ complexId, proveedor, toast, onClose }) {
+  const [filas, setFilas] = useState(null);
+  const [productos, setProductos] = useState([]);
+  const [q, setQ] = useState('');
+  const [editando, setEditando] = useState(null);   // { producto, ...campos }
+
+  const cargar = useCallback(() => cantinaService.catalogoProveedor(complexId, proveedor.id).then(setFilas).catch(() => setFilas([])), [complexId, proveedor.id]);
+  useEffect(() => { cargar(); cantinaService.listProductos(complexId).then(setProductos).catch(() => {}); }, [cargar, complexId]);
+
+  const enCatalogo = new Set((filas || []).map(f => f.producto_id));
+  const sugeridos = q.trim()
+    ? productos.filter(p => !enCatalogo.has(p.id) && normalize(p.nombre).includes(normalize(q.trim()))).slice(0, 8)
+    : [];
+  const guardar = async (e) => {
+    e.preventDefault();
+    const { producto, ...d } = editando;
+    try { await cantinaService.guardarPrecio(complexId, proveedor.id, producto.id, d); setEditando(null); setQ(''); cargar(); toast('success', 'Precio guardado.'); }
+    catch (err) { toast('error', errMsg(err)); }
+  };
+  const quitar = async (f) => {
+    if (!confirm(`¿Quitar "${f.producto.nombre}" del catálogo de ${proveedor.nombre}?`)) return;
+    try { await cantinaService.quitarDelCatalogo(complexId, proveedor.id, f.producto_id); cargar(); } catch (err) { toast('error', errMsg(err)); }
+  };
+  const set = (k, v) => setEditando(x => ({ ...x, [k]: v }));
+
+  return (
+    <Panel titulo={`Productos y precios · ${proveedor.nombre}`} onClose={onClose}>
+      <div className="space-y-4">
+        {!editando && (
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input className="input pl-9" placeholder="Agregar producto al catálogo…" value={q} onChange={e => setQ(e.target.value)} />
+            {sugeridos.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-xl max-h-64 overflow-y-auto">
+                {sugeridos.map(p => (
+                  <button key={p.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                    onClick={() => setEditando({ producto: p, precio_compra: p.precio_costo > 0 ? String(Number(p.precio_costo)) : '', precio_venta: '', minimo_compra: '', descuento_pct: '', condiciones: '' })}>
+                    {p.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {editando && (
+          <form onSubmit={guardar} className="card space-y-2 border-primary/40">
+            <div className="font-medium">{editando.producto.nombre}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs text-muted-foreground">Precio de compra *<input className="input" inputMode="decimal" required value={editando.precio_compra} onChange={e => set('precio_compra', e.target.value)} /></label>
+              <label className="text-xs text-muted-foreground">Precio de venta sugerido<input className="input" inputMode="decimal" value={editando.precio_venta ?? ''} onChange={e => set('precio_venta', e.target.value)} /></label>
+              <label className="text-xs text-muted-foreground">Mínimo de compra<input className="input" inputMode="decimal" value={editando.minimo_compra ?? ''} onChange={e => set('minimo_compra', e.target.value)} /></label>
+              <label className="text-xs text-muted-foreground">Descuento %<input className="input" inputMode="decimal" value={editando.descuento_pct ?? ''} onChange={e => set('descuento_pct', e.target.value)} /></label>
+            </div>
+            <input className="input" placeholder="Condiciones (plazo de pago, flete, bonificaciones…)" value={editando.condiciones ?? ''} onChange={e => set('condiciones', e.target.value)} />
+            <div className="flex gap-2">
+              <button className="btn-primary text-sm">Guardar</button>
+              <button type="button" className="btn-outline text-sm" onClick={() => setEditando(null)}>Cancelar</button>
+            </div>
+          </form>
+        )}
+
+        {filas?.length === 0 && <div className="card text-sm text-muted-foreground text-center py-6">Sin productos: agregá los que le comprás a este proveedor.</div>}
+        <div className="space-y-1.5">
+          {filas?.map(f => {
+            const masBarato = f.mejor_otro && f.mejor_otro.precio < f.precio_efectivo;
+            return (
+              <div key={f.id} className="card py-2.5 flex items-center gap-3 text-sm">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{f.producto.nombre}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {[
+                      Number(f.descuento_pct) > 0 && `lista ${money(f.precio_compra)} −${Number(f.descuento_pct)}%`,
+                      Number(f.minimo_compra) > 0 && `mín. ${cant(f.minimo_compra)}`,
+                      f.precio_venta != null && `venta sug. ${money(f.precio_venta)}`,
+                      f.condiciones,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                  {masBarato && <div className="text-[11px] text-amber-400">Más barato en {f.mejor_otro.proveedor.nombre}: {money(f.mejor_otro.precio)}</div>}
+                </div>
+                <div className={`font-semibold whitespace-nowrap ${masBarato ? 'text-amber-400' : 'text-green-400'}`}>{money(f.precio_efectivo)}</div>
+                <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar precio"
+                  onClick={() => setEditando({ producto: f.producto, precio_compra: String(Number(f.precio_compra)), precio_venta: f.precio_venta ?? '', minimo_compra: f.minimo_compra ?? '', descuento_pct: f.descuento_pct ?? '', condiciones: f.condiciones ?? '' })}>
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button className="p-1.5 rounded hover:bg-red-500/10 text-red-400" aria-label="Quitar del catálogo" onClick={() => quitar(f)}><Trash2 className="w-4 h-4" /></button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </Panel>
   );
@@ -487,6 +692,7 @@ function Contactos({ tipo, complexId, toast, gestion }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
   const [form, setForm] = useState(null);
+  const [catalogo, setCatalogo] = useState(null);   // proveedor cuyo catálogo se edita
 
   const cargar = useCallback(() => api.list(complexId, { q: q.trim() || undefined }).then(setRows).catch(() => setRows([])), [complexId, q, tipo]);
   useEffect(() => { const t = setTimeout(cargar, 250); return () => clearTimeout(t); }, [cargar]);
@@ -511,6 +717,7 @@ function Contactos({ tipo, complexId, toast, gestion }) {
         {!form && <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setForm({})}><Plus className="w-4 h-4" /> {tipo === 'cliente' ? 'Cliente' : 'Proveedor'}</button>}
       </div>
       {form && <ContactoForm tipo={tipo} inicial={form} onCancel={() => setForm(null)} onSave={guardar} />}
+      {catalogo && <CatalogoProveedor complexId={complexId} proveedor={catalogo} toast={toast} onClose={() => setCatalogo(null)} />}
       {rows?.length === 0 && <div className="card text-center text-sm text-muted-foreground py-8">Sin {tipo === 'cliente' ? 'clientes' : 'proveedores'}.</div>}
       <div className="space-y-1.5">
         {rows?.map(r => (
@@ -523,6 +730,11 @@ function Contactos({ tipo, complexId, toast, gestion }) {
             </div>
             {r.whatsapp && (
               <a href={`https://wa.me/${r.whatsapp}`} target="_blank" rel="noreferrer" className="p-1.5 rounded hover:bg-green-500/10 text-green-400" aria-label="Abrir WhatsApp"><MessageCircle className="w-4 h-4" /></a>
+            )}
+            {tipo === 'proveedor' && (
+              <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setCatalogo(r)}>
+                <Tags className="w-3.5 h-3.5" /> Productos y precios
+              </button>
             )}
             <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar" onClick={() => setForm(r)}><Pencil className="w-4 h-4" /></button>
             {(gestion || tipo === 'proveedor') && (

@@ -63,4 +63,17 @@ const CantinaItemPedido = sequelize.define('CantinaItemPedido', {
   estado:              { type: DataTypes.ENUM('pendiente', 'recibido', 'entregado'), defaultValue: 'pendiente' },
 }, { tableName: 'cantina_items_pedido' });
 
-module.exports = { CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido };
+// Catálogo de precios de cada proveedor (producto ↔ proveedor, N:N).
+// Precio efectivo = precio_compra × (1 − descuento_pct/100), si se llega a minimo_compra.
+const CantinaProductoProveedor = sequelize.define('CantinaProductoProveedor', {
+  id:            { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  producto_id:   { type: DataTypes.INTEGER, allowNull: false },
+  proveedor_id:  { type: DataTypes.INTEGER, allowNull: false },
+  precio_compra: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  precio_venta:  { type: DataTypes.DECIMAL(10, 2), allowNull: true },   // sugerido por el proveedor (informativo)
+  minimo_compra: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+  descuento_pct: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+  condiciones:   { type: DataTypes.STRING(255), allowNull: true },
+}, { tableName: 'cantina_producto_proveedor' });
+
+module.exports = { CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido, CantinaProductoProveedor };
