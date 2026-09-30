@@ -23,4 +23,22 @@ export const cantinaService = {
   reporteProductos: (cid, params) => api.get(`/cantina/${cid}/reportes/productos`, { params }),
   caja:             (cid, params) => api.get(`/cantina/${cid}/caja`, { params }),
   dashboard:        (cid)         => api.get(`/cantina/${cid}/dashboard`),
+
+  // Proveedores / clientes
+  listProveedores:  (cid, params) => api.get(`/cantina/${cid}/proveedores`, { params }),
+  createProveedor:  (cid, d)      => api.post(`/cantina/${cid}/proveedores`, d),
+  updateProveedor:  (cid, id, d)  => api.put(`/cantina/${cid}/proveedores/${id}`, d),
+  deleteProveedor:  (cid, id)     => api.delete(`/cantina/${cid}/proveedores/${id}`),
+  listClientes:     (cid, params) => api.get(`/cantina/${cid}/clientes`, { params }),
+  createCliente:    (cid, d)      => api.post(`/cantina/${cid}/clientes`, d),
+  updateCliente:    (cid, id, d)  => api.put(`/cantina/${cid}/clientes/${id}`, d),
+  deleteCliente:    (cid, id)     => api.delete(`/cantina/${cid}/clientes/${id}`),
+
+  // Pedidos: tipo = 'proveedor' (compras) | 'cliente' (ventas)
+  listPedidos:      (cid, tipo, params) => api.get(`/cantina/${cid}/pedidos-${tipo}`, { params }),
+  createPedido:     (cid, tipo, d)      => api.post(`/cantina/${cid}/pedidos-${tipo}`, d),
+  updatePedido:     (cid, tipo, id, d)  => api.put(`/cantina/${cid}/pedidos-${tipo}/${id}`, d),
+  cancelarPedido:   (cid, tipo, id)     => api.post(`/cantina/${cid}/pedidos-${tipo}/${id}/cancelar`),
+  confirmarPedido:  (cid, id, items)    => api.post(`/cantina/${cid}/pedidos-proveedor/${id}/confirmar`, { items }),
+  entregarPedido:   (cid, id)           => api.post(`/cantina/${cid}/pedidos-cliente/${id}/entregar`),
 };

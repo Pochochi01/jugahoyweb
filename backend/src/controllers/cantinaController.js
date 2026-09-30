@@ -9,26 +9,11 @@ const {
   sequelize,
 } = require('../models');
 const caja = require('../services/cajaService');
+const { aplicarMovimiento } = require('../services/cantinaStockService');
 
 const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
 
-// ── Helper: aplica un movimiento de stock a un producto (dentro de una transacción) ──
-async function aplicarMovimiento({ producto, tipo, motivo, cantidad, venta_id, usuario_id, notas }, t) {
-  const anterior = num(producto.stock);
-  let resultante;
-  if (tipo === 'entrada')      resultante = anterior + cantidad;
-  else if (tipo === 'salida')  resultante = anterior - cantidad;
-  else /* ajuste */            resultante = cantidad;   // ajuste = stock exacto
-  if (resultante < 0) resultante = 0;
-
-  await producto.update({ stock: resultante }, { transaction: t });
-  await CantinaMovimiento.create({
-    producto_id: producto.id, tipo, motivo, cantidad,
-    stock_anterior: anterior, stock_resultante: resultante,
-    venta_id: venta_id || null, usuario_id: usuario_id || null, notas: notas || null,
-  }, { transaction: t });
-  return resultante;
-}
+// aplicarMovimiento: services/cantinaStockService.js (compartido con Pedidos)
 
 // ─────────────────────────────────────────────────────────────
 //  PRODUCTOS (CRUD)

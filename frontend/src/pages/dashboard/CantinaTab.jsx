@@ -5,8 +5,9 @@ import { METODOS_PAGO as METODOS, metodoLabel, metodoChipStyle } from '../../uti
 import {
   LayoutDashboard, ShoppingCart, Package, Boxes, Receipt, BarChart2,
   Plus, Minus, Trash2, X, Search, AlertTriangle, DollarSign, TrendingUp,
-  CheckCircle, RotateCcw, Pencil, Filter,
+  CheckCircle, RotateCcw, Pencil, Filter, ClipboardList,
 } from 'lucide-react';
+import PedidosView from './cantina/PedidosView';
 
 const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 const CATEGORIAS = ['bebidas', 'comidas_rapidas', 'snacks', 'postres', 'otros'];
@@ -573,7 +574,7 @@ function Modal({ title, onClose, children }) {
 // ══════════════════════════════════════════════════════════════════
 //  MAIN TAB
 // ══════════════════════════════════════════════════════════════════
-export default function CantinaTab({ complexId }) {
+export default function CantinaTab({ complexId, complex }) {
   const { hasPermission } = useAuth();
   const gestion = hasPermission(complexId, 'cantina_gestion');
   const ventas  = hasPermission(complexId, 'cantina_ventas');
@@ -584,6 +585,7 @@ export default function CantinaTab({ complexId }) {
     { key: 'productos', label: 'Productos',  icon: Package,         show: gestion },
     { key: 'stock',     label: 'Stock',      icon: Boxes,           show: gestion },
     { key: 'ventas',    label: 'Ventas',     icon: Receipt,         show: gestion || ventas },
+    { key: 'pedidos',   label: 'Pedidos',    icon: ClipboardList,   show: gestion || ventas },
     { key: 'reportes',  label: 'Reportes',   icon: BarChart2,       show: gestion },
   ].filter(t => t.show);
 
@@ -612,6 +614,7 @@ export default function CantinaTab({ complexId }) {
       {active === 'stock'     && <StockView complexId={complexId} toast={showToast} />}
       {active === 'ventas'    && <VentasView complexId={complexId} toast={showToast} puedeGestionar={gestion} />}
       {active === 'reportes'  && <ReportesView complexId={complexId} />}
+      {active === 'pedidos'   && <PedidosView complexId={complexId} clubNombre={complex?.nombre} toast={showToast} gestion={gestion} />}
 
       {toast && (
         <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-xl text-sm font-medium text-white ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>

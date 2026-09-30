@@ -32,6 +32,9 @@ const BookingConsumo        = require('./BookingConsumo');
 const Waitlist              = require('./Waitlist');
 const WaConversation        = require('./WaConversation');
 const WaTemplate            = require('./WaTemplate');
+const {
+  CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,
+} = require('./CantinaPedidos');
 // Torneos de pádel
 const Torneo            = require('./Torneo');
 const TorneoOrganizador = require('./TorneoOrganizador');
@@ -155,6 +158,17 @@ CantinaProducto.hasMany(CantinaDetalleVenta,   { foreignKey: 'producto_id', as: 
 CantinaProducto.hasMany(CantinaMovimiento,  { foreignKey: 'producto_id', as: 'movimientos', onDelete: 'CASCADE' });
 CantinaMovimiento.belongsTo(CantinaProducto, { foreignKey: 'producto_id', as: 'producto' });
 
+// ── Cantina: pedidos a proveedores / de clientes ──
+CantinaProveedor.hasMany(CantinaPedidoProveedor, { foreignKey: 'proveedor_id', as: 'pedidos' });
+CantinaPedidoProveedor.belongsTo(CantinaProveedor, { foreignKey: 'proveedor_id', as: 'proveedor' });
+CantinaCliente.hasMany(CantinaPedidoCliente,     { foreignKey: 'cliente_id', as: 'pedidos' });
+CantinaPedidoCliente.belongsTo(CantinaCliente,   { foreignKey: 'cliente_id', as: 'cliente' });
+CantinaPedidoProveedor.hasMany(CantinaItemPedido, { foreignKey: 'pedido_proveedor_id', as: 'items', onDelete: 'CASCADE' });
+CantinaPedidoCliente.hasMany(CantinaItemPedido,   { foreignKey: 'pedido_cliente_id',   as: 'items', onDelete: 'CASCADE' });
+CantinaItemPedido.belongsTo(CantinaProducto,      { foreignKey: 'producto_id', as: 'producto' });
+CantinaPedidoProveedor.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
+CantinaPedidoCliente.belongsTo(User,   { foreignKey: 'usuario_id', as: 'usuario' });
+
 // ── Turnos fijos ──
 RecurringBooking.belongsTo(Field, { foreignKey: 'field_id', as: 'field' });
 
@@ -242,6 +256,7 @@ module.exports = {
   Blacklist,
   // Cantina
   CantinaProducto, CantinaVenta, CantinaDetalleVenta, CantinaMovimiento,
+  CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,
   // Turnos fijos
   RecurringBooking,
   // Consumos por turno

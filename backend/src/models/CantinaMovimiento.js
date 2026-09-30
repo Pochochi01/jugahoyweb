@@ -13,6 +13,9 @@ const CantinaMovimiento = sequelize.define('CantinaMovimiento', {
   venta_id:         { type: DataTypes.INTEGER },
   usuario_id:       { type: DataTypes.INTEGER },
   notas:            { type: DataTypes.TEXT },
+  // Pedido que originó el movimiento (módulo Pedidos)
+  pedido_proveedor_id: { type: DataTypes.INTEGER },
+  pedido_cliente_id:   { type: DataTypes.INTEGER },
 }, { tableName: 'cantina_movimientos', updatedAt: false });
 
 module.exports = CantinaMovimiento;
