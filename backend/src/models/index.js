@@ -53,6 +53,11 @@ const Profesor          = require('./Profesor');
 const ProfesorCancha    = require('./ProfesorCancha');
 const HorarioProfesor   = require('./HorarioProfesor');
 const Alumno            = require('./Alumno');
+// Escuela de fútbol
+const {
+  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
+  EscuelaHorario, EscuelaPago, EscuelaAviso,
+} = require('./Escuela');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -241,6 +246,20 @@ Alumno.belongsTo(HorarioProfesor,   { foreignKey: 'id_horario', as: 'horario' })
 TimeSlot.belongsTo(HorarioProfesor, { foreignKey: 'horario_profesor_id', as: 'clase' });
 TimeSlot.belongsTo(TorneoPartido,   { foreignKey: 'torneo_partido_id',   as: 'partidoTorneo' });
 
+// ── Escuela de fútbol ──
+Complex.hasOne(EscuelaConfig,       { foreignKey: 'complex_id', as: 'escuela' });
+EscuelaCategoria.hasMany(EscuelaAlumno,  { foreignKey: 'categoria_id', as: 'alumnos' });
+EscuelaAlumno.belongsTo(EscuelaCategoria, { foreignKey: 'categoria_id', as: 'categoria' });
+EscuelaCategoria.hasMany(EscuelaHorario,  { foreignKey: 'categoria_id', as: 'horarios', onDelete: 'CASCADE' });
+EscuelaHorario.belongsTo(EscuelaCategoria, { foreignKey: 'categoria_id', as: 'categoria' });
+EscuelaHorario.belongsTo(Field,            { foreignKey: 'field_id', as: 'field' });
+EscuelaAlumno.hasMany(EscuelaPago,   { foreignKey: 'alumno_id', as: 'pagos', onDelete: 'CASCADE' });
+EscuelaPago.belongsTo(EscuelaAlumno, { foreignKey: 'alumno_id', as: 'alumno' });
+EscuelaAviso.belongsTo(EscuelaCategoria, { foreignKey: 'categoria_id', as: 'categoria' });
+// Entrenadores: profesores (login por DNI) ↔ categorías (N:N)
+Profesor.belongsToMany(EscuelaCategoria, { through: EscuelaProfesorCategoria, foreignKey: 'profesor_id', otherKey: 'categoria_id', as: 'categoriasEscuela' });
+EscuelaCategoria.belongsToMany(Profesor, { through: EscuelaProfesorCategoria, foreignKey: 'categoria_id', otherKey: 'profesor_id', as: 'profesores' });
+
 module.exports = {
   sequelize,
   User, Complex, Field, Agenda, Operation,
@@ -277,4 +296,7 @@ module.exports = {
   TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket, TorneoTablaPosicion, RankingJugador,
   // Profesores de pádel
   Profesor, ProfesorCancha, HorarioProfesor, Alumno,
+  // Escuela de fútbol
+  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
+  EscuelaHorario, EscuelaPago, EscuelaAviso,
 };

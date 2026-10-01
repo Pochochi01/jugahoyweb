@@ -6,9 +6,10 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal,
 } from 'lucide-react';
-import { esAlmacen, nombreComercio } from '../../utils/modoComplejo';
+import { esAlmacen, nombreComercio, modulosComplejo } from '../../utils/modoComplejo';
+import EscuelaTab from './EscuelaTab';
 import AgendaTab        from './AgendaTab';
 import OperationsTab    from './OperationsTab';
 import CashTab          from './CashTab';
@@ -32,9 +33,11 @@ const TABS = [
   { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja',         deportivo: true },
   // "Cantina" con canchas / "Almacén" sin canchas (ver utils/modoComplejo)
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
-  // Solo para complejos con canchas de pádel (ver requiresPadel)
-  { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos', requiresPadel: true },
-  { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', requiresPadel: true },
+  // modulo: visible solo si las canchas lo habilitan (utils/modoComplejo → modulosComplejo)
+  //   torneos → pádel · profesores → pádel o fútbol · escuela → fútbol habilitado
+  { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos',    modulo: 'torneos' },
+  { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', modulo: 'profesores' },
+  { key: 'escuela',       label: 'Escuela',       icon: Goal,        permiso: 'escuela',    modulo: 'escuela' },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas', deportivo: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
@@ -68,9 +71,9 @@ export default function Dashboard() {
   //  - sin canchas de pádel: fuera torneos y profesores
   const almacen = esAlmacen(selectedComplex);
   const tabsDelComplejo = useMemo(() => {
-    const tienePadel = (selectedComplex?.fields || []).some(f => f.deporte === 'padel');
+    const modulos = modulosComplejo(selectedComplex);
     return TABS
-      .filter(tab => !(almacen && tab.deportivo) && !(tab.requiresPadel && !tienePadel))
+      .filter(tab => !(almacen && tab.deportivo) && !(tab.modulo && !modulos[tab.modulo]))
       .map(tab => (tab.key === 'cantina' && almacen ? { ...tab, label: nombreComercio(selectedComplex), icon: Store } : tab));
   }, [almacen, selectedComplex?.fields]);
 
@@ -153,6 +156,7 @@ export default function Dashboard() {
       case 'cantina':       return <CantinaTab {...props} />;
       case 'torneos':       return <TorneosTab {...props} />;
       case 'profesores':    return <ProfesoresTab {...props} />;
+      case 'escuela':       return <EscuelaTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return (
         <SettingsTab {...props}

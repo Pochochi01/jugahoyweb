@@ -8,7 +8,7 @@ import {
 const PERMISOS_DEF = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
-  cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false, torneos: false, profesores: false,
+  cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false, torneos: false, profesores: false, escuela: false,
 };
 const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
@@ -17,7 +17,8 @@ const PERMISOS_LABELS = {
   cantina_gestion: 'Cantina / Almacén — Gestión (stock, productos, pedidos a proveedores)',
   cantina_ventas: 'Cantina / Almacén — Ventas y pedidos de clientes',
   torneos: 'Torneos de pádel',
-  profesores: 'Profesores de pádel',
+  profesores: 'Profesores (pádel / fútbol)',
+  escuela: 'Escuela de fútbol',
 };
 
 const FORM_INICIAL = {

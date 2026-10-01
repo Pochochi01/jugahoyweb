@@ -33,4 +33,26 @@ async function nombreComercio(complexId) {
   return (await modoComplejo(complexId)).nombre_comercio;
 }
 
-module.exports = { modoComplejo, modoDesdeCantidad, nombreComercio, NOMBRE_COMERCIO };
+/**
+ * Módulos deportivos habilitados según las canchas del complejo:
+ *   escuela    → hay al menos una cancha de FÚTBOL habilitada (activa)
+ *   profesores → hay canchas de pádel, o de fútbol habilitadas
+ *   torneos    → hay canchas de pádel
+ * Con otros deportes además de fútbol, la Escuela aparece igual pero
+ * trabaja solo con las canchas de fútbol.
+ * @param {Array<{deporte, activa}>} fields
+ */
+function modulosDesdeCanchas(fields = []) {
+  // activa puede llegar como boolean (instancias) o 0/1 (consultas raw de MySQL); null = activa
+  const habilitada = (f) => f.activa == null || Boolean(Number(f.activa));
+  const futbolActivo = fields.some(f => f.deporte === 'futbol' && habilitada(f));
+  const padel = fields.some(f => f.deporte === 'padel');
+  return { escuela: futbolActivo, profesores: padel || futbolActivo, torneos: padel };
+}
+
+async function modulosComplejo(complexId) {
+  const fields = await Field.findAll({ where: { complex_id: Number(complexId) }, attributes: ['deporte', 'activa'], raw: true });
+  return modulosDesdeCanchas(fields);
+}
+
+module.exports = { modoComplejo, modoDesdeCantidad, nombreComercio, NOMBRE_COMERCIO, modulosDesdeCanchas, modulosComplejo };

@@ -23,6 +23,7 @@ import PWABadge           from './components/PWABadge';
 import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/torneos/TorneoPublicPages';
 import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
 import { ProfesorLogin, ProfesorPanel } from './pages/profesor/ProfesorPages';
+import EscuelaPortalPage from './pages/escuela/EscuelaPortalPage';
 
 export default function App() {
   useEffect(() => {
@@ -60,6 +61,9 @@ export default function App() {
       {/* Organizadores de torneos (login propio) */}
       <Route path="/organizador/login"      element={<OrganizadorLogin />} />
       <Route path="/organizador"            element={<OrganizadorPanel />} />
+
+      {/* Escuela de fútbol: portal del alumno / padre (link personal, sin login) */}
+      <Route path="/escuela/alumno/:token" element={<EscuelaPortalPage />} />
 
       {/* Profesores de pádel (login por DNI) */}
       <Route path="/profesor/login"         element={<ProfesorLogin />} />

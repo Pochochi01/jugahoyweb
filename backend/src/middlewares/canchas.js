@@ -9,7 +9,7 @@
  * El complejo se toma de :complexId (o complex_id en body/query).
  * Deja req.modoComplejo para quien lo necesite.
  */
-const { modoComplejo } = require('../utils/modoComplejo');
+const { modoComplejo, modulosComplejo } = require('../utils/modoComplejo');
 
 async function requireCanchas(req, res, next) {
   try {
@@ -28,4 +28,28 @@ async function requireCanchas(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { requireCanchas };
+/**
+ * Exige que el módulo esté habilitado por las canchas del complejo
+ * ('escuela' → fútbol habilitado · 'profesores' → pádel o fútbol habilitado).
+ */
+const MENSAJES = {
+  escuela: 'La Escuela de fútbol requiere al menos una cancha de fútbol habilitada.',
+  profesores: 'El módulo Profesores requiere canchas de pádel o de fútbol habilitadas.',
+  torneos: 'Los torneos requieren canchas de pádel.',
+};
+function requireModulo(modulo) {
+  return async (req, res, next) => {
+    try {
+      const complexId = req.params.complexId ?? req.body?.complex_id ?? req.query?.complex_id;
+      if (!complexId) return next();
+      const modulos = await modulosComplejo(complexId);
+      if (!modulos[modulo]) {
+        return res.status(403).json({ message: MENSAJES[modulo], code: 'MODULO_NO_HABILITADO', modulo });
+      }
+      req.modulos = modulos;
+      next();
+    } catch (err) { next(err); }
+  };
+}
+
+module.exports = { requireCanchas, requireModulo };

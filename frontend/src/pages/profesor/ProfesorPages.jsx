@@ -3,6 +3,8 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { GraduationCap, LogOut, Plus, X, Trash2, Layers } from 'lucide-react';
 import { profesorPanel } from '../../services/profesoresService';
 import GrillaSemanal, { SemanaNav, inicioSemana } from '../../components/profesores/GrillaSemanal';
+import EscuelaEntrenador from './EscuelaEntrenador';
+import { escuelaProfesor } from '../../services/escuelaService';
 
 const errMsg = (e) => e?.message || 'Ocurrió un error';
 const leerSesion = () => { try { return JSON.parse(localStorage.getItem('prof_session')); } catch { return null; } };
@@ -46,6 +48,14 @@ export function ProfesorPanel() {
   const [complejos, setComplejos] = useState(sesion?.complejos || []);
   // Con un solo complejo entra directo; con varios, elige (o ve el consolidado)
   const [club, setClub] = useState(() => (sesion?.complejos?.length === 1 ? sesion.complejos[0].id : null));
+  // Escuela de fútbol: si en este complejo tiene categorías asignadas, aparece la pestaña
+  const [modo, setModo] = useState('clases');          // 'clases' | 'escuela'
+  const [tieneEscuela, setTieneEscuela] = useState(false);
+  useEffect(() => {
+    setTieneEscuela(false); setModo('clases');
+    if (!club || club === CONSOLIDADO) return;
+    escuelaProfesor(club).resumen().then(r => setTieneEscuela(r.categorias.length > 0)).catch(() => {});
+  }, [club]);
   const [desde, setDesde] = useState(inicioSemana());
   const [g, setG] = useState(null);
   const [alta, setAlta] = useState(null);      // slot libre elegido
@@ -98,6 +108,15 @@ export function ProfesorPanel() {
           </div>
         ) : (
           <>
+            {tieneEscuela && (
+              <div className="flex gap-1">
+                {[['clases', 'Clases'], ['escuela', 'Escuela de fútbol']].map(([k, l]) => (
+                  <button key={k} onClick={() => setModo(k)}
+                    className={`px-3 py-1.5 rounded-lg text-sm ${modo === k ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>{l}</button>
+                ))}
+              </div>
+            )}
+            {modo === 'escuela' && tieneEscuela ? <EscuelaEntrenador complexId={club} /> : <>
             <div className="flex flex-wrap items-center gap-3">
               <SemanaNav desde={desde} onChange={setDesde} />
               {club !== CONSOLIDADO && g && (
@@ -111,6 +130,7 @@ export function ProfesorPanel() {
                   mostrarClub={club === CONSOLIDADO}
                   onLibre={club === CONSOLIDADO ? undefined : setAlta}
                   onClase={setDetalle} />}
+            </>}
           </>
         )}
       </main>

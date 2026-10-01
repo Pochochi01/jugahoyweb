@@ -40,7 +40,7 @@ function profesorEnClub(req, res, next) {
   next();
 }
 
-/** El módulo solo existe para complejos con canchas de pádel. */
+/** @deprecated usar requireModulo('profesores') de middlewares/canchas (pádel o fútbol). */
 async function requirePadel(req, res, next) {
   const n = await Field.count({ where: { complex_id: Number(req.params.complexId), deporte: 'padel' } });
   if (!n) return res.status(400).json({ message: 'El complejo no tiene canchas de pádel.', code: 'SIN_PADEL' });

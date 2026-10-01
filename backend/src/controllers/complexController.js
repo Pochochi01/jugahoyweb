@@ -1,9 +1,10 @@
 const { Complex, Field, User, Collaborator } = require('../models');
-const { modoDesdeCantidad } = require('../utils/modoComplejo');
+const { modoDesdeCantidad, modulosDesdeCanchas } = require('../utils/modoComplejo');
 
 // Agrega el modo de operación (deportivo / almacén) según las canchas cargadas.
 // El frontend arma el menú con esto: sin canchas → solo "Almacén".
-const conModo = (c) => ({ ...c.toJSON(), ...modoDesdeCantidad((c.fields || []).length) });
+// modulos: { escuela, profesores, torneos } habilitados por las canchas (ver utils/modoComplejo)
+const conModo = (c) => ({ ...c.toJSON(), ...modoDesdeCantidad((c.fields || []).length), modulos: modulosDesdeCanchas(c.fields || []) });
 
 async function getAll(req, res) {
   try {

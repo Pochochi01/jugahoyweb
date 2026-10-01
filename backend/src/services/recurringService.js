@@ -79,4 +79,4 @@ async function darDeBaja(complexId, id) {
   return { tpl, eliminadas: futuras.length };
 }
 
-module.exports = { materializar, materializarComplejo, darDeBaja, SEMANAS };
+module.exports = { materializar, materializarComplejo, darDeBaja, ocurrencias, SEMANAS };

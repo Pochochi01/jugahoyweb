@@ -30,6 +30,7 @@ const verificationRoutes = require('./routes/verification');
 const cantinaRoutes      = require('./routes/cantina');
 const torneosRoutes      = require('./routes/torneos');
 const profesoresRoutes   = require('./routes/profesores');
+const escuelaRoutes      = require('./routes/escuela');
 
 const app    = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -99,6 +100,7 @@ app.use('/api/cantina',       cantinaRoutes);
 app.use('/api/almacen',       cantinaRoutes);   // mismo módulo con el nombre de los complejos sin canchas
 app.use('/api/torneos',       torneosRoutes);
 app.use('/api/profesores',    profesoresRoutes);
+app.use('/api/escuela',       escuelaRoutes);
 
 // ── Frontend estático (modo mismo-servidor) ───────────────────
 // Activar con SERVE_FRONTEND=true en .env.production cuando el frontend

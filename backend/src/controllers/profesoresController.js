@@ -10,6 +10,8 @@ const { Profesor, ProfesorCancha, HorarioProfesor, Field } = require('../models'
 const svc = require('../services/profesores/profesorService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
+// Canchas donde un profesor puede dar clases (pádel y, para la Escuela, fútbol)
+const DEPORTES_CLASES = ['padel', 'futbol'];
 
 function validar(body, parcial = false) {
   const out = {};
@@ -86,7 +88,7 @@ async function remove(req, res) {
 /** GET canchas de pádel del complejo (para asignar). */
 async function canchas(req, res) {
   const fields = await Field.findAll({
-    where: { complex_id: req.clubId, deporte: 'padel' },
+    where: { complex_id: req.clubId, deporte: DEPORTES_CLASES },
     attributes: ['id', 'nombre', 'identificador', 'activa', 'hora_apertura', 'hora_cierre'],
     order: [['nombre', 'ASC']],
   });
@@ -104,8 +106,8 @@ async function setDisponibilidad(req, res) {
     if (!p) return res.status(404).json({ message: 'Profesor no encontrado' });
     const ventanas = svc.validarVentanas(req.body?.ventanas);
     const ids = [...new Set(ventanas.map(v => v.field_id))];
-    const ok = await Field.count({ where: { id: ids, complex_id: req.clubId, deporte: 'padel' } });
-    if (ok !== ids.length) return res.status(400).json({ message: 'Alguna cancha no es de pádel o no pertenece al complejo.' });
+    const ok = await Field.count({ where: { id: ids, complex_id: req.clubId, deporte: DEPORTES_CLASES } });
+    if (ok !== ids.length) return res.status(400).json({ message: 'Alguna cancha no es de pádel/fútbol o no pertenece al complejo.' });
     await Profesor.sequelize.transaction(async (t) => {
       await ProfesorCancha.destroy({ where: { profesor_id: p.id }, transaction: t });
       await ProfesorCancha.bulkCreate(ventanas.map(v => ({ ...v, profesor_id: p.id })), { transaction: t });
