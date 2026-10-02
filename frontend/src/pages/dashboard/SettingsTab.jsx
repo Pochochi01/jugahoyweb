@@ -29,6 +29,48 @@ function isValidUrl(s) {
   } catch { return false; }
 }
 
+const DEPORTES = [
+  { value: 'futbol',  label: 'Fútbol',  emoji: '⚽' },
+  { value: 'tenis',   label: 'Tenis',   emoji: '🎾' },
+  { value: 'padel',   label: 'Pádel',   emoji: '🏓' },
+  { value: 'basquet', label: 'Basket',  emoji: '🏀' },
+  { value: 'squash',  label: 'Squash',  emoji: '🥎' },
+];
+
+// Superficies por deporte (misma tabla que backend utils/canchas.js).
+// Basket y Squash: sin superficie (dropdown deshabilitado).
+const SUPERFICIES = {
+  futbol:  [{ value: 'cemento', label: 'Cemento' }, { value: 'sintetico', label: 'Sintético' }, { value: 'natural', label: 'Natural' }],
+  tenis:   [{ value: 'dura', label: 'Dura' }, { value: 'arcilla', label: 'Arcilla' }, { value: 'cesped', label: 'Césped' }],
+  padel:   [{ value: 'dura', label: 'Dura' }, { value: 'cesped', label: 'Césped' }],
+  basquet: [],
+  squash:  [],
+};
+const superficiesDe = (dep) => SUPERFICIES[dep] || [];
+
+// Próximo identificador "C<n>" a partir de las canchas existentes del complejo.
+function nextFieldId(fields = []) {
+  let max = 0;
+  for (const f of fields) {
+    const m = /^C(\d+)$/.exec(f.identificador || '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `C${max + 1}`;
+}
+// Turnos de hora completa: 1 h y 2 h (sin 30 min ni 1½ h).
+const DURACIONES = [
+  { value: 60,  label: '1 hora',   short: '1 h' },
+  { value: 120, label: '2 horas',  short: '2 h' },
+];
+
+const CANCHA_INICIAL = {
+  nombre: '', deporte: 'futbol', superficie: 'cemento', dimensiones: '', techada: false,
+  duraciones_permitidas: [60], precios_por_duracion: { 60: '' },
+  precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
+  sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
+  whatsapp_contacto: '',   // WhatsApp propio de la cancha (fallback: el del complejo)
+};
+
 // ── Tarjeta de WhatsApp / Meta (credenciales propias del club) ───────────────
 function WhatsAppCard({ complexId }) {
   const [estado, setEstado] = useState(null);   // respuesta de getIntegrations
