@@ -25,51 +25,7 @@ function validateItems(items) {
   }
 }
 
-// ── Cálculo de montos ─────────────────────────────────────────
-/**
- * Monto de la seña de una cancha (monto fijo definido por el admin).
- * @param {object} field  instancia/objeto Field
- */
-function montoSena(field) {
-  const s = Number(field?.sena_monto);
-  if (!Number.isFinite(s) || s <= 0) {
-    const e = new Error('Esta cancha no tiene una seña configurada.'); e.status = 400; e.code = 'SENA_NO_CONFIG';
-    throw e;
-  }
-  return Math.round(s * 100) / 100;
-}
-
-/**
- * Monto total del turno (lo que se cobra si paga el total).
- * @param {object} booking  instancia/objeto Booking
- */
-function montoTotal(booking) {
-  const t = Number(booking?.monto);
-  if (!Number.isFinite(t) || t <= 0) {
-    const e = new Error('La reserva no tiene un monto válido.'); e.status = 400; e.code = 'MONTO_INVALIDO';
-    throw e;
-  }
-  return Math.round(t * 100) / 100;
-}
-
-/**
- * Calcula el monto a cobrar según el tipo de pago.
- * @returns {{ amount:number, label:string }}
- */
-function calcularMonto({ tipoPago, field, booking }) {
-  if (tipoPago === 'seña') {
-    const amount = montoSena(field);
-    const total  = montoTotal(booking);
-    if (amount > total) {
-      const e = new Error('La seña no puede superar el total del turno.'); e.status = 400; throw e;
-    }
-    return { amount, label: 'Seña del turno' };
-  }
-  if (tipoPago === 'total') {
-    return { amount: montoTotal(booking), label: 'Total del turno' };
-  }
-  const e = new Error('tipoPago inválido (esperado "seña" o "total").'); e.status = 400; throw e;
-}
+// Montos (seña / total): services/reservaPago.service.js — única fuente para web, panel y chatbot.
 
 // ── Preference ────────────────────────────────────────────────
 /**
@@ -117,9 +73,6 @@ async function getPayment(id, accessToken) {
 
 module.exports = {
   validateItems,
-  montoSena,
-  montoTotal,
-  calcularMonto,
   createPreference,
   getPayment,
 };

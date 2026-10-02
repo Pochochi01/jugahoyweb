@@ -1,10 +1,16 @@
-const { Complex, Field, User, Collaborator } = require('../models');
+const { Complex, Field, User, Collaborator, MercadoPagoToken } = require('../models');
 const { modoDesdeCantidad, modulosDesdeCanchas } = require('../utils/modoComplejo');
 
 // Agrega el modo de operación (deportivo / almacén) según las canchas cargadas.
 // El frontend arma el menú con esto: sin canchas → solo "Almacén".
 // modulos: { escuela, profesores, torneos } habilitados por las canchas (ver utils/modoComplejo)
-const conModo = (c) => ({ ...c.toJSON(), ...modoDesdeCantidad((c.fields || []).length), modulos: modulosDesdeCanchas(c.fields || []) });
+// mp_conectado: MercadoPago vinculado por OAuth → el panel ofrece seña/total en todas las canchas
+const conModo = (c) => {
+  const { mercadopago, ...json } = c.toJSON();
+  return { ...json, ...modoDesdeCantidad((c.fields || []).length), modulos: modulosDesdeCanchas(c.fields || []), mp_conectado: mercadopago?.estado === 'conectado' };
+};
+// Solo el estado de la conexión (nunca los tokens)
+const INC_MP = { model: MercadoPagoToken, as: 'mercadopago', attributes: ['estado'], required: false };
 
 async function getAll(req, res) {
   try {
@@ -12,7 +18,7 @@ async function getAll(req, res) {
 
     if (rol === 'general_admin') {
       const complexes = await Complex.findAll({
-        include: [{ model: Field, as: 'fields' }],
+        include: [{ model: Field, as: 'fields' }, INC_MP],
         order: [['nombre', 'ASC']],
       });
       return res.json(complexes.map(conModo));
@@ -21,7 +27,7 @@ async function getAll(req, res) {
     if (rol === 'complex_admin') {
       const complexes = await Complex.findAll({
         where: { owner_id: userId },
-        include: [{ model: Field, as: 'fields' }],
+        include: [{ model: Field, as: 'fields' }, INC_MP],
         order: [['nombre', 'ASC']],
       });
       return res.json(complexes.map(conModo));
@@ -35,7 +41,7 @@ async function getAll(req, res) {
           model: Complex,
           as: 'complex',
           where: { activo: true },
-          include: [{ model: Field, as: 'fields' }],
+          include: [{ model: Field, as: 'fields' }, INC_MP],
         }],
       });
       const complexes = assignments.map(a => a.complex).filter(Boolean);
@@ -53,6 +59,7 @@ async function getOne(req, res) {
     const complex = await Complex.findByPk(req.params.id, {
       include: [
         { model: Field, as: 'fields' },
+        INC_MP,
         { model: User, as: 'owner', attributes: ['id', 'nombre', 'apellido', 'email'] },
       ],
     });

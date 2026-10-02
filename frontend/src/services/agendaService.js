@@ -15,6 +15,8 @@ export const agendaService = {
   cobrarTurno:     (complexId, bid, data)        => api.post(`/agenda/${complexId}/turno/${bid}/cobrar`, data),
   getPendientes: (complexId)                     => api.get(`/agenda/${complexId}/pendientes`),
   reservar:      (complexId, data)               => api.post(`/agenda/${complexId}/reservar`, data),
+  // Modalidades de pago del turno (seña/total solo si el complejo tiene MercadoPago conectado)
+  opcionesPago:  (complexId, params)             => api.get(`/agenda/${complexId}/opciones-pago`, { params }),
   cancelar:      (complexId, bookingId)          => api.put(`/agenda/${complexId}/cancelar/${bookingId}`),
   confirmar:     (complexId, bookingId)          => api.put(`/agenda/${complexId}/confirmar/${bookingId}`),
   rechazar:      (complexId, bookingId, motivo)  => api.put(`/agenda/${complexId}/rechazar/${bookingId}`, { motivo }),

@@ -16,6 +16,10 @@ const Complex = sequelize.define('Complex', {
   link_invitacion: { type: DataTypes.STRING(500), allowNull: true, defaultValue: null },
   // Máximo de turnos "no asistidos" por usuario en un mes antes de bloquear.
   max_inasistencias_mes: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 2 },
+  // Pagos online (MercadoPago conectado por OAuth): modalidad preseleccionada en
+  // TODAS las canchas (web, panel y chatbot) y % de seña si la cancha no tiene monto propio.
+  default_payment_option: { type: DataTypes.ENUM('complejo', 'seña', 'total'), allowNull: false, defaultValue: 'complejo' },
+  sena_porcentaje:        { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
   email: { type: DataTypes.STRING(150) },
   prestaciones: { type: DataTypes.JSON },
   logo_url: { type: DataTypes.STRING(255) },

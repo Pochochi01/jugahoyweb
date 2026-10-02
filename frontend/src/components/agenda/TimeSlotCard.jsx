@@ -267,6 +267,17 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               <CreditCard className="w-3 h-3 shrink-0" />
               {METODO_LABELS[slot.booking.metodo_pago] || slot.booking.metodo_pago}
             </span>
+            {/* Modalidad de pago: offline pendiente / seña o total online */}
+            {(() => {
+              const b = slot.booking;
+              const pagadoOnline = b.mp_payment_id && b.estado === 'confirmado' ? Number(b.monto_pagado) || 0 : 0;
+              let txt = null, cls = '';
+              if (b.estado === 'pendiente_pago') { txt = `Esperando pago online (${b.tipo_pago === 'seña' ? 'seña' : 'total'})`; cls = 'bg-amber-500/15 text-amber-300'; }
+              else if (pagadoOnline > 0 && pagadoOnline < Number(b.monto)) { txt = `Seña online · saldo $${(Number(b.monto) - pagadoOnline).toLocaleString('es-AR')}`; cls = 'bg-sky-500/15 text-sky-300'; }
+              else if (pagadoOnline > 0) { txt = 'Pagado online'; cls = 'bg-green-500/15 text-green-300'; }
+              else if (b.tipo_pago === 'complejo' && !b.cobrado) { txt = 'Paga en el complejo'; cls = 'bg-white/10 text-white/70'; }
+              return txt && <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${cls}`}>{txt}</span>;
+            })()}
             <span className="text-xs font-medium px-1.5 py-0.5 rounded" style={S.badge}>
               {slot.booking.hora_inicio} → {slot.booking.hora_fin}
               <span className="ml-1 opacity-60">({slot.booking.duracion}min)</span>

@@ -514,7 +514,7 @@ export default function ComplexSlotsPage() {
           onConfirm={handleConfirm}
           onClose={() => setSelected(null)}
           playerMode
-          mpEnabled={!!complex?.mp_enabled}
+          cargarOpcionesPago={(duracion) => publicService.opcionesPago(id, { field_id: selected.field.id, duracion })}
           playerData={{ nombre: `${user?.nombre} ${user?.apellido}`, telefono: telFromLink || user?.telefono }}
         />
       )}

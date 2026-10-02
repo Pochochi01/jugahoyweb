@@ -63,6 +63,7 @@ function bloqueoDe(slot) {
   return null;
 }
 const recurring = require('../services/recurringService');
+const reservaPago = require('../services/reservaPago.service');
 const caja = require('../services/cajaService');
 const waitlist = require('../services/waitlistService');
 const notifService = require('./../services/notification.service');
@@ -189,7 +190,12 @@ async function reserveSlot(req, res) {
       field_id, fecha, hora, duracion = 60,
       nombre_cliente, telefono_cliente, email_cliente,
       metodo_pago, monto, notas,
+      tipo_pago,   // 'complejo' | 'seña' | 'total' (seña/total → link de MercadoPago para el cliente)
     } = req.body;
+    if (tipo_pago != null && !reservaPago.TIPOS.includes(tipo_pago)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'tipo_pago inválido (complejo, seña o total).' });
+    }
 
     if (!nombre_cliente || !field_id || !fecha || !hora) {
       await t.rollback();
@@ -245,6 +251,8 @@ async function reserveSlot(req, res) {
       monto,
       notas,
       estado:     'confirmado',
+      // 'complejo' = paga en el lugar (pendiente de cobro offline hasta cobrarlo en la agenda)
+      tipo_pago:  tipo_pago || null,
       user_id:    cuenta?.id || null,
       created_by: req.user.id,
     }, { transaction: t });
@@ -266,9 +274,34 @@ async function reserveSlot(req, res) {
     }, { transaction: t });
 
     await t.commit();
-    res.status(201).json({ booking, horasReservadas: horasAReservar });
+
+    // Seña / total con MercadoPago: se genera el link para que el admin se lo
+    // mande al cliente (el turno ya quedó tomado; si MP falla, se informa sin
+    // perder la reserva).
+    let pago = null, pago_error = null;
+    if (tipo_pago === 'seña' || tipo_pago === 'total') {
+      try { pago = await reservaPago.iniciarPagoReserva(booking.id, tipo_pago); }
+      catch (e) { pago_error = e.message; }
+      await booking.reload();
+    }
+    res.status(201).json({ booking, horasReservadas: horasAReservar, pago, pago_error });
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// ── GET /agenda/:complexId/opciones-pago?field_id&duracion[&monto] ──
+// Modalidades de pago disponibles para ese turno (las de MercadoPago solo si el
+// complejo está conectado). monto opcional: el admin puede ajustar el precio.
+async function opcionesPagoTurno(req, res) {
+  try {
+    const field = await Field.findOne({ where: { id: req.query.field_id, complex_id: req.params.complexId } });
+    if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
+    const duracion = Number(req.query.duracion) || 60;
+    const total = req.query.monto != null && req.query.monto !== '' ? Number(req.query.monto) : reservaPago.montoTurno(field, duracion);
+    res.json(await reservaPago.opcionesPago(Number(req.params.complexId), field, total));
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 }
@@ -810,17 +843,21 @@ async function getTurnoDetalle(req, res) {
     if (r.error) return res.status(r.error).json({ message: r.message });
     const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, order: [['id', 'ASC']] });
     const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
-    const cancha = num(r.booking.monto);
+    const canchaTotal = num(r.booking.monto);
+    // Seña / total pagado online (MercadoPago aprobado): en el complejo solo se cobra el saldo
+    const pagadoOnline = r.booking.mp_payment_id && r.booking.estado === 'confirmado' ? Math.min(num(r.booking.monto_pagado), canchaTotal) : 0;
+    const cancha = Math.round((canchaTotal - pagadoOnline) * 100) / 100;
     res.json({
       booking: {
         id: r.booking.id, nombre_cliente: r.booking.nombre_cliente, telefono_cliente: r.booking.telefono_cliente,
         fecha: r.booking.fecha, hora_inicio: r.booking.hora_inicio, hora_fin: r.booking.hora_fin,
-        monto: cancha, metodo_pago: r.booking.metodo_pago, estado: r.booking.estado,
+        monto: canchaTotal, metodo_pago: r.booking.metodo_pago, estado: r.booking.estado, tipo_pago: r.booking.tipo_pago,
         cobrado: r.booking.cobrado, cobrado_at: r.booking.cobrado_at, cobro_detalle: r.booking.cobro_detalle,
         field: r.booking.field,
       },
       consumos,
-      totales: { cancha, consumos: totalConsumos, total: cancha + totalConsumos },
+      // cancha = saldo a cobrar en el complejo (total − pagado online)
+      totales: { cancha, cancha_total: canchaTotal, pagado_online: pagadoOnline, consumos: totalConsumos, total: cancha + totalConsumos },
     });
   } catch (err) { res.status(500).json({ message: err.message }); }
 }
@@ -926,7 +963,20 @@ async function cobrarTurno(req, res) {
 
     const consumos = await BookingConsumo.findAll({ where: { booking_id: bookingId }, transaction: t });
     const totalConsumos = consumos.reduce((s, c) => s + num(c.subtotal), 0);
-    const cancha = num(booking.monto);
+    // Pago online aprobado (seña o total por MercadoPago): en el complejo se cobra
+    // solo el SALDO de la cancha. Si ese pago no entró a la caja al aprobarse
+    // (no había caja abierta), se registra ahora una única vez.
+    const canchaTotal = num(booking.monto);
+    const pagadoOnline = booking.mp_payment_id && booking.estado === 'confirmado' ? Math.min(num(booking.monto_pagado), canchaTotal) : 0;
+    if (pagadoOnline > 0 && !booking.pago_online_en_caja) {
+      await caja.registrarEnCaja(complexId, {
+        tipo: 'ingreso', metodo_pago: 'mercadopago', categoria: 'turno', usuario_id: req.user.id, agenda_id: booking.id,
+        concepto: `${booking.tipo_pago === 'seña' ? 'Seña' : 'Pago'} online turno ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} (MercadoPago)`,
+        monto: pagadoOnline,
+      }, t);
+      await booking.update({ pago_online_en_caja: true }, { transaction: t });
+    }
+    const cancha = Math.round((canchaTotal - pagadoOnline) * 100) / 100;   // saldo a cobrar en el complejo
     const total = cancha + totalConsumos;
     const metodoValido = m => ['efectivo', 'transferencia', 'mercadopago', 'tarjeta'].includes(m);
     const metodo = metodoValido(metodo_pago) ? metodo_pago : (booking.metodo_pago || 'efectivo');
@@ -994,7 +1044,7 @@ async function cobrarTurno(req, res) {
       cobrado: true,
       cobrado_at: new Date(),
       metodo_pago: metodo,
-      cobro_detalle: { jugadores: nJug, por_jugador, total, cancha, consumos: totalConsumos, pagado: pagadoTotal, pagos: pagosNorm },
+      cobro_detalle: { jugadores: nJug, por_jugador, total, cancha, cancha_total: canchaTotal, pagado_online: pagadoOnline, consumos: totalConsumos, pagado: pagadoTotal, pagos: pagosNorm },
     }, { transaction: t });
 
     await Operation.create({
@@ -1008,4 +1058,5 @@ async function cobrarTurno(req, res) {
   } catch (err) { await t.rollback(); res.status(500).json({ message: err.message }); }
 }
 
-module.exports = { getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getConteoDia, getIncumplidos, habilitarIncumplido, crearTurnoFijo, listTurnosFijos, bajaTurnoFijo, getTurnoDetalle, listProductosDisponibles, agregarConsumos, quitarConsumo, cobrarTurno, getByComplex, create, update, remove };
+module.exports = {
+  opcionesPagoTurno, getSlotsForField, reserveSlot, cancelBooking, getPendingBookings, confirmBooking, rejectBooking, markNoShow, correctNoShow, getConteoDia, getIncumplidos, habilitarIncumplido, crearTurnoFijo, listTurnosFijos, bajaTurnoFijo, getTurnoDetalle, listProductosDisponibles, agregarConsumos, quitarConsumo, cobrarTurno, getByComplex, create, update, remove };

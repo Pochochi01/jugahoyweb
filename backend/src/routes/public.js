@@ -8,6 +8,7 @@ const { authenticate } = require('../middlewares/auth');
 router.get('/complexes',                ctrl.getComplexes);
 router.get('/complexes/:id',            ctrl.getComplex);
 router.get('/complexes/:id/slots',      ctrl.getComplexSlots);
+router.get('/complexes/:id/opciones-pago', ctrl.getOpcionesPago);   // modalidades de pago del turno
 router.get('/complexes/:id/ocupados',   ctrl.getOcupados);   // lista de espera: turnos ocupados
 router.post('/register-complex',        ctrl.registerComplex);
 

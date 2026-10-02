@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Unplug, ExternalLink } from 'lucide-react';
 import { mercadopagoService } from '../services/mercadopagoService';
 import { generarPkce, guardarVerifier } from '../utils/pkce';
+import ModalidadPagoConfig from './ModalidadPagoConfig';
 
 const fecha = (f) => (f ? new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
 
@@ -73,6 +74,8 @@ export default function MercadoPagoConexion({ complexId, resultado }) {
             <div><span className="text-muted-foreground">Última renovación: </span>{fecha(e.renovado_at)}</div>
           </div>
           <p className="text-xs text-muted-foreground">Los pagos online de reservas y torneos se acreditan en esta cuenta.</p>
+          {/* Conectado → se habilitan seña / total en todas las canchas */}
+          <ModalidadPagoConfig complexId={complexId} />
           <div className="flex flex-wrap gap-2">
             <button className="btn-outline text-sm flex items-center gap-1.5" disabled={cargando}
               onClick={() => accion(() => mercadopagoService.renovar(complexId), 'Conexión verificada: el token se renovó correctamente.')}>

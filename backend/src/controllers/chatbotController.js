@@ -38,6 +38,7 @@ const { Field, TimeSlot, Booking, Complex, Operation, Notification, User, ClubIn
 const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const notifService = require('../services/notification.service');
+const reservaPago  = require('../services/reservaPago.service');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDeporte } = require('../utils/canchas');
@@ -965,6 +966,12 @@ async function handleWebhook(req, res) {
         return;
       }
 
+      if (btnId.startsWith('pago_')) {
+        const [, bookingId, tipo] = btnId.split('_');           // pago_<id>_<complejo|sena|total>
+        await _handlePago(ctx, from, Number(bookingId), tipo === 'sena' ? 'seña' : tipo);
+        return;
+      }
+
       if (btnId.startsWith('discard_')) {
         pendingName.delete(from);
         await send({
@@ -1548,6 +1555,7 @@ async function _handleConfirm(ctx, from, slotRaw) {
       nombre_cliente:   nombreTitular,
       telefono_cliente: from,
       metodo_pago:      'efectivo',
+      tipo_pago:        'complejo',   // si elige pagar con MercadoPago se actualiza (ver _handlePago)
       monto,
       estado:           'confirmado',
       notas:            'Reserva por WhatsApp',
@@ -1636,6 +1644,9 @@ async function _handleConfirm(ctx, from, slotRaw) {
       },
     });
 
+    // Opciones de pago (MercadoPago conectado por OAuth → seña / total por link)
+    await _ofrecerPago(ctx, from, booking, field);
+
     // Config del complejo ya cargada dentro de la transacción (link + WhatsApp).
     // Botón "Ver la web". En ambos casos viaja el teléfono de WhatsApp (tel) para
     // guardarlo en la cuenta del jugador al iniciar sesión/registrarse:
@@ -1656,6 +1667,72 @@ async function _handleConfirm(ctx, from, slotRaw) {
     }
   } catch (err) {
     console.error('[chatbot._handleConfirm] aviso post-confirmación falló (la reserva SÍ se guardó):', err.message);
+  }
+}
+
+// ── Pago de la reserva por el chatbot ───────────────────────────────────────
+const fmtPesos = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
+const PAGO_BTN = { complejo: 'complejo', 'seña': 'sena', total: 'total' };
+
+/**
+ * Si el complejo tiene MercadoPago conectado, ofrece las modalidades de pago con
+ * botones (WhatsApp permite hasta 3): en el complejo · seña · total. La
+ * predeterminada del complejo va primero. Sin MercadoPago no se envía nada
+ * (la reserva queda "paga en el complejo").
+ */
+async function _ofrecerPago(ctx, from, booking, field) {
+  const { mp_conectado, predeterminada, opciones } = await reservaPago.opcionesPago(ctx.clubId, field, Number(booking.monto));
+  if (!mp_conectado) return;
+  const disponibles = opciones.filter(o => o.disponible)
+    .sort((a, b) => (a.tipo === predeterminada ? -1 : b.tipo === predeterminada ? 1 : 0));
+  if (disponibles.length < 2) return;   // solo "en el complejo": no hay nada que elegir
+  const titulo = { complejo: '🏟️ En el complejo', 'seña': `💳 Seña ${fmtPesos(disponibles.find(o => o.tipo === 'seña')?.monto)}`, total: `💳 Total ${fmtPesos(Number(booking.monto))}` };
+  await wa.sendMessage({
+    recipient_type: 'individual', to: from, type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: '💰 ¿Cómo querés pagar?' },
+      body: { text: `Turno #${booking.id} · total ${fmtPesos(booking.monto)}.\nPodés pagar en el complejo o asegurarlo ahora con MercadoPago.` },
+      footer: { text: 'Pago seguro con MercadoPago' },
+      action: {
+        buttons: disponibles.slice(0, 3).map(o => ({
+          type: 'reply',
+          reply: { id: `pago_${booking.id}_${PAGO_BTN[o.tipo]}`, title: titulo[o.tipo].substring(0, 20) },   // límite 20 chars
+        })),
+      },
+    },
+  }, ctx.creds);
+}
+
+/** Respuesta al botón de pago: "en el complejo" o link de MercadoPago (seña / total). */
+async function _handlePago(ctx, from, bookingId, tipo) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const booking = await Booking.findByPk(bookingId, { include: [{ model: Field, as: 'field', attributes: ['complex_id', 'nombre', 'identificador'] }] });
+  const tel = (t) => String(t || '').replace(/\D/g, '').slice(-10);
+  // Solo el titular (mismo WhatsApp) y solo reservas de ESTE complejo
+  if (!booking || booking.field?.complex_id !== ctx.clubId || tel(booking.telefono_cliente) !== tel(from)) {
+    return send({ to: from, type: 'text', text: { body: '⚠️ No encontramos esa reserva.' } });
+  }
+  if (['cancelado', 'rechazado'].includes(booking.estado)) {
+    return send({ to: from, type: 'text', text: { body: `⚠️ La reserva #${booking.id} está cancelada.` } });
+  }
+  if (booking.mp_payment_id && booking.estado === 'confirmado') {
+    return send({ to: from, type: 'text', text: { body: `✅ La reserva #${booking.id} ya está pagada.` } });
+  }
+
+  if (tipo === 'complejo') {
+    await booking.update({ tipo_pago: 'complejo', metodo_pago: 'efectivo', ...(booking.estado === 'pendiente_pago' ? { estado: 'confirmado' } : {}) });
+    return send({ to: from, type: 'text', text: { body: `🏟️ Listo: pagás ${fmtPesos(booking.monto)} en el complejo.\nTu turno #${booking.id} está confirmado.` } });
+  }
+  try {
+    const pago = await reservaPago.iniciarPagoReserva(booking.id, tipo);
+    await send(webLinkText(from, pago.init_point, {
+      titulo: `💳 *Pagá ${tipo === 'seña' ? 'la seña' : 'el total'} (${fmtPesos(pago.amount)}) con MercadoPago*`,
+      intro: `Turno #${booking.id}. Tocá el link para pagar; cuando MercadoPago lo apruebe te confirmamos por acá:`,
+    }));
+  } catch (err) {
+    console.error('[chatbot._handlePago]', err.message);
+    await send({ to: from, type: 'text', text: { body: `⚠️ No pudimos generar el link de pago (${err.message}). Tu turno sigue reservado: podés pagar en el complejo.` } });
   }
 }
 

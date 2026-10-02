@@ -544,7 +544,7 @@ function FieldDetail({ field, onClose }) {
           value={`${field.hora_apertura || '08:00'} → ${field.hora_cierre || '02:00'}`} />
         <Row label="Estado" value={field.activa ? '🟢 Habilitada' : '🔴 Inhabilitada'} />
         <Row label="Seña online"
-          value={field.sena_monto > 0 ? `$${parseFloat(field.sena_monto).toLocaleString('es-AR')}` : '— (no ofrece seña)'} />
+          value={field.sena_monto > 0 ? `$${parseFloat(field.sena_monto).toLocaleString('es-AR')}` : '— (usa el % de seña del complejo)'} />
       </div>
 
       {Object.keys(precios).length > 0 && (

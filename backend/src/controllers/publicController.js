@@ -4,6 +4,7 @@ const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
 const waitlist = require('../services/waitlistService');
 const { todayAR } = require('../utils/time');
+const reservaPago = require('../services/reservaPago.service');
 const { evaluarCancelacion, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
 
@@ -263,6 +264,21 @@ async function playerReserve(req, res) {
     //  - complejo / otros         → 'confirmado': la reserva web NO requiere que el
     //    administrador/colaborador la confirme (queda agendada de inmediato).
     const esMP          = tipo_pago === 'seña' || tipo_pago === 'total';
+    if (tipo_pago != null && !reservaPago.TIPOS.includes(tipo_pago)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Forma de pago inválida.' });
+    }
+    // El precio lo calcula el SERVIDOR (cancha + duración): el que manda el navegador
+    // se ignora, si no un jugador podría pagar online menos de lo que vale el turno.
+    const montoTurno = reservaPago.montoTurno(field, duracion);
+    if (esMP) {
+      const { opciones } = await reservaPago.opcionesPago(Number(complexId), field, montoTurno);
+      const op = opciones.find(o => o.tipo === tipo_pago);
+      if (!op?.disponible) {
+        await t.rollback();
+        return res.status(400).json({ message: `No se puede ${tipo_pago === 'seña' ? 'pagar seña' : 'pagar online'} en esta cancha: ${op?.motivo || 'opción no disponible'}.`, code: 'PAGO_NO_DISPONIBLE' });
+      }
+    }
     const estadoInicial = esMP ? 'pendiente_pago' : 'confirmado';
     const metodoFinal   = esMP ? 'mercadopago'
                         : tipo_pago === 'complejo' ? 'efectivo'
@@ -276,7 +292,7 @@ async function playerReserve(req, res) {
       email_cliente,
       metodo_pago: metodoFinal,
       tipo_pago:   tipo_pago || null,
-      monto,
+      monto:       montoTurno,
       notas,
       estado:     estadoInicial,
       user_id:    req.user.id,
@@ -681,4 +697,18 @@ async function addWaitlist(req, res) {
   }
 }
 
-module.exports = { getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex, checkInasistencias, getOcupados, addWaitlist };
+// ── GET /public/complexes/:id/opciones-pago?field_id&duracion ──
+// Modalidades de pago del turno (las de MercadoPago se habilitan solas si el
+// complejo está conectado por OAuth) con los montos calculados por el servidor.
+async function getOpcionesPago(req, res) {
+  try {
+    const field = await Field.findOne({ where: { id: req.query.field_id, complex_id: req.params.id, activa: true } });
+    if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
+    const duracion = Number(req.query.duracion) || 60;
+    res.json(await reservaPago.opcionesPago(Number(req.params.id), field, reservaPago.montoTurno(field, duracion)));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getOpcionesPago, getComplexes, getComplex, getComplexSlots, playerReserve, getMyBookings, cancelMyBooking, registerComplex, checkInasistencias, getOcupados, addWaitlist };

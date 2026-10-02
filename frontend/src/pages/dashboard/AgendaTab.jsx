@@ -8,6 +8,7 @@ import { settingsService } from '../../services/settingsService';
 import { useAuth } from '../../context/AuthContext';
 import TimeSlotList from '../../components/agenda/TimeSlotList';
 import BookingModal from '../../components/agenda/BookingModal';
+import LinkPagoModal from '../../components/agenda/LinkPagoModal';
 import TurnoModal from '../../components/agenda/TurnoModal';
 
 function today() { return new Date().toISOString().split('T')[0]; }
@@ -257,6 +258,7 @@ export default function AgendaTab({ complexId }) {
   const [slots,         setSlots]         = useState([]);
   const [loading,       setLoading]       = useState(false);
   const [selectedSlot,  setSelectedSlot]  = useState(null);
+  const [linkPago,      setLinkPago]      = useState(null);   // { pago, booking } tras reservar con seña/total
   const [toast,         setToast]         = useState(null);
   const [conteos,       setConteos]       = useState({});   // { fieldId: cantidad de turnos del día }
   const [showFijos,     setShowFijos]     = useState(false); // modal de gestión de turnos fijos
@@ -296,9 +298,17 @@ export default function AgendaTab({ complexId }) {
       loadSlots(); loadConteos();
       return;
     }
-    await agendaService.reservar(complexId, formData);
+    const res = await agendaService.reservar(complexId, formData);
     setSelectedSlot(null);
-    showToast('success', 'Reserva creada y confirmada.');
+    if (res?.pago) {
+      // Seña / total con MercadoPago → link para mandarle al cliente
+      setLinkPago({ pago: res.pago, booking: res.booking });
+      showToast('success', 'Turno reservado: enviale el link de pago al cliente.');
+    } else if (res?.pago_error) {
+      showToast('error', `Turno reservado, pero no se pudo generar el link de MercadoPago: ${res.pago_error}`);
+    } else {
+      showToast('success', formData.tipo_pago === 'complejo' ? 'Reserva creada: paga en el complejo.' : 'Reserva creada y confirmada.');
+    }
     loadSlots(); loadConteos();
   };
 
@@ -512,8 +522,10 @@ export default function AgendaTab({ complexId }) {
           allSlots={slots}
           onConfirm={handleConfirmBooking}
           onClose={() => setSelectedSlot(null)}
+          cargarOpcionesPago={(duracion, monto) => agendaService.opcionesPago(complexId, { field_id: selectedField.id, duracion, monto })}
         />
       )}
+      {linkPago && <LinkPagoModal pago={linkPago.pago} booking={linkPago.booking} onClose={() => setLinkPago(null)} />}
 
       {/* ── Modal de gestión del turno (cobrar / consumos) ── */}
       {manageSlot && (

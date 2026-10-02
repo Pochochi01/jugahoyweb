@@ -16,6 +16,8 @@ const { Op } = require('sequelize');
 const { Booking, Field, Complex, TimeSlot, sequelize } = require('../models');
 const paymentService = require('../services/payment.service');
 const mpOAuth = require('../services/mercadopagoOAuth.service');
+const reservaPago = require('../services/reservaPago.service');
+const caja = require('../services/cajaService');
 
 const PUBLIC_URL     = process.env.PUBLIC_URL     || 'http://localhost:5173';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://localhost:3001';
@@ -37,79 +39,25 @@ async function loadBookingFull(reservaId) {
 }
 
 // ── POST /api/payments/init-mp ────────────────────────────────
+// Jugador (web): genera la preference de una reserva propia. El monto y la
+// preference los arma reservaPago.service (misma lógica que panel y chatbot).
 async function initMp(req, res) {
   try {
     const { reserva_id, cancha_id, player_id, tipoPago } = req.body;
+    if (!reserva_id || !tipoPago) return res.status(400).json({ message: 'reserva_id y tipoPago son requeridos' });
 
-    if (!reserva_id || !tipoPago) {
-      return res.status(400).json({ message: 'reserva_id y tipoPago son requeridos' });
-    }
-    if (!['seña', 'total'].includes(tipoPago)) {
-      return res.status(400).json({ message: 'tipoPago debe ser "seña" o "total"' });
-    }
-
-    const booking = await loadBookingFull(reserva_id);
+    const booking = await Booking.findByPk(reserva_id, { attributes: ['id', 'user_id', 'field_id'] });
     if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
-
     // Seguridad: la reserva debe ser del jugador autenticado
     if (booking.user_id && booking.user_id !== req.user.id) {
       return res.status(403).json({ message: 'No podés pagar una reserva de otro usuario' });
     }
-    // Coherencia cancha ↔ reserva
     if (cancha_id && Number(cancha_id) !== booking.field_id) {
       return res.status(400).json({ message: 'La cancha no corresponde a la reserva' });
     }
-    // No re-pagar una reserva ya confirmada/cancelada
-    if (['confirmado', 'cancelado', 'rechazado'].includes(booking.estado)) {
-      return res.status(409).json({ message: `La reserva ya está ${booking.estado}` });
-    }
-
-    const field   = booking.field;
-    const complex = field?.complex;
-    // Token OAuth del complejo (400 si no conectó su cuenta, 401 si hay que reconectar)
-    const accessToken = await tokenForComplexId(complex?.id);
-
-    // Monto según tipo de pago (backend calcula, nunca el front)
-    const { amount, label } = paymentService.calcularMonto({ tipoPago, field, booking });
-
-    // Metadata para reconstruir/confirmar la orden desde el payment
-    const metadata = {
-      reserva_id: booking.id,
-      cancha_id:  booking.field_id,
-      player_id:  booking.user_id || player_id || null,
-      tipo_pago:  tipoPago,
-    };
-
-    // La reserva pasa a 'pendiente_pago' (retiene el slot mientras paga)
-    await booking.update({ estado: 'pendiente_pago', tipo_pago: tipoPago, metodo_pago: 'mercadopago' });
-
-    const pref = await paymentService.createPreference({
-      accessToken,
-      items: [{
-        id: `reserva-${booking.id}`,
-        title: `${label} — ${field.nombre} (${booking.fecha} ${booking.hora_inicio})`,
-        quantity: 1,
-        unit_price: amount,
-      }],
-      payer: { name: booking.nombre_cliente, email: booking.email_cliente || undefined },
-      metadata,
-      backUrls: {
-        success: `${PUBLIC_URL}/reserva/exito?reserva_id=${booking.id}`,
-        failure: `${PUBLIC_URL}/reserva/error?reserva_id=${booking.id}`,
-        pending: `${PUBLIC_URL}/reserva/pendiente?reserva_id=${booking.id}`,
-      },
-      // complex_id embebido → el webhook resuelve el token del complejo correcto
-      notificationUrl: `${PUBLIC_API_URL}/api/payments/webhook?complex_id=${complex.id}`,
-    });
-
-    res.json({
-      preference_id:      pref.preference_id,
-      init_point:         pref.init_point,
-      sandbox_init_point: pref.sandbox_init_point,
-      amount,
-    });
+    res.json(await reservaPago.iniciarPagoReserva(booking.id, tipoPago, { playerId: player_id }));
   } catch (err) {
-    res.status(err.status || 500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message, ...(err.code ? { code: err.code } : {}) });
   }
 }
 
@@ -199,6 +147,16 @@ async function _syncFromMercadoPago(paymentId, accessToken) {
         monto_pagado:  payment.transaction_amount,
         metodo_pago:   'mercadopago',
       }, { transaction: t });
+      // Caja: el cobro online se registra recién cuando MercadoPago lo CONFIRMA.
+      // Si no hay caja abierta, queda pendiente y se registra al cobrar el turno
+      // en la agenda (pago_online_en_caja evita contarlo dos veces).
+      const field = await Field.findByPk(booking.field_id, { attributes: ['complex_id', 'nombre'], transaction: t });
+      const tx = await caja.registrarEnCaja(field.complex_id, {
+        tipo: 'ingreso', metodo_pago: 'mercadopago', categoria: 'turno', agenda_id: booking.id,
+        concepto: `${booking.tipo_pago === 'seña' ? 'Seña' : 'Pago'} online turno ${booking.nombre_cliente} — ${booking.fecha} ${booking.hora_inicio} (MercadoPago)`,
+        monto: Number(payment.transaction_amount),
+      }, t);
+      if (tx) await booking.update({ pago_online_en_caja: true }, { transaction: t });
     } else if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(status)) {
       // Liberar el slot para que otro pueda reservar
       await Promise.all((booking.timeSlots || []).map(s =>

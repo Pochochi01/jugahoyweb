@@ -102,7 +102,13 @@ function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar }) {
     <div className="space-y-4">
       {/* Resumen */}
       <div className="rounded-xl p-4" style={DARK.row}>
-        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        {totales.pagado_online > 0 ? (<>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white/70">{money(totales.cancha_total)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-sky-300">{b?.tipo_pago === 'seña' ? 'Seña' : 'Pagado'} online (MercadoPago)</span><span className="text-sky-300 font-semibold">− {money(totales.pagado_online)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        </>) : (
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        )}
         <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Consumos</span><span className="text-white font-semibold">{money(totales.consumos)}</span></div>
         <div className="flex justify-between text-base mt-2 pt-2 border-t border-border">
           <span className="text-white font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
@@ -335,7 +341,13 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
 
       {/* Desglose */}
       <div className="rounded-xl p-4" style={DARK.row}>
-        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        {totales.pagado_online > 0 ? (<>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white/70">{money(totales.cancha_total)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-sky-300">{b?.tipo_pago === 'seña' ? 'Seña' : 'Pagado'} online (MercadoPago)</span><span className="text-sky-300 font-semibold">− {money(totales.pagado_online)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        </>) : (
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+        )}
         <div className="flex justify-between text-sm mt-1">
           <span className="text-muted-foreground">Consumos {consumos.length > 0 && <span className="opacity-60">({consumos.length})</span>}</span>
           <span className="text-white font-semibold">{money(totales.consumos)}</span>

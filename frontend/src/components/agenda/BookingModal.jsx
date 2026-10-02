@@ -20,7 +20,14 @@ function addMinutes(hora, min) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, mpEnabled = false, playerData = {} }) {
+/**
+ * Modal de reserva (jugador en la web y admin en la agenda).
+ * cargarOpcionesPago(duracion, monto) → { mp_conectado, predeterminada, opciones[] }
+ *   Modalidades: 'complejo' (paga en el lugar) · 'seña' · 'total' (MercadoPago).
+ *   Las de MercadoPago aparecen solas si el complejo está conectado por OAuth;
+ *   los montos los calcula el servidor (seña de la cancha o % del complejo).
+ */
+export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, cargarOpcionesPago, playerData = {} }) {
   // Duraciones que permite la cancha (default: todas)
   const fieldDuraciones = field?.duraciones_permitidas?.length
     ? field.duraciones_permitidas
@@ -53,10 +60,30 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
   const [error, setError]     = useState('');
   const [fijo, setFijo]       = useState(false);   // turno fijo (recurrente) — solo admin/colaborador
 
-  // Opciones de pago del jugador: 'complejo' | 'seña' | 'total'
+  // Modalidad de pago: 'complejo' | 'seña' | 'total' (preseleccionada la del complejo)
   const [tipoPago, setTipoPago] = useState('complejo');
-  const senaMonto  = Number(field?.sena_monto) || 0;
-  const totalMonto = Number(form.monto) || 0;
+  const [pagos, setPagos] = useState(null);            // respuesta de opciones-pago
+  const [eligioPago, setEligioPago] = useState(false); // el usuario tocó una opción → no pisarla
+  const elegir = (t) => { setTipoPago(t); setEligioPago(true); };
+
+  // Opciones según duración (y precio, si el admin lo ajusta): el servidor calcula los montos
+  useEffect(() => {
+    if (!duracion || !cargarOpcionesPago) return;
+    const t = setTimeout(() => {
+      cargarOpcionesPago(duracion, playerMode ? undefined : form.monto)
+        .then(r => {
+          setPagos(r);
+          setTipoPago(prev => {
+            const sigue = r.opciones.find(o => o.tipo === prev && o.disponible);
+            return eligioPago && sigue ? prev : r.predeterminada;
+          });
+        })
+        .catch(() => setPagos(null));
+    }, playerMode ? 0 : 350);
+    return () => clearTimeout(t);
+  }, [duracion, form.monto]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const opcionesMP = (pagos?.opciones || []).filter(o => o.tipo !== 'complejo' && o.disponible);
+  const esMP = tipoPago === 'seña' || tipoPago === 'total';
 
   const horaFin = duracion ? addMinutes(slot.hora, duracion) : '--:--';
 
@@ -95,8 +122,8 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
         hora:     slot.hora,
         duracion,
         monto:    form.monto ? parseFloat(form.monto) : undefined,
-        // En modo jugador, el tipo de pago define el flujo (offline / MercadoPago)
-        tipo_pago: playerMode ? tipoPago : undefined,
+        // Modalidad de pago: offline o MercadoPago (jugador → paga él; admin → link para el cliente)
+        tipo_pago: tipoPago,
         // Turno fijo (recurrente) — solo modo admin/colaborador
         fijo: !playerMode && fijo,
       });
@@ -225,78 +252,68 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
             </div>
           </div>
 
-          {/* ── pago ── */}
-          {playerMode ? (
-            /* Jugador: elige cómo pagar. El monto lo fija la cancha (no editable).
-               Las opciones de MercadoPago solo aparecen si el complejo tiene MP
-               configurado (mpEnabled). */
-            <div>
-              <label className="label !text-slate-600">¿Cómo querés pagar?</label>
-              <div className="space-y-2">
-                {/* Pagar en el complejo (offline) — siempre disponible */}
-                <button type="button" onClick={() => setTipoPago('complejo')}
-                  aria-pressed={tipoPago === 'complejo'}
+          {/* ── pago: modalidades (complejo / seña / total) ── */}
+          <div>
+            <label className="label !text-slate-600">{playerMode ? '¿Cómo querés pagar?' : 'Modalidad de pago'}</label>
+            <div className="space-y-2">
+              {/* Pagar en el complejo (offline) — siempre disponible */}
+              <button type="button" onClick={() => elegir('complejo')}
+                aria-pressed={tipoPago === 'complejo'}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
+                  ${tipoPago === 'complejo' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
+                <span className="text-xl">🏟️</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-800">Pagar en el complejo</div>
+                  <div className="text-xs text-slate-500">{playerMode ? 'Reservás ahora y pagás en el lugar.' : 'Queda pendiente de cobro en el lugar.'}</div>
+                </div>
+                {tipoPago === 'complejo' && <CheckCircle className="w-5 h-5 text-primary shrink-0" />}
+              </button>
+
+              {/* Seña / total con MercadoPago (solo si el complejo está conectado) */}
+              {opcionesMP.map(o => (
+                <button key={o.tipo} type="button" onClick={() => elegir(o.tipo)}
+                  aria-pressed={tipoPago === o.tipo}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
-                    ${tipoPago === 'complejo' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
-                  <span className="text-xl">🏟️</span>
+                    ${tipoPago === o.tipo ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
+                  <span className="text-xl">💳</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-800">Pagar en el complejo</div>
-                    <div className="text-xs text-slate-500">Reservás ahora y pagás en el lugar.</div>
+                    <div className="text-sm font-semibold text-slate-800">{o.label}</div>
+                    <div className="text-xs text-slate-500">
+                      {o.tipo === 'seña' ? 'Asegura el turno con una seña; el resto se paga en el lugar.' : 'Turno completo pagado por adelantado.'}
+                    </div>
                   </div>
-                  {tipoPago === 'complejo' && <CheckCircle className="w-5 h-5 text-primary shrink-0" />}
+                  <span className="text-sm font-bold text-primary shrink-0">${Number(o.monto).toLocaleString('es-AR')}</span>
                 </button>
+              ))}
 
-                {/* Pagar seña con MercadoPago (MP habilitado + cancha con seña) */}
-                {mpEnabled && senaMonto > 0 && (
-                  <button type="button" onClick={() => setTipoPago('seña')}
-                    aria-pressed={tipoPago === 'seña'}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
-                      ${tipoPago === 'seña' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
-                    <span className="text-xl">💳</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-800">Pagar seña con MercadoPago</div>
-                      <div className="text-xs text-slate-500">Asegurás el turno con una seña.</div>
-                    </div>
-                    <span className="text-sm font-bold text-primary shrink-0">${senaMonto.toLocaleString('es-AR')}</span>
-                  </button>
-                )}
-
-                {/* Pagar total con MercadoPago (solo si MP está habilitado) */}
-                {mpEnabled && (
-                  <button type="button" onClick={() => setTipoPago('total')}
-                    aria-pressed={tipoPago === 'total'}
-                    disabled={totalMonto <= 0}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all disabled:opacity-50
-                      ${tipoPago === 'total' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'}`}>
-                    <span className="text-xl">💳</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-800">Pagar total con MercadoPago</div>
-                      <div className="text-xs text-slate-500">Pagás el turno completo ahora.</div>
-                    </div>
-                    <span className="text-sm font-bold text-primary shrink-0">${totalMonto.toLocaleString('es-AR')}</span>
-                  </button>
-                )}
-
-                {!mpEnabled && (
-                  <p className="text-xs text-slate-500">
-                    Este complejo aún no acepta pagos online. Podés reservar y pagar en el lugar.
-                  </p>
-                )}
-              </div>
+              {pagos && !pagos.mp_conectado && (
+                <p className="text-xs text-slate-500">
+                  {playerMode ? 'Este complejo aún no acepta pagos online. Podés reservar y pagar en el lugar.' : 'Conectá MercadoPago en Configuración para ofrecer seña o pago total online.'}
+                </p>
+              )}
+              {!playerMode && esMP && (
+                <p className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
+                  Se genera el link de pago de MercadoPago para enviárselo al cliente. El turno queda reservado y se confirma cuando MercadoPago aprueba el pago.
+                </p>
+              )}
             </div>
-          ) : (
-            /* Admin: método y precio manuales */
+          </div>
+
+          {/* Admin: método (si paga en el lugar) y precio editable */}
+          {!playerMode && (
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label !text-slate-600">Método de pago</label>
-                <select className="input text-sm" value={form.metodo_pago}
-                  onChange={e => set('metodo_pago', e.target.value)}>
-                  {METODOS.map(m => (
-                    <option key={m.value} value={m.value}>{m.icon} {m.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
+              {!esMP && (
+                <div>
+                  <label className="label !text-slate-600">Método de pago</label>
+                  <select className="input text-sm" value={form.metodo_pago}
+                    onChange={e => set('metodo_pago', e.target.value)}>
+                    {METODOS.map(m => (
+                      <option key={m.value} value={m.value}>{m.icon} {m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className={esMP ? 'col-span-2' : ''}>
                 <label className="label !text-slate-600">Precio ($)</label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -341,9 +358,14 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
             >
               {loading
                 ? <><span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Procesando...</>
-                : (playerMode && tipoPago === 'seña') ? `Pagar seña $${senaMonto.toLocaleString('es-AR')}`
-                : (playerMode && tipoPago === 'total') ? `Pagar total $${totalMonto.toLocaleString('es-AR')}`
-                : 'Confirmar reserva'
+                : esMP
+                  ? (() => {
+                      const m = Number(opcionesMP.find(o => o.tipo === tipoPago)?.monto || 0).toLocaleString('es-AR');
+                      return playerMode
+                        ? `Pagar ${tipoPago === 'seña' ? 'seña' : 'total'} $${m}`
+                        : `Reservar y generar link ($${m})`;
+                    })()
+                  : 'Confirmar reserva'
               }
             </button>
           </div>

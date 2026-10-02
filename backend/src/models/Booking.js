@@ -40,6 +40,8 @@ const Booking = sequelize.define('Booking', {
   mp_payment_id: { type: DataTypes.STRING(50), allowNull: true, defaultValue: null },
   // Monto efectivamente cobrado online (seña o total). El total del turno sigue en `monto`.
   monto_pagado:  { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: null },
+  // El pago online ya entró a la caja (al aprobarse) → al cobrar en el complejo no se cuenta de nuevo.
+  pago_online_en_caja: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 
   notas:      { type: DataTypes.TEXT },
   created_by: { type: DataTypes.INTEGER },

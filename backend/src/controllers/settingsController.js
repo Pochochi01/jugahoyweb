@@ -114,6 +114,16 @@ async function updateSettings(req, res) {
       }
     }
 
+    // Pagos online: modalidad predeterminada para todas las canchas y % de seña
+    if (req.body.default_payment_option !== undefined && !['complejo', 'seña', 'total'].includes(req.body.default_payment_option)) {
+      return res.status(400).json({ message: 'Modalidad de pago inválida (complejo, seña o total).' });
+    }
+    if (req.body.sena_porcentaje !== undefined) {
+      const pct = req.body.sena_porcentaje === '' || req.body.sena_porcentaje == null ? null : Number(req.body.sena_porcentaje);
+      if (pct !== null && !(pct > 0 && pct <= 100)) return res.status(400).json({ message: 'El porcentaje de seña va de 1 a 100.' });
+      req.body.sena_porcentaje = pct;
+    }
+
     await complex.update(req.body);
 
     res.json(complex);
