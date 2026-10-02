@@ -13,11 +13,11 @@ const MercadoPagoToken = sequelize.define('MercadoPagoToken', {
   refresh_token:    { type: DataTypes.TEXT, allowNull: false },   // cifrado
   expires_in:       { type: DataTypes.INTEGER, allowNull: false },   // segundos (respuesta de MP)
   expires_at:       { type: DataTypes.DATE, allowNull: false },
-  correo_vinculado: { type: DataTypes.STRING(150) },
+  correo_vinculado: { type: DataTypes.STRING(255) },
   mp_user_id:       { type: DataTypes.STRING(30) },
-  public_key:       { type: DataTypes.STRING(100) },
+  public_key:       { type: DataTypes.STRING(255) },
   live_mode:        { type: DataTypes.BOOLEAN, defaultValue: true },
-  scope:            { type: DataTypes.STRING(255) },
+  scope:            { type: DataTypes.TEXT },          // permisos que devuelve MP: pueden superar 255 caracteres
   // 'revocado': la renovación falló (el usuario quitó el permiso en MP) → hay que reconectar
   estado:           { type: DataTypes.ENUM('conectado', 'revocado'), defaultValue: 'conectado' },
   ultimo_error:     { type: DataTypes.STRING(255) },
