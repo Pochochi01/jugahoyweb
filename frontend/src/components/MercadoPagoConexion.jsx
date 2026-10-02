@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Unplug, ExternalLink } from 'lucide-react';
 import { mercadopagoService } from '../services/mercadopagoService';
+import { generarPkce, guardarVerifier } from '../utils/pkce';
 
 const fecha = (f) => (f ? new Date(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
 
@@ -23,8 +24,11 @@ export default function MercadoPagoConexion({ complexId, resultado }) {
   const conectar = async () => {
     setCargando(true); setMsg(null);
     try {
-      const { url } = await mercadopagoService.urlConexion(complexId);
-      window.location.href = url;   // a MercadoPago → vuelve a /dashboard?mp=...
+      // PKCE: el verifier queda en este navegador; a MercadoPago solo viaja el challenge
+      const { verifier, challenge } = await generarPkce();
+      const { url } = await mercadopagoService.urlConexion(complexId, challenge);
+      guardarVerifier(verifier, complexId);
+      window.location.href = url;   // a MercadoPago → backend → /mercadopago/callback → /dashboard?mp=...
     } catch (err) { setMsg({ tipo: 'error', msg: err?.message || 'No se pudo iniciar la conexión.' }); setCargando(false); }
   };
   const accion = async (fn, ok) => {

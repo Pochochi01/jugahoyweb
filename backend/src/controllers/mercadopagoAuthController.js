@@ -1,16 +1,21 @@
 'use strict';
 /**
- * controllers/mercadopagoAuthController.js — conexión OAuth de cada complejo
+ * controllers/mercadopagoAuthController.js — conexión OAuth + PKCE de cada complejo
  *
- *   GET    /api/auth/mercadopago/connect?complex_id=   → { url } de autorización
- *   GET    /api/auth/mercadopago/callback?code&state   → guarda tokens y vuelve al panel
+ *   GET    /api/auth/mercadopago/connect?complex_id=&code_challenge=  → { url } de autorización
+ *   GET    /api/auth/mercadopago/callback?code&state   ← MercadoPago vuelve acá (MP_REDIRECT_URI)
+ *                                                        → reenvía al frontend /mercadopago/callback
+ *   POST   /api/auth/mercadopago/callback { code, state, code_verifier } → canjea y guarda tokens
  *   GET    /api/auth/mercadopago/:complexId/estado     → conectado, correo, vencimiento
  *   POST   /api/auth/mercadopago/:complexId/renovar    → renovar el token ahora (verificación)
  *   DELETE /api/auth/mercadopago/:complexId            → desvincular la cuenta
  *
+ * PKCE: el code_verifier lo genera y guarda el NAVEGADOR (localStorage), por eso
+ * el canje no puede hacerse en el redirect del backend: la vuelta pasa por una
+ * página del frontend que lee el verifier y lo manda acá junto con el código.
+ *
  * Por qué /connect devuelve la URL en vez de redirigir: el panel se autentica con
- * Bearer token, que un navegador no envía al seguir un link. El frontend pide la
- * URL (autenticado) y recién ahí navega a MercadoPago.
+ * Bearer token, que un navegador no envía al seguir un link.
  */
 const mp = require('../services/mercadopagoOAuth.service');
 const { frontendUrl } = require('../config/urls');
@@ -20,25 +25,36 @@ const send = (res, err) => res.status(err.status || 500).json({ message: err.mes
 async function connect(req, res) {
   try {
     const complexId = Number(req.params.complexId || req.query.complex_id);
-    res.json({ url: mp.urlAutorizacion(complexId, req.user.id) });
+    res.json({ url: mp.urlAutorizacion(complexId, req.user.id, req.query.code_challenge) });
   } catch (err) { send(res, err); }
 }
 
-/** Vuelta desde MercadoPago. Siempre redirige al panel con el resultado (nunca muestra JSON al usuario). */
-async function callback(req, res) {
-  const volver = (params) => res.redirect(frontendUrl(`/dashboard?${new URLSearchParams(params)}`));
+/**
+ * Vuelta desde MercadoPago (navegador). No canjea nada: reenvía code/state/error
+ * a la página del frontend, que tiene el code_verifier y termina la conexión.
+ * Así la Redirect URL configurada en MercadoPago sigue siendo la del backend.
+ */
+function callbackRedirect(req, res) {
+  const params = new URLSearchParams();
+  for (const k of ['code', 'state', 'error', 'error_description']) if (req.query[k]) params.set(k, String(req.query[k]));
+  res.redirect(frontendUrl(`/mercadopago/callback?${params}`));
+}
+
+/** POST { code, state, code_verifier } — lo llama la página /mercadopago/callback (con la sesión del usuario). */
+async function callbackCanje(req, res) {
   try {
-    // El usuario canceló o MP devolvió error
-    if (req.query.error) {
-      const complexId = (() => { try { return mp.leerState(req.query.state).complex_id; } catch { return ''; } })();
-      return volver({ mp: 'error', mp_msg: req.query.error === 'access_denied' ? 'Cancelaste la autorización en MercadoPago.' : `MercadoPago: ${req.query.error_description || req.query.error}`, complex: complexId });
-    }
-    const r = await mp.conectar(req.query.code, req.query.state);
-    return volver({ mp: 'conectado', complex: r.complex_id, mp_email: r.correo_vinculado || '' });
+    const { code, state, code_verifier: verifier } = req.body || {};
+    const r = await mp.conectar(code, state, verifier, req.user.id);
+    res.json({ ok: true, complex_id: r.complex_id, correo_vinculado: r.correo_vinculado });
   } catch (err) {
     console.error('[MP OAuth] callback:', err.message);
-    return volver({ mp: 'error', mp_msg: err.message });
+    send(res, err);
   }
+}
+
+/** Para mostrar el complejo correcto aunque la autorización haya fallado. */
+function complejoDelState(req, res) {
+  try { res.json({ complex_id: mp.leerState(req.query.state).complex_id }); } catch { res.json({ complex_id: null }); }
 }
 
 async function estado(req, res) {
@@ -56,4 +72,4 @@ async function desconectar(req, res) {
   try { await mp.desconectar(Number(req.params.complexId)); res.json({ ok: true }); } catch (err) { send(res, err); }
 }
 
-module.exports = { connect, callback, estado, renovar, desconectar };
+module.exports = { connect, callbackRedirect, callbackCanje, complejoDelState, estado, renovar, desconectar };

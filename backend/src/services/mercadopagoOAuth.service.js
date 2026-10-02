@@ -6,12 +6,18 @@
  * Cada complejo vincula SU cuenta; la plataforma nunca ve ni pide su contraseña
  * y ya no existen access tokens pegados a mano.
  *
- * Flujo:
- *   1. urlAutorizacion(complexId, userId) → https://auth.mercadopago.com/authorization
- *      con `state` firmado (complejo + usuario + nonce, vence en 10 min).
- *   2. MP redirige a /api/auth/mercadopago/callback?code&state
- *   3. conectar(code, state) → POST /oauth/token (authorization_code) →
- *      access_token + refresh_token + expires_in, y GET /users/me → email.
+ * Flujo (OAuth 2.0 + PKCE S256):
+ *   1. El navegador genera code_verifier (aleatorio, queda en localStorage) y
+ *      code_challenge = BASE64URL(SHA256(verifier)).
+ *   2. urlAutorizacion(complexId, userId, codeChallenge) → https://auth.mercadopago.com/authorization
+ *      con code_challenge + code_challenge_method=S256 y `state` firmado
+ *      (complejo + usuario + challenge + nonce, vence en 10 min).
+ *   3. MP redirige a MP_REDIRECT_URI (/api/auth/mercadopago/callback), que reenvía
+ *      el navegador a la página /mercadopago/callback del frontend (ahí está el verifier).
+ *   4. El frontend envía code + state + code_verifier → conectar() verifica que
+ *      SHA256(verifier) coincida con el challenge firmado → POST /oauth/token
+ *      (authorization_code + code_verifier) → access_token + refresh_token +
+ *      expires_in, y GET /users/me → email.
  *      Se guarda todo CIFRADO en mercadopago_tokens (1 fila por complejo).
  *   4. accessTokenValido(complexId) → token listo para usar. Si vence dentro del
  *      margen, lo RENUEVA antes (POST /oauth/token grant_type=refresh_token).
@@ -52,14 +58,32 @@ function credenciales() {
 }
 const configurado = () => Boolean(process.env.MP_CLIENT_ID && process.env.MP_CLIENT_SECRET && process.env.MP_REDIRECT_URI);
 
+// ── PKCE (RFC 7636) ───────────────────────────────────────────
+// code_verifier: 43–128 caracteres [A-Z a-z 0-9 - . _ ~]
+// code_challenge = BASE64URL(SHA256(code_verifier)) → 43 caracteres (método S256)
+const VERIFIER_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
+const CHALLENGE_RE = /^[A-Za-z0-9\-_]{43}$/;
+const challengeDe = (verifier) => crypto.createHash('sha256').update(verifier).digest('base64url');
+
 // ── 1. URL de autorización ────────────────────────────────────
-function urlAutorizacion(complexId, userId) {
+/**
+ * El code_challenge lo genera el NAVEGADOR (que guarda el verifier en localStorage).
+ * Se firma dentro del `state` para que el callback pueda comprobar que el verifier
+ * que llega corresponde a ESTA solicitud (no a otra) antes de canjear el código.
+ */
+function urlAutorizacion(complexId, userId, codeChallenge) {
   const { clientId, redirectUri } = credenciales();
+  if (!CHALLENGE_RE.test(String(codeChallenge || ''))) {
+    throw httpError(400, 'Falta el code_challenge (PKCE S256) o es inválido.', 'MP_PKCE_INVALIDO');
+  }
   const state = jwt.sign(
-    { tipo: 'mp_oauth', complex_id: Number(complexId), user_id: userId, nonce: crypto.randomBytes(8).toString('hex') },
+    { tipo: 'mp_oauth', complex_id: Number(complexId), user_id: userId, cc: codeChallenge, nonce: crypto.randomBytes(8).toString('hex') },
     process.env.JWT_SECRET, { expiresIn: STATE_TTL },
   );
-  const params = new URLSearchParams({ client_id: clientId, response_type: 'code', platform_id: 'mp', state, redirect_uri: redirectUri });
+  const params = new URLSearchParams({
+    client_id: clientId, response_type: 'code', platform_id: 'mp', state, redirect_uri: redirectUri,
+    code_challenge: codeChallenge, code_challenge_method: 'S256',
+  });
   return `${AUTH_URL()}?${params}`;
 }
 
@@ -118,12 +142,26 @@ function filaDesdeToken(data, extra = {}) {
 }
 
 // ── 3. Callback: code → tokens ────────────────────────────────
-/** @returns {Promise<{complex_id, correo_vinculado}>} */
-async function conectar(code, state) {
-  const { complex_id: complexId, user_id: userId } = leerState(state);
+/**
+ * Canjea el código por tokens (PKCE).
+ * @param {string} code          authorization_code que devolvió MercadoPago
+ * @param {string} state         state firmado (complejo + usuario + code_challenge)
+ * @param {string} codeVerifier  el que el navegador guardó al iniciar la conexión
+ * @param {number} usuarioActual quien completa la conexión (debe ser quien la inició)
+ * @returns {Promise<{complex_id, correo_vinculado}>}
+ */
+async function conectar(code, state, codeVerifier, usuarioActual) {
+  const { complex_id: complexId, user_id: userId, cc } = leerState(state);
   if (!code) throw httpError(400, 'MercadoPago no devolvió el código de autorización.', 'MP_SIN_CODE');
+  if (usuarioActual != null && Number(usuarioActual) !== Number(userId)) {
+    throw httpError(403, 'La conexión la tiene que terminar el mismo usuario que la inició.', 'MP_USUARIO_DISTINTO');
+  }
+  // PKCE: el verifier debe ser el que generó el challenge firmado en el state
+  if (!VERIFIER_RE.test(String(codeVerifier || '')) || challengeDe(codeVerifier) !== cc) {
+    throw httpError(400, 'No se pudo validar la conexión (PKCE). Volvé a tocar "Conectar con MercadoPago" desde el mismo navegador.', 'MP_PKCE_INVALIDO');
+  }
   const { redirectUri } = credenciales();
-  const data = await pedirToken({ grant_type: 'authorization_code', code: String(code), redirect_uri: redirectUri });
+  const data = await pedirToken({ grant_type: 'authorization_code', code: String(code), redirect_uri: redirectUri, code_verifier: codeVerifier });
   const cuenta = await datosCuenta(data.access_token);
   const fila = filaDesdeToken(data, {
     correo_vinculado: cuenta.email,

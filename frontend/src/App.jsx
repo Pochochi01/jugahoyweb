@@ -24,6 +24,7 @@ import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/tor
 import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
 import { ProfesorLogin, ProfesorPanel } from './pages/profesor/ProfesorPages';
 import EscuelaPortalPage from './pages/escuela/EscuelaPortalPage';
+import MercadoPagoCallbackPage from './pages/MercadoPagoCallbackPage';
 
 export default function App() {
   useEffect(() => {
@@ -61,6 +62,11 @@ export default function App() {
       {/* Organizadores de torneos (login propio) */}
       <Route path="/organizador/login"      element={<OrganizadorLogin />} />
       <Route path="/organizador"            element={<OrganizadorPanel />} />
+
+      {/* Vuelta del OAuth de MercadoPago (PKCE): canjea el código con el verifier del navegador */}
+      <Route path="/mercadopago/callback" element={
+        <ProtectedRoute roles={['general_admin', 'complex_admin']}><MercadoPagoCallbackPage /></ProtectedRoute>
+      } />
 
       {/* Escuela de fútbol: portal del alumno / padre (link personal, sin login) */}
       <Route path="/escuela/alumno/:token" element={<EscuelaPortalPage />} />
