@@ -166,6 +166,11 @@ export default function Dashboard() {
       </div>
     );
 
+    // Al cambiar de complejo, durante un render el tab activo puede no aplicar al
+    // nuevo (ej. "agenda" en un complejo sin canchas) hasta que el efecto lo
+    // corrija: no montarlo, para no disparar pedidos a módulos bloqueados.
+    if (!visibleTabs.some(t => t.key === activeTab)) return null;
+
     const props = { complexId: selectedComplex.id, complex: selectedComplex };
     switch (activeTab) {
       case 'agenda':        return <AgendaTab {...props} />;
