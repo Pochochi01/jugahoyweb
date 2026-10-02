@@ -53,6 +53,7 @@ const Profesor          = require('./Profesor');
 const ProfesorCancha    = require('./ProfesorCancha');
 const HorarioProfesor   = require('./HorarioProfesor');
 const Alumno            = require('./Alumno');
+const MercadoPagoToken  = require('./MercadoPagoToken');
 // Escuela de fútbol
 const {
   EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
@@ -246,6 +247,10 @@ Alumno.belongsTo(HorarioProfesor,   { foreignKey: 'id_horario', as: 'horario' })
 TimeSlot.belongsTo(HorarioProfesor, { foreignKey: 'horario_profesor_id', as: 'clase' });
 TimeSlot.belongsTo(TorneoPartido,   { foreignKey: 'torneo_partido_id',   as: 'partidoTorneo' });
 
+// ── MercadoPago (OAuth por complejo) ──
+Complex.hasOne(MercadoPagoToken, { foreignKey: 'complex_id', as: 'mercadopago' });
+MercadoPagoToken.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' });
+
 // ── Escuela de fútbol ──
 Complex.hasOne(EscuelaConfig,       { foreignKey: 'complex_id', as: 'escuela' });
 EscuelaCategoria.hasMany(EscuelaAlumno,  { foreignKey: 'categoria_id', as: 'alumnos' });
@@ -296,6 +301,8 @@ module.exports = {
   TorneoJugador, TorneoPartido, TorneoResultado, TorneoTicket, TorneoTablaPosicion, RankingJugador,
   // Profesores de pádel
   Profesor, ProfesorCancha, HorarioProfesor, Alumno,
+  // MercadoPago OAuth
+  MercadoPagoToken,
   // Escuela de fútbol
   EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
   EscuelaHorario, EscuelaPago, EscuelaAviso,

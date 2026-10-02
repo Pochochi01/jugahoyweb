@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, sequelize } = require('../models');
+const { Complex, Field, TimeSlot, Booking, Operation, User, Notification, MercadoPagoToken, sequelize } = require('../models');
 const { validateProvinciaLocalidad } = require('./localidadesController');
 const notifService = require('../services/notification.service');
 const waitlist = require('../services/waitlistService');
@@ -11,15 +11,20 @@ const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
 // Fecha "hoy" en Argentina (GMT-3), no en UTC.
 function today() { return todayAR(); }
 
-// Nunca exponer credenciales del complejo al público. Devuelve un flag booleano
-// `mp_enabled` (si tiene MercadoPago configurado) en lugar del token.
-function sanitizeComplex(complex) {
-  if (!complex) return complex;
-  const json = typeof complex.toJSON === 'function' ? complex.toJSON() : { ...complex };
-  json.mp_enabled = !!json.mercadopago_token;
-  delete json.mercadopago_token;
-  delete json.cuentas_bancarias;
-  return json;
+// Datos públicos del complejo: sin datos sensibles y con `mp_enabled` = el
+// complejo tiene su cuenta de MercadoPago CONECTADA por OAuth (se puede pagar online).
+async function sanitizeComplexes(lista) {
+  const arr = Array.isArray(lista) ? lista : [lista];
+  const ids = arr.filter(Boolean).map(c => c.id);
+  const conectados = new Set((await MercadoPagoToken.findAll({ where: { complex_id: ids, estado: 'conectado' }, attributes: ['complex_id'], raw: true })).map(r => r.complex_id));
+  const out = arr.map(complex => {
+    if (!complex) return complex;
+    const json = typeof complex.toJSON === 'function' ? complex.toJSON() : { ...complex };
+    json.mp_enabled = conectados.has(json.id);
+    delete json.cuentas_bancarias;
+    return json;
+  });
+  return Array.isArray(lista) ? out : out[0];
 }
 
 // Rango máximo del complejo: 08:00 a 02:00 (madrugada). Slots de 60 min (hora en punto).
@@ -80,7 +85,7 @@ async function getComplexes(req, res) {
       include: [{ model: Field, as: 'fields', where: { activa: true }, required: false }],
       order: [['nombre', 'ASC']],
     });
-    res.json(complexes.map(sanitizeComplex));
+    res.json(await sanitizeComplexes(complexes));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -96,7 +101,7 @@ async function getComplex(req, res) {
       ],
     });
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
-    res.json(sanitizeComplex(complex));
+    res.json(await sanitizeComplexes(complex));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -188,7 +193,7 @@ async function getComplexSlots(req, res) {
     }).filter(c => c.count > 0);
 
     // JSON normalizado: dos agrupaciones listas para el frontend.
-    res.json({ complex: sanitizeComplex(complex), date, slots: grouped, canchas });
+    res.json({ complex: await sanitizeComplexes(complex), date, slots: grouped, canchas });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

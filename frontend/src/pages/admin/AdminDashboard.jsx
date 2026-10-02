@@ -164,6 +164,18 @@ function ComplexRow({ complex, onEdit, onToggle, onDelete, onToggleModulo, toggl
         <div className="text-xs text-muted-foreground">{complex.owner?.email}</div>
       </td>
 
+      {/* MercadoPago (OAuth del complejo) */}
+      <td className="px-4 py-3">
+        {complex.mercadopago?.estado === 'conectado' ? (
+          <div>
+            <span className="badge-green">Conectado</span>
+            <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]" title={complex.mercadopago.correo_vinculado || ''}>{complex.mercadopago.correo_vinculado || '—'}</div>
+          </div>
+        ) : complex.mercadopago?.estado === 'revocado'
+          ? <span className="badge-red">Reconectar</span>
+          : <span className="text-xs text-muted-foreground">Sin conectar</span>}
+      </td>
+
       {/* Canchas */}
       <td className="px-4 py-3 text-center">
         <div className="text-lg font-bold text-primary">{complex.canchas_activas}</div>
@@ -468,7 +480,7 @@ export default function AdminDashboard() {
               <table className="w-full">
                 <thead className="bg-muted/50 border-b border-border">
                   <tr>
-                    {['Complejo', 'Titular', 'Canchas', 'Precio/mes', 'Vencimiento', 'Estado', 'Módulo extra', 'Acciones'].map(h => (
+                    {['Complejo', 'Titular', 'MercadoPago', 'Canchas', 'Precio/mes', 'Vencimiento', 'Estado', 'Módulo extra', 'Acciones'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         {h}
                       </th>

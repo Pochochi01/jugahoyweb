@@ -53,6 +53,18 @@ export default function Dashboard() {
   const [activeTab,       setActiveTab]      = useState(null);
   const [loadingComplexes, setLoadingComplexes] = useState(true);
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false); // hamburguesa móvil
+  // Vuelta del OAuth de MercadoPago: /dashboard?mp=conectado|error&complex=&mp_email=&mp_msg=
+  const [resultadoMp, setResultadoMp] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.get('mp')) return null;
+    return {
+      complexId: Number(q.get('complex')) || null,
+      tipo: q.get('mp') === 'conectado' ? 'ok' : 'error',
+      msg: q.get('mp') === 'conectado'
+        ? `¡Listo! MercadoPago quedó conectado${q.get('mp_email') ? ` con la cuenta ${q.get('mp_email')}` : ''}.`
+        : (q.get('mp_msg') || 'No se pudo conectar MercadoPago.'),
+    };
+  });
 
   // Cargar complejos según el rol
   useEffect(() => {
@@ -60,7 +72,13 @@ export default function Dashboard() {
     complexService.getAll()
       .then(data => {
         setComplexes(data);
-        if (data.length > 0) setSelectedComplex(data[0]);
+        // Si volvemos de conectar MercadoPago, abrir ese complejo en Configuración
+        const elegido = (resultadoMp?.complexId && data.find(c => c.id === resultadoMp.complexId)) || data[0];
+        if (elegido) setSelectedComplex(elegido);
+        if (resultadoMp) {
+          setActiveTab('configuracion');
+          window.history.replaceState(null, '', window.location.pathname);   // limpiar ?mp=… de la URL
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingComplexes(false));
@@ -159,7 +177,7 @@ export default function Dashboard() {
       case 'escuela':       return <EscuelaTab {...props} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return (
-        <SettingsTab {...props}
+        <SettingsTab {...props} resultadoMp={resultadoMp && (!resultadoMp.complexId || resultadoMp.complexId === selectedComplex.id) ? resultadoMp : null}
           onUpdate={c => actualizarComplejo({ ...c, fields: c.fields ?? selectedComplex.fields })}
           onFieldsChange={fields => actualizarComplejo({ fields })} />
       );

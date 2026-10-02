@@ -26,6 +26,12 @@ async function start() {
     } catch (err) {
       console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
     }
+    // MercadoPago OAuth: renovación proactiva de tokens por vencer (cada 12 h)
+    try {
+      require('./src/services/mercadopagoOAuth.service').iniciarRenovacionAutomatica(12);
+    } catch (err) {
+      console.error('✗ No se pudo iniciar la renovación de tokens de MercadoPago:', err.message);
+    }
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         console.error(`✗ El puerto ${PORT} ya está en uso. Cerrá el proceso anterior o cambiá PORT en .env`);

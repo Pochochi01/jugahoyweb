@@ -9,21 +9,21 @@
  *  - Doble reconciliación (webhook + sync) usando la MISMA función _syncFromMercadoPago.
  *  - Idempotencia por mp_payment_id (UNIQUE) + transacción con lock.
  *  - Nunca se confía en los query params de retorno: se consulta a MP con el token.
- *  - Token por complejo → se resuelve vía complex_id embebido en notification_url
- *    y reserva_id (external_reference) en back_urls.
+ *  - Token OAuth del complejo (renovado automáticamente) → se resuelve vía
+ *    complex_id embebido en notification_url y reserva_id en back_urls.
  */
 const { Op } = require('sequelize');
 const { Booking, Field, Complex, TimeSlot, sequelize } = require('../models');
 const paymentService = require('../services/payment.service');
-const integrations = require('../services/integrations.service');
+const mpOAuth = require('../services/mercadopagoOAuth.service');
 
 const PUBLIC_URL     = process.env.PUBLIC_URL     || 'http://localhost:5173';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://localhost:3001';
 
 // ── helpers de token ──────────────────────────────────────────
-// Token de MercadoPago del club (cascada: club_integrations → complexes → env)
+// Access token OAuth válido del complejo (se renueva solo si está por vencer)
 async function tokenForComplexId(complexId) {
-  return integrations.getMercadoPagoToken(complexId);
+  return mpOAuth.accessTokenValido(complexId);
 }
 
 // Carga la reserva con su cancha y complejo (para token + montos)
@@ -31,7 +31,7 @@ async function loadBookingFull(reservaId) {
   return Booking.findByPk(reservaId, {
     include: [{
       model: Field, as: 'field',
-      include: [{ model: Complex, as: 'complex', attributes: ['id', 'nombre', 'mercadopago_token'] }],
+      include: [{ model: Complex, as: 'complex', attributes: ['id', 'nombre'] }],
     }],
   });
 }
@@ -66,10 +66,8 @@ async function initMp(req, res) {
 
     const field   = booking.field;
     const complex = field?.complex;
-    const accessToken = await integrations.getMercadoPagoToken(complex?.id);
-    if (!accessToken) {
-      return res.status(400).json({ message: 'El complejo no tiene MercadoPago configurado.' });
-    }
+    // Token OAuth del complejo (400 si no conectó su cuenta, 401 si hay que reconectar)
+    const accessToken = await tokenForComplexId(complex?.id);
 
     // Monto según tipo de pago (backend calcula, nunca el front)
     const { amount, label } = paymentService.calcularMonto({ tipoPago, field, booking });
@@ -124,14 +122,11 @@ async function sync(req, res) {
     const reservaId = req.query.reserva_id;
     if (!paymentId) return res.status(400).json({ message: 'payment_id es requerido' });
 
-    // Resolver token: por la reserva → su complejo (fallback: plataforma)
-    let accessToken = null;
-    if (reservaId) {
-      const booking = await loadBookingFull(reservaId);
-      accessToken = await integrations.getMercadoPagoToken(booking?.field?.complex?.id);
-    } else {
-      accessToken = await integrations.getMercadoPagoToken(null); // plataforma
-    }
+    // Token: el del complejo de la reserva (ya no hay token de plataforma)
+    if (!reservaId) return res.status(400).json({ message: 'reserva_id es requerido' });
+    const booking = await loadBookingFull(reservaId);
+    if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
+    const accessToken = await tokenForComplexId(booking.field?.complex?.id);
 
     const result = await _syncFromMercadoPago(paymentId, accessToken);
     res.json(result);

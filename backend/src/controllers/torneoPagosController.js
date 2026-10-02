@@ -13,7 +13,7 @@
 const { PaymentRefund } = require('mercadopago');
 const { Torneo, TorneoPareja, TorneoJugador, sequelize } = require('../models');
 const paymentService = require('../services/payment.service');
-const integrations = require('../services/integrations.service');
+const mpOAuth = require('../services/mercadopagoOAuth.service');
 const { buildClient } = require('../config/mp.config');
 const svc = require('../services/torneos/torneoService');
 const { frontendUrl } = require('../config/urls');
@@ -36,7 +36,7 @@ async function iniciarPago(req, res) {
     const monto = Number(torneo.precio_inscripcion);
     if (!(monto > 0)) return res.status(400).json({ message: 'El torneo no tiene costo de inscripción.' });
 
-    const accessToken = await integrations.requireMercadoPagoToken(torneo.id_tenant);
+    const accessToken = await mpOAuth.accessTokenValido(torneo.id_tenant);
     const back = (estado) => frontendUrl(`/torneos/${torneo.id}/pago?estado=${estado}&pareja=${pareja.id}`);
     const pref = await paymentService.createPreference({
       accessToken,
@@ -65,7 +65,7 @@ async function sync(req, res) {
     if (!paymentId || !parejaId) return res.status(400).json({ message: 'payment_id y pareja_id son requeridos' });
     const pareja = await cargarPareja(parejaId);
     if (!pareja) return res.status(404).json({ message: 'Inscripción no encontrada' });
-    const token = await integrations.getMercadoPagoToken(pareja.torneo.id_tenant);
+    const token = await mpOAuth.accessTokenValido(pareja.torneo.id_tenant);
     res.json(await reconciliar(paymentId, token, Number(parejaId)));
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -80,7 +80,7 @@ async function webhook(req, res) {
     if (type !== 'payment') return;
     const paymentId = req.body?.data?.id || req.query['data.id'] || req.query.id;
     if (!paymentId) return;
-    const token = await integrations.getMercadoPagoToken(req.query.complex_id);
+    const token = await mpOAuth.accessTokenValido(req.query.complex_id);
     await reconciliar(paymentId, token);
   } catch (err) {
     console.error('[torneos][MP webhook]', err.message);
@@ -131,7 +131,7 @@ async function reconciliar(paymentId, accessToken, parejaEsperada) {
 
 /** Reembolso total en MercadoPago (lo usa el organizador al marcar 'reembolsado'). */
 async function reembolsarMp(clubId, paymentId) {
-  const token = await integrations.requireMercadoPagoToken(clubId);
+  const token = await mpOAuth.accessTokenValido(clubId);
   const { client } = buildClient(token);
   return new PaymentRefund(client).create({ payment_id: paymentId });
 }

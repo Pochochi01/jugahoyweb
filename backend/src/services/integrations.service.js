@@ -4,20 +4,22 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Punto ÚNICO de resolución de credenciales por club (multi-tenant).
  *
- * Nadie más debe leer process.env.META_* ni MP_ACCESS_TOKEN: todos los servicios
- * (WhatsApp, MercadoPago) piden las credenciales acá pasando el `clubId`.
+ * Nadie más debe leer process.env.META_*: los servicios de WhatsApp piden las
+ * credenciales acá pasando el `clubId`.
+ *
+ * MercadoPago NO pasa por acá: usa OAuth por complejo
+ * (services/mercadopagoOAuth.service.js → accessTokenValido).
  *
  * Orden de resolución (cascada), pensado para que dev y prod convivan sin
  * múltiples archivos .env:
  *   1) club_integrations  → credenciales propias del club  (fuente principal)
- *   2) complexes.mercadopago_token → compatibilidad con lo ya cargado (solo MP)
  *   3) process.env        → fallback de plataforma / desarrollo
  *
  * Incluye caché en memoria con TTL para no golpear la BD en cada mensaje de
  * WhatsApp, e invalidación explícita al actualizar una integración.
  */
 const axios = require('axios');
-const { ClubIntegration, Complex } = require('../models');
+const { ClubIntegration, Complex } = require('../models');   // Complex: listado de vencimientos
 
 const CACHE_TTL_MS = 60_000; // 1 minuto
 const cacheByClub  = new Map(); // clubId          → { data, exp }
@@ -165,43 +167,6 @@ async function findClubIdByPhoneNumberId(phoneNumberId) {
   return clubId;
 }
 
-// ── MercadoPago ──────────────────────────────────────────────
-/**
- * Access token de MercadoPago del club (cascada: integración → complexes → env).
- * @returns {Promise<string|null>}
- */
-async function getMercadoPagoToken(clubId) {
-  const integ = await getIntegration(clubId);
-  if (integ?.mercadopago_access_token && integ.activo !== false && !isExpired(integ)) {
-    return integ.mercadopago_access_token.trim();
-  }
-
-  // Compatibilidad con el token cargado desde el panel (complexes.mercadopago_token)
-  if (clubId) {
-    const complex = await Complex.findByPk(clubId, { attributes: ['mercadopago_token'] });
-    const legacy = complex?.mercadopago_token;
-    if (legacy && legacy.trim()) return legacy.trim();
-  }
-
-  return process.env.MP_ACCESS_TOKEN || null;
-}
-
-/** Igual que getMercadoPagoToken pero lanza si no hay token usable. */
-async function requireMercadoPagoToken(clubId) {
-  const integ = await getIntegration(clubId);
-  if (integ?.mercadopago_access_token && isExpired(integ)) {
-    const e = new Error('El token de MercadoPago del club está vencido. Renovalo en Integraciones.');
-    e.status = 401; e.code = 'MP_TOKEN_EXPIRED';
-    throw e;
-  }
-  const token = await getMercadoPagoToken(clubId);
-  if (!token) {
-    const e = new Error('Este club no tiene MercadoPago configurado.'); e.status = 400; e.code = 'MP_NOT_CONFIGURED';
-    throw e;
-  }
-  return token;
-}
-
 // ── Alta / actualización ─────────────────────────────────────
 /**
  * Crea o actualiza las credenciales de un club. Solo pisa los campos enviados.
@@ -211,7 +176,7 @@ async function upsertIntegration(clubId, data = {}) {
   const id = Number(clubId);
   const permitidos = [
     'meta_phone_number_id', 'meta_access_token', 'meta_webhook_verify_token', 'meta_app_secret',
-    'mercadopago_access_token', 'mercadopago_refresh_token', 'fecha_expiracion_token', 'activo',
+    'fecha_expiracion_token', 'activo',
     'wa_provider',
   ];
   const patch = {};
@@ -289,9 +254,6 @@ module.exports = {
   requireMetaCredentials,
   findClubIdByPhoneNumberId,
   renewMetaLongLivedToken,
-  // MercadoPago
-  getMercadoPagoToken,
-  requireMercadoPagoToken,
   // Administración
   upsertIntegration,
   getExpiringSoon,

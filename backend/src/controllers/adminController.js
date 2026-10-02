@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Complex, Field, User, Subscription, sequelize } = require('../models');
+const { Complex, Field, User, Subscription, MercadoPagoToken, sequelize } = require('../models');
 
 // ── Vista general de complejos con suscripciones ─────────────────────────────
 async function getComplexes(req, res) {
@@ -21,6 +21,13 @@ async function getComplexes(req, res) {
           model: User,
           as: 'owner',
           attributes: ['id', 'nombre', 'apellido', 'email', 'telefono'],
+        },
+        // Conexión OAuth de MercadoPago (sin tokens: el defaultScope los excluye)
+        {
+          model: MercadoPagoToken,
+          as: 'mercadopago',
+          attributes: ['estado', 'correo_vinculado', 'expires_at', 'live_mode'],
+          required: false,
         },
       ],
       order: [['nombre', 'ASC']],

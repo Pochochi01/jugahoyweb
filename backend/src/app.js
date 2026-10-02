@@ -28,6 +28,7 @@ const invitesRoutes    = require('./routes/invites');
 const paymentRoutes    = require('./routes/payment.routes');
 const verificationRoutes = require('./routes/verification');
 const cantinaRoutes      = require('./routes/cantina');
+const mercadopagoAuthRoutes = require('./routes/mercadopagoAuth');
 const torneosRoutes      = require('./routes/torneos');
 const profesoresRoutes   = require('./routes/profesores');
 const escuelaRoutes      = require('./routes/escuela');
@@ -75,6 +76,7 @@ app.use(passport.initialize());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // ── API routes ────────────────────────────────────────────────
+app.use('/api/auth/mercadopago', mercadopagoAuthRoutes);   // OAuth MercadoPago (antes que /api/auth)
 app.use('/api/auth', authRoutes);
 app.use('/api/auth', googleAuthRoutes);   // GET /api/auth/google, /api/auth/google/callback
 app.use('/api/auth', phoneAuthRoutes);    // POST /api/auth/phone/send, /api/auth/phone/verify

@@ -10,7 +10,6 @@ const sequelize     = require('../config/database');
  *
  * Reemplaza el uso de credenciales globales del .env:
  *   - Meta / WhatsApp Cloud API → meta_phone_number_id + meta_access_token
- *   - MercadoPago               → mercadopago_access_token
  *
  * `meta_phone_number_id` es único: es la clave con la que se enruta el webhook
  * ENTRANTE de WhatsApp al club correcto.
@@ -27,10 +26,7 @@ const ClubIntegration = sequelize.define('ClubIntegration', {
   // App Secret (para validar la firma X-Hub-Signature-256 si el club usa su propia app)
   meta_app_secret:      { type: DataTypes.STRING(120), allowNull: true, defaultValue: null },
 
-  // ── MercadoPago ──
-  mercadopago_access_token: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
-  // Solo si el club se onboardeó por OAuth (permite refresco real)
-  mercadopago_refresh_token: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
+  // MercadoPago: ya NO vive acá → tabla mercadopago_tokens (OAuth, ver services/mercadopagoOAuth.service.js)
 
   // Vencimiento del token de acceso (para avisos y refresco)
   fecha_expiracion_token: { type: DataTypes.DATE, allowNull: true, defaultValue: null },

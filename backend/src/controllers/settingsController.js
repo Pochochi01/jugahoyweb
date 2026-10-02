@@ -51,10 +51,7 @@ async function getSettings(req, res) {
     });
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
 
-    // MercadoPago es sensible: solo el administrador general ve el token.
-    const data = complex.toJSON();
-    if (req.user?.rol !== 'general_admin') delete data.mercadopago_token;
-    res.json(data);
+    res.json(complex.toJSON());
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -64,9 +61,6 @@ async function updateSettings(req, res) {
   try {
     const complex = await Complex.findByPk(req.params.complexId);
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
-
-    // Solo el administrador general puede modificar el token de MercadoPago.
-    if (req.user?.rol !== 'general_admin') delete req.body.mercadopago_token;
 
     // El módulo "Lista de espera + Recordatorios" es un extra pago: solo el
     // administrador general puede habilitarlo/deshabilitarlo.
@@ -121,15 +115,6 @@ async function updateSettings(req, res) {
     }
 
     await complex.update(req.body);
-
-    // Multi-tenant: si el panel guardó el token de MercadoPago, replicarlo en
-    // club_integrations (fuente de verdad) para que el frontend actual siga
-    // funcionando sin cambios y las credenciales queden centralizadas.
-    if (req.body?.mercadopago_token !== undefined) {
-      await integrations.upsertIntegration(complex.id, {
-        mercadopago_access_token: req.body.mercadopago_token || null,
-      });
-    }
 
     res.json(complex);
   } catch (err) {

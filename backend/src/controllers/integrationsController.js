@@ -27,7 +27,7 @@ async function getIntegrations(req, res) {
     const clubId = Number(req.params.complexId);
     const integ  = await integrations.getIntegration(clubId);
     const meta   = await integrations.getMetaCredentials(clubId);
-    const mpTok  = await integrations.getMercadoPagoToken(clubId);
+    const mp     = await require('../services/mercadopagoOAuth.service').estado(clubId);
 
     res.json({
       club_id: clubId,
@@ -44,12 +44,8 @@ async function getIntegrations(req, res) {
         app_secret_set:   Boolean(integ?.meta_app_secret),
         vencido:          meta.expired,
       },
-      mercadopago: {
-        configurado:  Boolean(mpTok),
-        origen:       integ?.mercadopago_access_token ? 'club' : (mpTok ? 'legacy/env' : 'none'),
-        access_token: mask(mpTok),
-        ambiente:     mpTok ? (mpTok.startsWith('TEST-') ? 'sandbox' : 'production') : null,
-      },
+      // MercadoPago: conexión OAuth del complejo (solo lectura; se conecta desde Configuración)
+      mercadopago: { conectado: mp.conectado, estado: mp.estado, correo_vinculado: mp.correo_vinculado, expires_at: mp.expires_at },
       wa_provider: integ?.wa_provider || 'meta',
       fecha_expiracion_token: integ?.fecha_expiracion_token || null,
       activo: integ?.activo ?? true,
@@ -65,7 +61,7 @@ async function updateIntegrations(req, res) {
     const clubId = Number(req.params.complexId);
     const {
       meta_phone_number_id, meta_access_token, meta_webhook_verify_token, meta_app_secret,
-      mercadopago_access_token, mercadopago_refresh_token, fecha_expiracion_token, activo,
+      fecha_expiracion_token, activo,
       wa_provider,
     } = req.body || {};
 
@@ -78,16 +74,10 @@ async function updateIntegrations(req, res) {
         && !/^\d{5,}$/.test(String(meta_phone_number_id).trim())) {
       return res.status(400).json({ message: 'meta_phone_number_id debe ser numérico (ID del número en Meta).' });
     }
-    if (mercadopago_access_token) {
-      const t = String(mercadopago_access_token).trim();
-      if (!t.startsWith('TEST-') && !t.startsWith('APP_USR-')) {
-        return res.status(400).json({ message: 'El token de MercadoPago debe empezar con TEST- o APP_USR-.' });
-      }
-    }
 
     const row = await integrations.upsertIntegration(clubId, {
       meta_phone_number_id, meta_access_token, meta_webhook_verify_token, meta_app_secret,
-      mercadopago_access_token, mercadopago_refresh_token, fecha_expiracion_token, activo,
+      fecha_expiracion_token, activo,
       wa_provider,
     });
 

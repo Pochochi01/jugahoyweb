@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { settingsService } from '../../services/settingsService';
+import MercadoPagoConexion from '../../components/MercadoPagoConexion';
 import { useAuth } from '../../context/AuthContext';
 import {
   Save, Plus, X, Wind, Home, Pencil, Trash2, Check,
@@ -27,139 +28,6 @@ function isValidUrl(s) {
     return u.protocol === 'http:' || u.protocol === 'https:';
   } catch { return false; }
 }
-
-// Detecta el ambiente del token de MercadoPago por su prefijo
-function mpEnv(t) {
-  if (!t) return null;
-  if (t.startsWith('TEST-'))    return { label: 'Modo prueba (sandbox)', cls: 'bg-amber-100 text-amber-700' };
-  if (t.startsWith('APP_USR-')) return { label: 'Producción',           cls: 'bg-green-100 text-green-700' };
-  return { label: 'Token no reconocido', cls: 'bg-red-100 text-red-600' };
-}
-
-// ── Tarjeta de configuración de MercadoPago (por complejo) ────────────────────
-function MercadoPagoCard({ complexId, initialToken }) {
-  const [token,  setToken]  = useState(initialToken || '');
-  const [show,   setShow]   = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [ok,     setOk]     = useState(false);
-  const [err,    setErr]    = useState('');
-
-  const trimmed = token.trim();
-  const env = mpEnv(trimmed);
-
-  const save = async () => {
-    setSaving(true); setErr('');
-    try {
-      await settingsService.update(complexId, { mercadopago_token: trimmed || null });
-      setOk(true); setTimeout(() => setOk(false), 2500);
-    } catch (e) {
-      setErr(e?.response?.data?.message || e.message || 'Error al guardar el token.');
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="card space-y-4">
-      <div className="flex items-center gap-2">
-        <CreditCard className="w-5 h-5 text-primary" />
-        <h3 className="font-semibold">Cobros con MercadoPago</h3>
-        {initialToken
-          ? <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-0.5 rounded-full">Configurado</span>
-          : <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-full">Sin configurar</span>}
-      </div>
-
-      <p className="text-sm text-muted-foreground">
-        Pegá el <strong>Access Token</strong> de la cuenta de MercadoPago de este complejo. Los pagos de
-        seña y turnos de tus jugadores entran directo a <strong>tu cuenta</strong>.
-      </p>
-
-      <div>
-        <label className="label">Access Token</label>
-        <div className="relative">
-          <input
-            type={show ? 'text' : 'password'}
-            className="input pr-24 font-mono text-sm"
-            placeholder="APP_USR-... o TEST-..."
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            autoComplete="off"
-          />
-          <button type="button" onClick={() => setShow(s => !s)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
-            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {show ? 'Ocultar' : 'Ver'}
-          </button>
-        </div>
-        {env && (
-          <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${env.cls}`}>
-            {env.label}
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3">
-        <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-        <span>
-          El token es secreto: no lo compartas. Se guarda en el servidor y nunca se expone a los jugadores.
-          {' '}
-          <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noreferrer"
-            className="text-primary hover:underline inline-flex items-center gap-0.5">
-            Obtener mi token <ExternalLink className="w-3 h-3" />
-          </a>
-        </span>
-      </div>
-
-      {err && <p className="text-sm text-red-500">{err}</p>}
-
-      <button onClick={save} disabled={saving}
-        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-600 text-white' : 'btn-primary'}`}>
-        <Save className="w-4 h-4" />
-        {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar token'}
-      </button>
-    </div>
-  );
-}
-
-const DEPORTES = [
-  { value: 'futbol',  label: 'Fútbol',  emoji: '⚽' },
-  { value: 'tenis',   label: 'Tenis',   emoji: '🎾' },
-  { value: 'padel',   label: 'Pádel',   emoji: '🏓' },
-  { value: 'basquet', label: 'Basket',  emoji: '🏀' },
-  { value: 'squash',  label: 'Squash',  emoji: '🥎' },
-];
-
-// Superficies por deporte (misma tabla que backend utils/canchas.js).
-// Basket y Squash: sin superficie (dropdown deshabilitado).
-const SUPERFICIES = {
-  futbol:  [{ value: 'cemento', label: 'Cemento' }, { value: 'sintetico', label: 'Sintético' }, { value: 'natural', label: 'Natural' }],
-  tenis:   [{ value: 'dura', label: 'Dura' }, { value: 'arcilla', label: 'Arcilla' }, { value: 'cesped', label: 'Césped' }],
-  padel:   [{ value: 'dura', label: 'Dura' }, { value: 'cesped', label: 'Césped' }],
-  basquet: [],
-  squash:  [],
-};
-const superficiesDe = (dep) => SUPERFICIES[dep] || [];
-
-// Próximo identificador "C<n>" a partir de las canchas existentes del complejo.
-function nextFieldId(fields = []) {
-  let max = 0;
-  for (const f of fields) {
-    const m = /^C(\d+)$/.exec(f.identificador || '');
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return `C${max + 1}`;
-}
-// Turnos de hora completa: 1 h y 2 h (sin 30 min ni 1½ h).
-const DURACIONES = [
-  { value: 60,  label: '1 hora',   short: '1 h' },
-  { value: 120, label: '2 horas',  short: '2 h' },
-];
-
-const CANCHA_INICIAL = {
-  nombre: '', deporte: 'futbol', superficie: 'cemento', dimensiones: '', techada: false,
-  duraciones_permitidas: [60], precios_por_duracion: { 60: '' },
-  precio_base: '', hora_apertura: '08:00', hora_cierre: '02:00',
-  sena_monto: '',   // monto fijo de seña para pagar online (MercadoPago)
-  whatsapp_contacto: '',   // WhatsApp propio de la cancha (fallback: el del complejo)
-};
 
 // ── Tarjeta de WhatsApp / Meta (credenciales propias del club) ───────────────
 function WhatsAppCard({ complexId }) {
@@ -913,7 +781,7 @@ function WaTemplatesCard({ complexId }) {
 }
 
 // ── tab principal ─────────────────────────────────────────────────────────────
-export default function SettingsTab({ complexId, onUpdate, onFieldsChange }) {
+export default function SettingsTab({ complexId, onUpdate, onFieldsChange, resultadoMp }) {
   // MercadoPago y WhatsApp: SOLO general_admin. Límite de inasistencias: admins.
   const { isGeneralAdmin, isComplexAdmin } = useAuth();
   const [form,          setForm]          = useState(null);
@@ -965,7 +833,7 @@ export default function SettingsTab({ complexId, onUpdate, onFieldsChange }) {
 
     setSaving(true);
     try {
-      // Enviar solo los campos generales (no pisar mercadopago_token, que se guarda
+      // Enviar solo los campos generales (no pisar los que se guardan
       // desde su propia tarjeta con estado independiente).
       const payload = {
         nombre:      form.nombre,
@@ -1134,10 +1002,12 @@ export default function SettingsTab({ complexId, onUpdate, onFieldsChange }) {
         </button>
       </form>
 
-      {/* MercadoPago y WhatsApp — SOLO el administrador general */}
+      {/* MercadoPago (OAuth): lo conecta el administrador del complejo o el general */}
+      {isComplexAdmin && <MercadoPagoConexion complexId={complexId} resultado={resultadoMp} />}
+
+      {/* WhatsApp — SOLO el administrador general */}
       {isGeneralAdmin && (
         <>
-          <MercadoPagoCard complexId={complexId} initialToken={form.mercadopago_token} />
           <WhatsAppCard complexId={complexId} />
           <WaProviderCard complexId={complexId} />
           <WaTemplatesCard complexId={complexId} />
