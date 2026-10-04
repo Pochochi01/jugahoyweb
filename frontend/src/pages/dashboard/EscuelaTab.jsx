@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Users, Wallet, CalendarDays, Megaphone, Layers, UserCog, Settings, Search, Plus, Pencil, Trash2,
-  MessageCircle, Link2, Goal,
+  MessageCircle, Link2, Goal, School, CheckCircle, Smartphone, Send,
 } from 'lucide-react';
-import { escuelaAdmin } from '../../services/escuelaService';
+import { escuelaAdmin, escuelasAdmin } from '../../services/escuelaService';
+import { telefonoEscuela } from '../../services/telefonoEntidadService';
+import TelefonoEntidad from '../../components/TelefonoEntidad';
+import MensajesPadres from '../../components/escuela/MensajesPadres';
 import { profesoresAdmin } from '../../services/profesoresService';
 import { copiarTexto, periodoLabel } from '../../utils/escuelaWhatsapp';
 import {
@@ -16,17 +19,119 @@ const edadDe = (f) => {
   return hy - y - ((hm < m || (hm === m && hd < d)) ? 1 : 0);
 };
 
+const DEPORTES = [
+  ['futbol', 'Fútbol'], ['padel', 'Pádel'], ['tenis', 'Tenis'], ['basquet', 'Básquet'], ['voley', 'Vóley'], ['squash', 'Squash'], ['otro', 'Otro'],
+];
+const deporteLabel = (d) => DEPORTES.find(x => x[0] === d)?.[1] || d;
+const claveEscuela = (cid) => `escuela_activa_${cid}`;
+const leerEscuela = (cid) => { try { return Number(localStorage.getItem(claveEscuela(cid))) || null; } catch { return null; } };
+const guardarEscuela = (cid, id) => { try { localStorage.setItem(claveEscuela(cid), String(id)); } catch { /* sin storage */ } };
+
 /**
- * Escuela de Fútbol (panel admin / colaborador con permiso 'escuela').
- * Visible solo con canchas de fútbol habilitadas; usa solo esas canchas.
+ * Escuelas del complejo (panel admin / colaborador con permiso 'escuela').
+ * Un complejo puede tener varias escuelas (fútbol, tenis…): se elige una
+ * arriba y todas las vistas trabajan sobre ella; cada escuela usa solo las
+ * canchas de su deporte.
  */
 export default function EscuelaTab({ complexId }) {
-  const svc = useMemo(() => escuelaAdmin(complexId), [complexId]);
+  const [escuelas, setEscuelas] = useState(null);
+  const [escuelaId, setEscuelaId] = useState(() => leerEscuela(complexId));
+  const recargarEscuelas = useCallback(() => escuelasAdmin(complexId).list().then(setEscuelas).catch(() => setEscuelas([])), [complexId]);
+  useEffect(() => { recargarEscuelas(); }, [recargarEscuelas]);
+  // Escuela activa válida: la guardada si sigue existiendo, si no la primera
+  const actual = escuelas?.find(e => e.id === escuelaId) || escuelas?.[0] || null;
+  const elegir = (id) => { setEscuelaId(id); guardarEscuela(complexId, id); };
+
+  const [toast, setToast] = useState(null);
+  const avisar = (tipo, msg) => { setToast({ tipo, msg }); setTimeout(() => setToast(null), 3500); };
+
+  if (!escuelas) return <p className="text-sm text-muted-foreground">Cargando…</p>;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-bold flex items-center gap-2 mr-2"><Goal className="w-5 h-5 text-primary" /> Escuelas</h2>
+        {escuelas.map(e => (
+          <button key={e.id} onClick={() => elegir(e.id)} aria-pressed={actual?.id === e.id}
+            className={`px-3 py-1.5 rounded-full text-sm border ${actual?.id === e.id ? 'border-primary bg-primary/15 text-primary font-medium' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+            {e.nombre} <span className="text-[11px] opacity-70">· {deporteLabel(e.deporte)}{e.estado === 'inactiva' ? ' · inactiva' : ''}</span>
+          </button>
+        ))}
+      </div>
+      {actual
+        ? <EscuelaPanel key={actual.id} complexId={complexId} escuela={actual} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />
+        : <Escuelas complexId={complexId} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-white ${toast.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Alta / edición / baja de escuelas ─────────────────────────
+function Escuelas({ complexId, escuelas, recargarEscuelas, elegir, avisar }) {
+  const svc = useMemo(() => escuelasAdmin(complexId), [complexId]);
+  const [form, setForm] = useState(null);
+  const set = (k, v) => setForm(x => ({ ...x, [k]: v }));
+  const guardar = async (e) => {
+    e.preventDefault();
+    try {
+      const d = { nombre: form.nombre, deporte: form.deporte, descripcion: form.descripcion, estado: form.estado };
+      const r = form.id ? await svc.update(form.id, d) : await svc.create(d);
+      setForm(null); await recargarEscuelas(); if (!form.id) elegir(r.id);
+      avisar('ok', form.id ? 'Escuela actualizada.' : 'Escuela creada: cargá sus categorías.');
+    } catch (err) { avisar('err', errMsg(err)); }
+  };
+  const borrar = async (x) => {
+    if (!confirm(`¿Eliminar ${x.nombre}? Si tiene alumnos queda inactiva.`)) return;
+    try { const r = await svc.remove(x.id); avisar('ok', r.message || 'Escuela eliminada.'); recargarEscuelas(); } catch (err) { avisar('err', errMsg(err)); }
+  };
+  return (
+    <div className="space-y-3 max-w-3xl">
+      <p className="text-xs text-muted-foreground">Cada escuela tiene su deporte, categorías, alumnos, horarios, cuotas y entrenadores. Usa solo las canchas de su deporte.</p>
+      {!escuelas.length && !form && <div className="card text-center text-sm text-muted-foreground py-6">Todavía no hay escuelas. Creá la primera (ej. "Escuela de fútbol", "Escuela de tenis").</div>}
+      {!form && <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setForm({ nombre: '', deporte: 'futbol', descripcion: '', estado: 'activa' })}><Plus className="w-4 h-4" /> Escuela</button>}
+      {form && (
+        <form onSubmit={guardar} className="card grid sm:grid-cols-2 gap-2">
+          <input className="input" placeholder="Nombre (ej. Escuela de tenis)" value={form.nombre} onChange={e => set('nombre', e.target.value)} required minLength={3} />
+          <select className="input" value={form.deporte} onChange={e => set('deporte', e.target.value)} aria-label="Deporte">
+            {DEPORTES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <textarea className="input sm:col-span-2" rows={2} placeholder="Descripción (se muestra en la web)" value={form.descripcion || ''} onChange={e => set('descripcion', e.target.value)} />
+          {form.id && (
+            <select className="input" value={form.estado} onChange={e => set('estado', e.target.value)} aria-label="Estado">
+              <option value="activa">Activa</option><option value="inactiva">Inactiva (no se muestra)</option>
+            </select>
+          )}
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm">{form.id ? 'Guardar' : 'Crear escuela'}</button>
+            <button type="button" className="btn-outline text-sm" onClick={() => setForm(null)}>Cancelar</button>
+          </div>
+        </form>
+      )}
+      {escuelas.map(x => (
+        <div key={x.id} className="card py-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate flex items-center gap-1.5"><School className="w-4 h-4 text-primary shrink-0" /> {x.nombre}
+              {x.estado === 'inactiva' && <span className="badge-red ml-1">Inactiva</span>}</div>
+            <div className="text-xs text-muted-foreground">{deporteLabel(x.deporte)} · {x.categorias} categorías · {x.alumnos} alumnos{x.pendientes ? ` · ${x.pendientes} pre‑inscriptos` : ''} · {x.profesores} profesores</div>
+          </div>
+          <div className="flex gap-1">
+            <button className="btn-outline text-xs" onClick={() => elegir(x.id)}>Abrir</button>
+            <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar" onClick={() => setForm({ ...x })}><Pencil className="w-4 h-4" /></button>
+            <button className="p-1.5 rounded hover:bg-red-500/10 text-red-400" aria-label="Eliminar" onClick={() => borrar(x)}><Trash2 className="w-4 h-4" /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EscuelaPanel({ complexId, escuela, escuelas, recargarEscuelas, elegir, avisar }) {
+  const svc = useMemo(() => escuelaAdmin(complexId, escuela.id), [complexId, escuela.id]);
+  const telefonoWa = useMemo(() => telefonoEscuela(complexId, escuela.id), [complexId, escuela.id]);
   const [vista, setVista] = useState('alumnos');
   const [categorias, setCategorias] = useState([]);
   const [canchas, setCanchas] = useState([]);
-  const [toast, setToast] = useState(null);
-  const avisar = (tipo, msg) => { setToast({ tipo, msg }); setTimeout(() => setToast(null), 3500); };
 
   const recargarCategorias = useCallback(() => svc.categorias().then(setCategorias).catch(() => {}), [svc]);
   useEffect(() => { recargarCategorias(); svc.canchas().then(setCanchas).catch(() => {}); }, [svc, recargarCategorias]);
@@ -34,13 +139,12 @@ export default function EscuelaTab({ complexId }) {
   const VISTAS = [
     ['alumnos', 'Alumnos', Users], ['cuotas', 'Cuotas', Wallet], ['horarios', 'Horarios', CalendarDays],
     ['avisos', 'Avisos', Megaphone], ['categorias', 'Categorías', Layers], ['entrenadores', 'Entrenadores', UserCog],
-    ['config', 'Configuración', Settings],
+    ['mensajes', 'Mensajes a padres', Send], ['whatsapp', 'WhatsApp', Smartphone], ['config', 'Configuración', Settings], ['escuelas', 'Escuelas', School],
   ];
-  const ctx = { svc, complexId, categorias, canchas: canchas.filter(c => c.activa !== false), recargarCategorias, avisar };
+  const ctx = { svc, complexId, escuela, categorias, canchas: canchas.filter(c => c.activa !== false), recargarCategorias, recargarEscuelas, avisar };
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold flex items-center gap-2"><Goal className="w-5 h-5 text-primary" /> Escuela de fútbol</h2>
       <div className="flex gap-1 overflow-x-auto border-b border-border">
         {VISTAS.map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
@@ -55,10 +159,10 @@ export default function EscuelaTab({ complexId }) {
       {vista === 'avisos'       && <Avisos {...ctx} />}
       {vista === 'categorias'   && <Categorias {...ctx} />}
       {vista === 'entrenadores' && <Entrenadores {...ctx} />}
+      {vista === 'mensajes'     && <MensajesPadres svc={svc} categorias={categorias} irA={setVista} />}
+      {vista === 'whatsapp'     && <TelefonoEntidad svc={telefonoWa} quienes="alumnos (responsables)" categorias={categorias} />}
       {vista === 'config'       && <Config {...ctx} />}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-white ${toast.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
-      )}
+      {vista === 'escuelas'     && <Escuelas complexId={complexId} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />}
     </div>
   );
 }
@@ -104,11 +208,17 @@ function Alumnos({ svc, categorias, avisar }) {
           return (
             <div key={a.id} className="card py-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{a.nombre} {a.estado === 'inactivo' && <span className="badge-red ml-1">Inactivo</span>}</div>
+                <div className="font-medium truncate">{a.nombre} {a.estado === 'inactivo' && <span className="badge-red ml-1">Inactivo</span>}
+                  {a.estado === 'pendiente' && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">Pre‑inscripción web</span>}</div>
                 <div className="text-xs text-muted-foreground truncate">{a.categoria?.nombre} · {a.edad} años · {a.responsable_nombre} ({a.responsable_whatsapp})</div>
               </div>
               <span className={b.cls} title={`Cuota ${a.periodo}`}>{b.label}</span>
               <div className="flex gap-1">
+                {a.estado === 'pendiente' && (
+                  <button className="p-1.5 rounded bg-primary/15 text-primary hover:bg-primary/25" aria-label="Confirmar inscripción" title="Confirmar inscripción (ocupa cupo)"
+                    onClick={async () => { try { await svc.editarAlumno(a.id, { estado: 'activo' }); avisar('ok', `${a.nombre} quedó inscripto.`); cargar(); } catch (e) { avisar('err', errMsg(e)); } }}>
+                    <CheckCircle className="w-4 h-4" /></button>
+                )}
                 <button className="p-1.5 rounded bg-green-600 text-white hover:bg-green-700" aria-label="WhatsApp" onClick={() => setWa(a)}><MessageCircle className="w-4 h-4" /></button>
                 <button className="p-1.5 rounded hover:bg-muted" aria-label="Copiar link del portal" title="Copiar link del portal del alumno"
                   onClick={async () => { if (await copiarTexto(a.portal_url)) avisar('ok', 'Link del portal copiado.'); }}><Link2 className="w-4 h-4" /></button>
@@ -164,7 +274,7 @@ function AlumnoForm({ inicial, categorias, onSave, onCancel }) {
       <input className="input" type="email" placeholder="Email del responsable (opcional)" value={f.responsable_email || ''} onChange={e => set('responsable_email', e.target.value)} />
       {f.id && (
         <select className="input" value={f.estado} onChange={e => set('estado', e.target.value)}>
-          <option value="activo">Activo</option><option value="inactivo">Inactivo</option>
+          <option value="activo">Activo</option><option value="pendiente">Pre‑inscripto (sin cupo)</option><option value="inactivo">Inactivo</option>
         </select>
       )}
       {error && <p className="sm:col-span-2 text-sm text-red-400">{error}</p>}
@@ -263,14 +373,14 @@ function Cuotas({ svc, categorias, avisar }) {
 }
 
 // ── Horarios ──────────────────────────────────────────────────
-function Horarios({ svc, categorias, canchas }) {
+function Horarios({ svc, escuela, categorias, canchas }) {
   const [horarios, setHorarios] = useState([]);
   const cargar = useCallback(() => svc.horarios().then(setHorarios).catch(() => {}), [svc]);
   useEffect(() => { cargar(); }, [cargar]);
   const conRecarga = (fn) => async (...a) => { const r = await fn(...a); cargar(); return r; };
   return (
     <div className="space-y-2 max-w-3xl">
-      <p className="text-xs text-muted-foreground">Solo canchas de fútbol. Cada horario reserva la cancha en la agenda todas las semanas (turno fijo "Escuela · categoría").</p>
+      <p className="text-xs text-muted-foreground">Solo canchas de {deporteLabel(escuela.deporte).toLowerCase()}. Cada horario reserva la cancha en la agenda todas las semanas (turno fijo "Escuela · categoría").</p>
       <HorariosEditor horarios={horarios} categorias={categorias} canchas={canchas}
         onCrear={conRecarga(svc.crearHorario)} onEditar={conRecarga(svc.editarHorario)} onBorrar={conRecarga(svc.borrarHorario)} />
     </div>
@@ -369,7 +479,7 @@ function Categorias({ svc, categorias, recargarCategorias, avisar }) {
 }
 
 // ── Entrenadores (profesores con login DNI ↔ categorías) ──────
-function Entrenadores({ svc, complexId, categorias, recargarCategorias, avisar }) {
+function Entrenadores({ svc, complexId, escuela, categorias, recargarCategorias, avisar }) {
   const profs = useMemo(() => profesoresAdmin(complexId), [complexId]);
   const [rows, setRows] = useState(null);
   const [nuevo, setNuevo] = useState(null);
@@ -383,7 +493,7 @@ function Entrenadores({ svc, complexId, categorias, recargarCategorias, avisar }
   };
   const crear = async (e) => {
     e.preventDefault();
-    try { await profs.create(nuevo); setNuevo(null); cargar(); avisar('ok', 'Entrenador creado: entra con su DNI como usuario y contraseña.'); }
+    try { await profs.create({ ...nuevo, deportes: [escuela.deporte] }); setNuevo(null); cargar(); avisar('ok', 'Entrenador creado: entra con su DNI como usuario y contraseña.'); }
     catch (err) { avisar('err', errMsg(err)); }
   };
   const set = (k, v) => setNuevo(x => ({ ...x, [k]: v }));
@@ -409,7 +519,9 @@ function Entrenadores({ svc, complexId, categorias, recargarCategorias, avisar }
       {rows?.length === 0 && <div className="card text-center text-sm text-muted-foreground py-6">Sin entrenadores.</div>}
       {rows?.map(p => (
         <div key={p.id} className="card py-2.5 space-y-2">
-          <div className="text-sm"><span className="font-medium">{p.apellido}, {p.nombre}</span> <span className="text-xs text-muted-foreground">· DNI {p.dni}{!p.activo && ' · inactivo'}</span></div>
+          <div className="text-sm"><span className="font-medium">{p.apellido}, {p.nombre}</span> <span className="text-xs text-muted-foreground">· DNI {p.dni}{!p.activo && ' · inactivo'}</span>
+            {p.asignado && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">En esta escuela</span>}
+            {!p.deporte_ok && <span className="ml-1 text-[11px] text-amber-400">· no tiene cargado {deporteLabel(escuela.deporte)} (Profesores → editar)</span>}</div>
           <div className="flex flex-wrap gap-1.5">
             {categorias.map(c => {
               const on = p.categoriasEscuela.some(x => x.id === c.id);
@@ -427,7 +539,7 @@ function Entrenadores({ svc, complexId, categorias, recargarCategorias, avisar }
 }
 
 // ── Configuración ─────────────────────────────────────────────
-function Config({ svc, avisar }) {
+function Config({ svc, escuela, recargarEscuelas, avisar }) {
   const [f, setF] = useState(null);
   useEffect(() => { svc.config().then(setF).catch(() => {}); }, [svc]);
   if (!f) return <p className="text-sm text-muted-foreground">Cargando…</p>;
@@ -435,11 +547,15 @@ function Config({ svc, avisar }) {
   return (
     <form className="card space-y-3 max-w-lg" onSubmit={async (e) => {
       e.preventDefault();
-      try { setF(await svc.guardarConfig({ nombre: f.nombre, whatsapp_oficial: f.whatsapp_oficial, dia_vencimiento: f.dia_vencimiento })); avisar('ok', 'Configuración guardada.'); }
+      try { setF(await svc.guardarConfig({ nombre: f.nombre, descripcion: f.descripcion, whatsapp_oficial: f.whatsapp_oficial, dia_vencimiento: f.dia_vencimiento })); recargarEscuelas(); avisar('ok', 'Configuración guardada.'); }
       catch (err) { avisar('err', errMsg(err)); }
     }}>
       <label className="block text-xs text-muted-foreground">Nombre de la escuela
         <input className="input" placeholder="Escuela de fútbol …" value={f.nombre || ''} onChange={e => set('nombre', e.target.value)} />
+        <span className="text-[11px]">Deporte: {deporteLabel(escuela.deporte)} (se cambia en Escuelas → editar).</span>
+      </label>
+      <label className="block text-xs text-muted-foreground">Descripción (web pública)
+        <textarea className="input" rows={2} value={f.descripcion || ''} onChange={e => set('descripcion', e.target.value)} />
       </label>
       <label className="block text-xs text-muted-foreground">WhatsApp oficial de la escuela
         <input className="input" inputMode="tel" placeholder="5493811234567" value={f.whatsapp_oficial || ''} onChange={e => set('whatsapp_oficial', e.target.value)} />

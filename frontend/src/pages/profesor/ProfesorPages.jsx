@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { GraduationCap, LogOut, Plus, X, Trash2, Layers } from 'lucide-react';
+import { GraduationCap, LogOut, Plus, X, Trash2, Layers, School, Trophy } from 'lucide-react';
 import { profesorPanel } from '../../services/profesoresService';
 import GrillaSemanal, { SemanaNav, inicioSemana } from '../../components/profesores/GrillaSemanal';
 import EscuelaEntrenador from './EscuelaEntrenador';
 import { escuelaProfesor } from '../../services/escuelaService';
+import TelefonoEntidad from '../../components/TelefonoEntidad';
+import { telefonoProfesor } from '../../services/telefonoEntidadService';
 
 const errMsg = (e) => e?.message || 'Ocurrió un error';
 const leerSesion = () => { try { return JSON.parse(localStorage.getItem('prof_session')); } catch { return null; } };
@@ -48,9 +50,13 @@ export function ProfesorPanel() {
   const [complejos, setComplejos] = useState(sesion?.complejos || []);
   // Con un solo complejo entra directo; con varios, elige (o ve el consolidado)
   const [club, setClub] = useState(() => (sesion?.complejos?.length === 1 ? sesion.complejos[0].id : null));
-  // Escuela de fútbol: si en este complejo tiene categorías asignadas, aparece la pestaña
-  const [modo, setModo] = useState('clases');          // 'clases' | 'escuela'
+  // Escuela: si en este complejo tiene categorías asignadas, aparece la pestaña
+  const [modo, setModo] = useState('clases');          // 'clases' | 'escuela' | 'actividades' | 'whatsapp'
   const [tieneEscuela, setTieneEscuela] = useState(false);
+  // Escuelas y torneos asignados (todos sus complejos)
+  const [actividades, setActividades] = useState([]);
+  useEffect(() => { profesorPanel.actividades().then(setActividades).catch(() => {}); }, []);
+  const misActividades = actividades.filter(a => (club === CONSOLIDADO || a.club.id === club) && (a.escuelas.length || a.torneos.length));
   useEffect(() => {
     setTieneEscuela(false); setModo('clases');
     if (!club || club === CONSOLIDADO) return;
@@ -108,15 +114,17 @@ export function ProfesorPanel() {
           </div>
         ) : (
           <>
-            {tieneEscuela && (
-              <div className="flex gap-1">
-                {[['clases', 'Clases'], ['escuela', 'Escuela de fútbol']].map(([k, l]) => (
+            {club !== CONSOLIDADO && (
+              <div className="flex flex-wrap gap-1">
+                {[['clases', 'Clases'], ...(tieneEscuela ? [['escuela', 'Escuela']] : []), ...(misActividades.length ? [['actividades', 'Mis escuelas y torneos']] : []), ['whatsapp', 'Mi WhatsApp']].map(([k, l]) => (
                   <button key={k} onClick={() => setModo(k)}
                     className={`px-3 py-1.5 rounded-lg text-sm ${modo === k ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>{l}</button>
                 ))}
               </div>
             )}
-            {modo === 'escuela' && tieneEscuela ? <EscuelaEntrenador complexId={club} /> : <>
+            {modo === 'whatsapp' && club !== CONSOLIDADO ? <TelefonoEntidad key={club} svc={telefonoProfesor(club)} quienes="alumnos" />
+            : modo === 'actividades' && misActividades.length ? <MisActividades lista={misActividades} mostrarClub={club === CONSOLIDADO} />
+            : modo === 'escuela' && tieneEscuela ? <EscuelaEntrenador complexId={club} /> : <>
             <div className="flex flex-wrap items-center gap-3">
               <SemanaNav desde={desde} onChange={setDesde} />
               {club !== CONSOLIDADO && g && (
@@ -236,5 +244,35 @@ function DetalleClase({ clase, editable, onSave, onCancel, onClose }) {
         </ul>
       )}
     </Modal>
+  );
+}
+
+/** Escuelas (categorías + horarios) y torneos asignados al profesor. */
+function MisActividades({ lista, mostrarClub }) {
+  const fecha = (x) => (x ? `${x.slice(8, 10)}/${x.slice(5, 7)}` : '');
+  return (
+    <div className="grid md:grid-cols-2 gap-3">
+      {lista.map(a => (
+        <div key={a.club.id} className="card space-y-3">
+          {mostrarClub && <div className="text-sm font-semibold">{a.club.nombre}</div>}
+          {a.escuelas.map(e => (
+            <div key={e.id}>
+              <div className="flex items-center gap-1.5 font-medium text-sm"><School className="w-4 h-4 text-primary" /> {e.nombre} <span className="text-xs text-muted-foreground font-normal">· {e.deporte_label}</span></div>
+              {e.categorias.length ? e.categorias.map(c => (
+                <div key={c.id} className="text-xs text-muted-foreground pl-6 mt-0.5">
+                  <span className="text-foreground">{c.nombre}:</span> {c.horarios.length ? c.horarios.map(h => `${h.dia} ${h.hora_inicio}–${h.hora_fin}${h.cancha ? ` (${h.cancha})` : ''}`).join(' · ') : 'sin horarios'}
+                </div>
+              )) : <div className="text-xs text-muted-foreground pl-6">Sin categorías asignadas.</div>}
+            </div>
+          ))}
+          {a.torneos.map(t => (
+            <div key={t.id} className="flex items-center gap-1.5 text-sm">
+              <Trophy className="w-4 h-4 text-amber-400 shrink-0" /> <span className="font-medium">{t.nombre}</span>
+              <span className="text-xs text-muted-foreground">{t.rol ? `${t.rol} · ` : ''}{fecha(t.fecha_inicio)} al {fecha(t.fecha_fin)} · {t.estado}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }

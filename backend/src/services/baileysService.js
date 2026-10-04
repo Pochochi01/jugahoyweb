@@ -6,7 +6,7 @@
  * Una sesión por club, persistida en BAILEYS_AUTH_DIR/<clubId>.
  *
  * Dependencia OPCIONAL (no se instala por defecto):
- *     npm install @whiskeysockets/baileys@^6
+ *     npm install @whiskeysockets/baileys
  * Si no está instalada, isAvailable() devuelve false y los envíos fallan con
  * un error claro (el notificador lo registra y sigue).
  *
@@ -20,26 +20,18 @@ const path = require('path');
 const fs   = require('fs');
 const QRCode = require('qrcode');
 
-let baileys = null;
-try { baileys = require('@whiskeysockets/baileys'); } catch { /* opcional */ }
+const baileysLib = require('../utils/baileysLib');   // import() dinámico (Baileys es ESM)
 
 const AUTH_DIR = process.env.BAILEYS_AUTH_DIR || path.join(__dirname, '..', '..', 'baileys_auth');
 const sesiones = new Map(); // clubId → { sock, estado: 'conectando'|'qr'|'conectado'|'desconectado', qr }
 
-function isAvailable() { return Boolean(baileys); }
+function isAvailable() { return baileysLib.instalado(); }
 
-function requireLib() {
-  if (!baileys) {
-    const e = new Error('Baileys no está instalado en el servidor (npm install @whiskeysockets/baileys@^6).');
-    e.status = 501; e.code = 'BAILEYS_NOT_INSTALLED';
-    throw e;
-  }
-  return baileys;
-}
+const requireLib = () => baileysLib.cargar();
 
 /** Abre (o reutiliza) la sesión del club. */
 async function conectar(clubId) {
-  const lib = requireLib();
+  const lib = await requireLib();
   const id = Number(clubId);
   const actual = sesiones.get(id);
   if (actual && actual.estado !== 'desconectado') return actual;
@@ -75,7 +67,7 @@ async function conectar(clubId) {
 
 /** Estado de la sesión + QR (data URL) para escanear, si corresponde. */
 async function estado(clubId) {
-  if (!baileys) return { disponible: false, estado: 'no_instalado', qr: null };
+  if (!isAvailable()) return { disponible: false, estado: 'no_instalado', qr: null };
   const s = sesiones.get(Number(clubId));
   // Hay credenciales guardadas → reconectar en segundo plano
   if (!s && fs.existsSync(path.join(AUTH_DIR, String(clubId), 'creds.json'))) {

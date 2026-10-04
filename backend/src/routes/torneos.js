@@ -18,6 +18,7 @@
  *   POST /organizador/login
  *
  * Staff del club (admin / colaborador con permiso 'torneos' / organizador):
+ *   /club/:complexId/torneos/:torneoId/whatsapp[/conectar|/destinatarios|/enviar]   teléfono propio del torneo
  *   /club/:complexId/...  (ver abajo)
  */
 const router = require('express').Router();
@@ -35,6 +36,8 @@ const pub         = require('../controllers/torneoPublicController');
 const ranking     = require('../controllers/torneoRankingController');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
 const { requireCanchas } = require('../middlewares/canchas');
+const { rutasTelefono } = require('../controllers/entityPhoneController');
+const { cargarEntidad } = require('../middlewares/entidadTelefono');
 
 // ── Upload de la imagen del evento ────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/torneos');
@@ -91,6 +94,8 @@ club.get ('/torneos/:torneoId',               loadTorneo, torneos.get);
 club.put ('/torneos/:torneoId',               loadTorneo, torneos.update);
 club.delete('/torneos/:torneoId',             requireClubAdmin, loadTorneo, torneos.remove);
 club.put ('/torneos/:torneoId/estado',        loadTorneo, torneos.cambiarEstado);
+// WhatsApp propio del torneo (QR Baileys) → mensajes a los inscriptos
+club.use ('/torneos/:torneoId/whatsapp',      loadTorneo, cargarEntidad('torneo', req => req.torneo.id), rutasTelefono());
 club.post('/torneos/:torneoId/imagen',        loadTorneo, upload.single('imagen'), torneos.subirImagen);
 
 // Canchas y horarios

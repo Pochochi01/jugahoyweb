@@ -4,7 +4,39 @@ const {
   RecurringBooking, BookingConsumo, CantinaProducto, CantinaVenta,
   CantinaDetalleVenta, CantinaMovimiento, sequelize,
   HorarioProfesor, Profesor, Alumno, TorneoPartido, Torneo, TorneoPareja, TorneoJugador,
+  Escuela, EscuelaCategoria, EscuelaHorario,
 } = require('../models');
+
+/**
+ * Entrenamientos de escuela: cada horario de escuela es un turno fijo
+ * (recurring_bookings) → sus reservas llevan recurring_id. Devuelve
+ * { [recurring_id]: { escuela, deporte, categoria, entrenadores } } para mostrar
+ * en la agenda a qué escuela pertenece el turno.
+ */
+async function escuelasPorTurnoFijo(recurringIds) {
+  const ids = [...new Set(recurringIds.filter(Boolean))];
+  if (!ids.length) return {};
+  const horarios = await EscuelaHorario.findAll({
+    where: { recurring_booking_id: ids },
+    include: [{ model: EscuelaCategoria, as: 'categoria', attributes: ['id', 'nombre', 'escuela_id'],
+      include: [
+        { model: Escuela, as: 'escuela', attributes: ['id', 'nombre', 'deporte'] },
+        { model: Profesor, as: 'profesores', attributes: ['nombre', 'apellido'], through: { attributes: [] } },
+      ] }],
+  });
+  const out = {};
+  for (const h of horarios) {
+    const c = h.categoria;
+    out[h.recurring_booking_id] = {
+      escuela_id: c?.escuela?.id ?? null,
+      escuela: c?.escuela?.nombre || 'Escuela',
+      deporte: c?.escuela?.deporte || null,
+      categoria: c?.nombre || null,
+      entrenadores: (c?.profesores || []).map(p => `${p.nombre} ${p.apellido}`),
+    };
+  }
+  return out;
+}
 
 // ── Turnos ocupados por una clase de profesor o un partido de torneo ──
 // No son reservas (sin booking): se devuelven como `bloqueo` para mostrar quién
@@ -21,7 +53,8 @@ const INCLUDE_BLOQUEOS = [
   {
     model: TorneoPartido, as: 'partidoTorneo', required: false,
     include: [
-      { model: Torneo, as: 'torneo', attributes: ['id', 'nombre', 'duracion_partido'] },
+      { model: Torneo, as: 'torneo', attributes: ['id', 'nombre', 'duracion_partido', 'deporte'],
+        include: [{ model: Profesor, as: 'profesores', attributes: ['nombre', 'apellido'], through: { attributes: ['rol'] } }] },
       ...['pareja1', 'pareja2'].map(as => ({
         model: TorneoPareja, as, attributes: ['id'],
         include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre'] }],
@@ -55,6 +88,8 @@ function bloqueoDe(slot) {
       torneo_id: p.torneo?.id,
       titulo: `Torneo · ${p.torneo?.nombre}`,
       detalle: `${nombrePareja(p.pareja1)} vs ${nombrePareja(p.pareja2)}`,
+      deporte: p.torneo?.deporte || null,
+      staff: (p.torneo?.profesores || []).map(x => `${x.nombre} ${x.apellido}${x.TorneoProfesor?.rol ? ` (${x.TorneoProfesor.rol})` : ''}`),
       ronda: p.ronda,
       hora_inicio: p.hora,
       hora_fin: addMinutes(p.hora, p.torneo?.duracion_partido || 90),
@@ -146,6 +181,7 @@ async function getSlotsForField(req, res) {
 
     const slotMap = {};
     existingSlots.forEach(s => { slotMap[s.hora] = s; });
+    const escuelaDe = await escuelasPorTurnoFijo(existingSlots.map(s => s.booking?.recurring_id));
 
     const slots = allHoras.map(hora => {
       const existing = slotMap[hora];
@@ -169,6 +205,8 @@ async function getSlotsForField(req, res) {
         hora_fin_reserva: booking?.hora_fin ?? bloqueo?.hora_fin ?? null,
         // Clase de profesor / partido de torneo que ocupa el turno (sin booking)
         bloqueo,
+        // Entrenamiento de una escuela (turno fijo de la escuela)
+        escuela:          booking?.recurring_id ? escuelaDe[booking.recurring_id] || null : null,
         isFirstOfBloque:  esPrimeroBloque,
         past,
         field_id: parseInt(fieldId),

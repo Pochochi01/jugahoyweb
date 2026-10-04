@@ -135,7 +135,7 @@ export function EnvioMasivo({ titulo, alumnos, cargarContexto, tipo, aviso, text
 
 /**
  * Horarios de entrenamiento (alta / edición / baja). Cada horario bloquea la
- * cancha de fútbol todas las semanas en la agenda (turno fijo).
+ * cancha (del deporte de la escuela) todas las semanas en la agenda (turno fijo).
  */
 export function HorariosEditor({ horarios, categorias, canchas, onCrear, onEditar, onBorrar }) {
   const VACIO = { categoria_id: categorias[0]?.id || '', field_id: canchas[0]?.id || '', dia_semana: 1, hora_inicio: '18:00', hora_fin: '19:30' };
@@ -157,7 +157,7 @@ export function HorariosEditor({ horarios, categorias, canchas, onCrear, onEdita
   return (
     <div className="space-y-3">
       {!form && <button className="btn-primary text-sm flex items-center gap-1" disabled={!categorias.length || !canchas.length} onClick={() => setForm(VACIO)}><Plus className="w-4 h-4" /> Horario</button>}
-      {(!categorias.length || !canchas.length) && <p className="text-xs text-muted-foreground">Necesitás al menos una categoría y una cancha de fútbol habilitada.</p>}
+      {(!categorias.length || !canchas.length) && <p className="text-xs text-muted-foreground">Necesitás al menos una categoría y una cancha habilitada del deporte de la escuela.</p>}
       {form && (
         <form onSubmit={guardar} className="card grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
           <label className="text-xs text-muted-foreground col-span-2 sm:col-span-1">Categoría

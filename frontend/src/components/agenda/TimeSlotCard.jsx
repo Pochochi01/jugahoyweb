@@ -134,6 +134,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               {bloqueo.tipo === 'clase' ? 'Alumnos: ' : ''}{bloqueo.detalle}
             </div>
           )}
+          {bloqueo.staff?.length > 0 && (
+            <div className="text-[11px] text-white/60 truncate">Staff: {bloqueo.staff.join(', ')}</div>
+          )}
           {bloqueo.profesor?.whatsapp && waLink(bloqueo.profesor.whatsapp) && (
             <a href={waLink(bloqueo.profesor.whatsapp)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
               className="inline-flex items-center gap-1 text-xs text-purple-300 hover:underline">
@@ -235,6 +238,17 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               )}
             </div>
           </div>
+
+          {/* Entrenamiento de escuela (turno fijo de la escuela) */}
+          {slot.escuela && (
+            <div className="flex items-center gap-1.5 pl-5 mb-1 text-xs text-sky-300 min-w-0">
+              <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">
+                {slot.escuela.escuela}{slot.escuela.categoria ? ` · ${slot.escuela.categoria}` : ''}
+                {slot.escuela.entrenadores?.length > 0 && <span className="text-white/60"> · Prof. {slot.escuela.entrenadores.join(', ')}</span>}
+              </span>
+            </div>
+          )}
 
           {/* Fila de detalles: cliente · teléfono · método · rango · monto (envuelve) */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-5">

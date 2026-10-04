@@ -7,6 +7,9 @@ export const publicService = {
   getSlots:        (id, date)         => api.get(`/public/complexes/${id}/slots`, { params: { date } }),
   reserve:         (complexId, data)  => api.post(`/public/complexes/${complexId}/reservar`, data),
   opcionesPago:    (complexId, params) => api.get(`/public/complexes/${complexId}/opciones-pago`, { params }),
+  // Escuelas, profesores y torneos del complejo (params: { deporte })
+  actividades:     (complexId, params = {}) => api.get(`/public/complexes/${complexId}/actividades`, { params }),
+  preinscribir:    (complexId, escuelaId, data) => api.post(`/public/complexes/${complexId}/escuelas/${escuelaId}/inscripcion`, data),
   // Verifica el bloqueo por inasistencias ANTES de reservar
   checkBloqueo:    (complexId)        => api.get(`/public/complexes/${complexId}/bloqueo-inasistencias`),
   getMyBookings:   ()                 => api.get('/public/my-bookings'),

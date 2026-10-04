@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const { Profesor, Complex } = require('../models');
 const svc = require('../services/profesores/profesorService');
 const { signProfesor } = require('../middlewares/profesorAuth');
+const { actividadesProfesor } = require('../services/actividadesService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
 
@@ -47,6 +48,11 @@ async function consolidado(req, res) {
   try { res.json(await svc.consolidado(req.profesorDni, req.query)); } catch (err) { send(res, err); }
 }
 
+/** GET /me/actividades → escuelas (categorías + horarios) y torneos asignados, por complejo. */
+async function actividades(req, res) {
+  try { res.json(await actividadesProfesor(req.profesores)); } catch (err) { send(res, err); }
+}
+
 async function crearClase(req, res) {
   try { res.status(201).json(await svc.crearClase(req.profesor, req.body || {})); } catch (err) { send(res, err); }
 }
@@ -59,4 +65,4 @@ async function cancelarClase(req, res) {
   try { res.json(await svc.cancelarClase([req.profesor.id], req.params.id)); } catch (err) { send(res, err); }
 }
 
-module.exports = { login, complejos, grilla, consolidado, crearClase, editarClase, cancelarClase };
+module.exports = { login, complejos, grilla, consolidado, actividades, crearClase, editarClase, cancelarClase };

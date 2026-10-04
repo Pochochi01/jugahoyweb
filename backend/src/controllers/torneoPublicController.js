@@ -30,6 +30,7 @@ async function listar(req, res) {
   try {
     const where = { estado: VISIBLE };
     if (req.params.complexId) where.id_tenant = Number(req.params.complexId);
+    if (req.query.deporte) where.deporte = String(req.query.deporte);
     const torneos = await Torneo.findAll({
       where,
       include: [{ model: Complex, as: 'club', attributes: ['id', 'nombre', 'ciudad'] }],

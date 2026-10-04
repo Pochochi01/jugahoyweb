@@ -149,7 +149,7 @@ async function emitirTickets(torneo, pareja) {
     if (!creado) continue;
     const url = frontendUrl(`/torneos/ticket/${ticket.codigo_qr}`);
     const png = await QRCode.toBuffer(url, { width: 480, margin: 1 });
-    notifier.enviar(torneo.id_tenant, j.whatsapp, notifier.mensajes.pagoConfirmado(torneo, pareja, j, url), { imagen: png });
+    notifier.enviar(torneo.id_tenant, j.whatsapp, notifier.mensajes.pagoConfirmado(torneo, pareja, j, url), { imagen: png, torneoId: torneo.id });
   }
 }
 

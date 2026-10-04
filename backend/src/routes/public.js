@@ -2,6 +2,7 @@ const router = require('express').Router();
 const ctrl = require('../controllers/publicController');
 const localidadesCtrl = require('../controllers/localidadesController');
 const favoritesCtrl = require('../controllers/favoritesController');
+const actividadesCtrl = require('../controllers/actividadesPublicController');
 const { authenticate } = require('../middlewares/auth');
 
 // Sin autenticación
@@ -11,6 +12,9 @@ router.get('/complexes/:id/slots',      ctrl.getComplexSlots);
 router.get('/complexes/:id/opciones-pago', ctrl.getOpcionesPago);   // modalidades de pago del turno
 router.get('/complexes/:id/ocupados',   ctrl.getOcupados);   // lista de espera: turnos ocupados
 router.post('/register-complex',        ctrl.registerComplex);
+// Escuelas, profesores y torneos del complejo (cualquier deporte)
+router.get('/complexes/:id/actividades', actividadesCtrl.getActividades);
+router.post('/complexes/:id/escuelas/:escuelaId/inscripcion', actividadesCtrl.preinscripcion);   // pre-inscripción (pendiente)
 
 // Catálogo de ubicaciones (para el wizard de alta de complejo)
 router.get('/provincias',               localidadesCtrl.getProvincias);

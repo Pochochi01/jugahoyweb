@@ -1,5 +1,8 @@
 // Etiquetas y helpers compartidos del módulo Torneos.
 
+/** Deportes de un torneo (mismos valores que las canchas). */
+export const DEPORTES_TORNEO = { padel: 'Pádel', tenis: 'Tenis', futbol: 'Fútbol', basquet: 'Básquet', voley: 'Vóley', squash: 'Squash', otro: 'Otro' };
+
 export const CATEGORIAS = [1, 2, 3, 4, 5, 6, 7, 8];
 export const catLabel = (c) => `${c}ª`;
 

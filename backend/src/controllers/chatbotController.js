@@ -39,6 +39,7 @@ const wa           = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
 const notifService = require('../services/notification.service');
 const reservaPago  = require('../services/reservaPago.service');
+const actividades  = require('../services/actividadesService');
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDeporte } = require('../utils/canchas');
@@ -793,7 +794,9 @@ async function handleWebhook(req, res) {
       }
 
       // Selección numérica del menú principal (1 / 2 / 3 / 4), igual que tocar la lista.
-      if (['1', '2', '3', '4'].includes(text)) {
+      if (['1', '2', '3', '4', '5', '6'].includes(text)) {
+        if (text === '5') { await _sendActividadesMenu(ctx, from); return; }
+        if (text === '6') { await _sendMisActividades(ctx, from); return; }
         if (text === '1') { await _sendContactButton(ctx, from); return; }
         if (text === '2') { await _sendWebButton(ctx, from); return; }
         if (text === '4') { await _sendMisTurnos(ctx, from); return; }
@@ -841,6 +844,17 @@ async function handleWebhook(req, res) {
         return;
       }
 
+      // "mis horarios" / "mis clases" / "mis torneos" → lo de esta persona en el club
+      if (/\bmis?\s+(horarios?|clases?|torneos?|entrenamientos?|actividades)\b/.test(text)) {
+        await _sendMisActividades(ctx, from);
+        return;
+      }
+      // "escuela de tenis", "profesores de pádel", "torneos" → catálogo del club (por deporte)
+      if (/escuela|profe|clase|torneo|entrenador|actividades/.test(text)) {
+        await _sendActividades(ctx, from, actividades.deporteDeTexto(text), _tipoActividad(text));
+        return;
+      }
+
       // Cualquier otro texto no relacionado con turnos → saludo + menú
       await _sendWelcome(ctx, from);
       return;
@@ -867,6 +881,19 @@ async function handleWebhook(req, res) {
       }
       if (replyId === 'menu_misturnos') {
         await _sendMisTurnos(ctx, from);
+        return;
+      }
+      if (replyId === 'menu_actividades') {
+        await _sendActividadesMenu(ctx, from);
+        return;
+      }
+      if (replyId === 'menu_mishorarios') {
+        await _sendMisActividades(ctx, from);
+        return;
+      }
+      if (replyId.startsWith('act_')) {
+        const dep = replyId.slice(4);
+        await _sendActividades(ctx, from, dep === 'todos' ? null : dep);
         return;
       }
 
@@ -1052,8 +1079,89 @@ async function _sendWelcome(ctx, to) {
       { id: 'menu_web',       title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
       { id: 'menu_turnos',    title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
       { id: 'menu_misturnos', title: '4. Ver mis turnos',     description: 'Consultá tus turnos agendados' },
+      { id: 'menu_actividades', title: '5. Escuelas y torneos', description: 'Escuelas, profesores y torneos' },
+      { id: 'menu_mishorarios', title: '6. Mis clases/torneos', description: 'Tus horarios de escuela y torneos' },
     ],
   }));
+}
+
+// ── Escuelas · profesores · torneos ───────────────────────────
+const _tipoActividad = (t) => (/torneo/.test(t) ? 'torneos' : /profe|clase|entrenador/.test(t) ? 'profesores' : /escuela/.test(t) ? 'escuelas' : null);
+const _fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '');
+const _money = (n) => `$${Number(n || 0).toLocaleString('es-AR')}`;
+const _horariosTxt = (hs) => hs.map(h => `${h.dia} ${h.hora_inicio}–${h.hora_fin}`).join(', ');
+const _corte = (s, max = 3800) => (s.length > max ? `${s.slice(0, max)}…\n\n_(ver todo en la web)_` : s);
+
+/** Si el club tiene actividades de varios deportes, primero pregunta cuál. */
+async function _sendActividadesMenu(ctx, to) {
+  const cat = await actividades.catalogoComplejo(ctx.clubId);
+  const deportes = [...new Set([...cat.escuelas.map(e => e.deporte), ...cat.torneos.map(t => t.deporte), ...cat.profesores.flatMap(p => p.deportes)])];
+  if (deportes.length <= 1) return _sendActividades(ctx, to, null, null, cat);
+  await wa.sendMessage(wa.buildRowsListMessage(to, {
+    headerText: 'Escuelas y torneos', bodyText: '¿De qué deporte?', footerText: 'Elegí una opción',
+    button: 'Ver deportes', sectionTitle: 'Deportes',
+    rows: [
+      ...deportes.slice(0, 9).map(d => ({ id: `act_${d}`, title: actividades.DEPORTE_LABEL[d] || d, description: 'Escuelas, profesores y torneos' })),
+      { id: 'act_todos', title: 'Todos', description: 'Ver todo lo del club' },
+    ],
+  }), ctx.creds);
+}
+
+/**
+ * Catálogo del club por WhatsApp: escuelas (categorías, cupos, horarios),
+ * profesores y torneos (inscripción abierta / en juego), opcionalmente de un
+ * deporte y/o de un solo tipo. Termina con el link a la web para inscribirse.
+ */
+async function _sendActividades(ctx, to, deporte = null, tipo = null, catalogo = null) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const cat = catalogo || await actividades.catalogoComplejo(ctx.clubId, deporte);
+  const dl = deporte ? ` de ${(actividades.DEPORTE_LABEL[deporte] || deporte).toLowerCase()}` : '';
+  const partes = [];
+  if (!tipo || tipo === 'escuelas') {
+    partes.push(cat.escuelas.length
+      ? `🏫 *Escuelas${dl}*\n` + cat.escuelas.map(e => [
+        `• *${e.nombre}* (${e.deporte_label})${e.entrenadores.length ? ` — Prof. ${e.entrenadores.join(', ')}` : ''}`,
+        ...e.categorias.map(c => `   ▸ ${c.nombre} (${c.edad_min}-${c.edad_max} años)${c.cuota_mensual ? ` · ${_money(c.cuota_mensual)}/mes` : ''} · ${c.cupos_libres ? `${c.cupos_libres} cupos` : 'sin cupos'}${c.horarios.length ? `\n     🕒 ${_horariosTxt(c.horarios)}` : ''}`),
+      ].join('\n')).join('\n')
+      : `🏫 No hay escuelas${dl} abiertas por ahora.`);
+  }
+  if (!tipo || tipo === 'profesores') {
+    partes.push(cat.profesores.length
+      ? `👨‍🏫 *Profesores${dl}*\n` + cat.profesores.map(p => `• ${p.nombre}${p.deportes.length ? ` (${p.deportes.map(d => actividades.DEPORTE_LABEL[d] || d).join(', ')})` : ''}`).join('\n')
+      : `👨‍🏫 No hay profesores${dl} cargados.`);
+  }
+  if (!tipo || tipo === 'torneos') {
+    const activos = cat.torneos.filter(t => actividades.TORNEO_ACTIVO.includes(t.estado));
+    partes.push(activos.length
+      ? `🏆 *Torneos${dl}*\n` + activos.map(t => `• *${t.nombre}* (${t.deporte_label}) · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}\n   ${t.inscripcion_abierta ? `✅ Inscripción abierta · ${t.cupos_libres} cupos${t.precio_inscripcion ? ` · ${_money(t.precio_inscripcion)}` : ''}` : t.estado === 'inscripcion' ? '⛔ Cupo completo' : '🎾 En juego'} · ${t.inscriptas} inscriptos`).join('\n')
+      : `🏆 No hay torneos${dl} activos.`);
+  }
+  await send({ to, type: 'text', text: { body: _corte(partes.join('\n\n')) } });
+  await send(webLinkText(to, frontendUrl(`/complejo/${ctx.clubId}/actividades${deporte ? `?deporte=${deporte}` : ''}`), {
+    titulo: '📝 *Inscripciones*', intro: 'Mirá el detalle e inscribite desde la web:',
+  }));
+}
+
+/** "Mis clases y torneos": alumnos a cargo, actividades como profesor e inscripciones, por su WhatsApp. */
+async function _sendMisActividades(ctx, from) {
+  const send = p => wa.sendMessage(p, ctx.creds);
+  const a = await actividades.actividadesPorTelefono(ctx.clubId, from);
+  const partes = [];
+  for (const al of a.alumnos) {
+    partes.push(`🏫 *${al.nombre}* — ${al.escuela || 'Escuela'} · ${al.categoria}${al.estado === 'pendiente' ? ' _(pre‑inscripción pendiente)_' : ''}\n   🕒 ${al.horarios.length ? _horariosTxt(al.horarios) : 'horarios a confirmar'}`);
+  }
+  if (a.profesor) {
+    for (const e of a.profesor.escuelas) {
+      partes.push(`👨‍🏫 *${e.nombre}* (${e.deporte_label})\n` + (e.categorias.length
+        ? e.categorias.map(c => `   ▸ ${c.nombre}: ${c.horarios.length ? _horariosTxt(c.horarios) : 'sin horarios'}`).join('\n')
+        : '   (sin categorías asignadas)'));
+    }
+    for (const t of a.profesor.torneos) partes.push(`🏆 *${t.nombre}*${t.rol ? ` — ${t.rol}` : ''} · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}`);
+  }
+  for (const t of a.torneos) partes.push(`🏆 *${t.nombre}* (jugador) · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}${t.pago === 'pendiente' ? ' · inscripción a pagar' : ''}`);
+  await send({ to: from, type: 'text', text: { body: partes.length
+    ? _corte(`📋 *Tus clases y torneos*\n\n${partes.join('\n\n')}`)
+    : 'ℹ️ No encontramos escuelas, clases ni torneos asociados a este número en el club.\nEscribí *5* para ver las escuelas y torneos disponibles.' } });
 }
 
 /**

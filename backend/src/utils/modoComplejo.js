@@ -34,20 +34,17 @@ async function nombreComercio(complexId) {
 }
 
 /**
- * Módulos deportivos habilitados según las canchas del complejo:
- *   escuela    → hay al menos una cancha de FÚTBOL habilitada (activa)
- *   profesores → hay canchas de pádel, o de fútbol habilitadas
- *   torneos    → hay canchas de pádel
- * Con otros deportes además de fútbol, la Escuela aparece igual pero
- * trabaja solo con las canchas de fútbol.
+ * Módulos deportivos habilitados según las canchas del complejo.
+ * Escuelas, profesores y torneos son independientes del deporte: se habilitan
+ * con al menos una cancha habilitada (activa) de cualquier deporte. Cada
+ * escuela/torneo usa luego solo las canchas de SU deporte.
  * @param {Array<{deporte, activa}>} fields
  */
 function modulosDesdeCanchas(fields = []) {
   // activa puede llegar como boolean (instancias) o 0/1 (consultas raw de MySQL); null = activa
   const habilitada = (f) => f.activa == null || Boolean(Number(f.activa));
-  const futbolActivo = fields.some(f => f.deporte === 'futbol' && habilitada(f));
-  const padel = fields.some(f => f.deporte === 'padel');
-  return { escuela: futbolActivo, profesores: padel || futbolActivo, torneos: padel };
+  const alguna = fields.some(habilitada);
+  return { escuela: alguna, profesores: alguna, torneos: alguna };
 }
 
 async function modulosComplejo(complexId) {

@@ -10,7 +10,7 @@
  * Rutas: /api/escuela/profesor/club/:complexId/...
  */
 const {
-  Field, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso, EscuelaProfesorCategoria,
+  Field, Escuela, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso, EscuelaProfesorCategoria,
 } = require('../models');
 const svc = require('../services/escuela/escuelaService');
 const { datosAviso } = require('./escuelaController');
@@ -35,6 +35,7 @@ const resumen = handler(async (req, res) => {
     EscuelaCategoria.findAll({
       where: { id: ids, complex_id: req.clubId },
       include: [
+        { model: Escuela, as: 'escuela', attributes: ['id', 'nombre', 'deporte'] },
         { model: EscuelaHorario, as: 'horarios', include: [{ model: Field, as: 'field', attributes: ['id', 'nombre', 'identificador'] }] },
         { model: EscuelaAlumno, as: 'alumnos', where: { estado: 'activo' }, required: false,
           attributes: ['id', 'nombre', 'fecha_nacimiento', 'genero', 'responsable_nombre', 'responsable_whatsapp', 'categoria_id', 'token_portal'],
@@ -43,12 +44,14 @@ const resumen = handler(async (req, res) => {
       order: [['edad_min', 'ASC']],
     }),
     EscuelaAviso.findAll({ where: { complex_id: req.clubId, fecha: { [require('sequelize').Op.gte]: svc.hoy() } }, order: [['fecha', 'ASC']] }),
-    Field.findAll({ where: { complex_id: req.clubId, deporte: 'futbol', activa: true }, attributes: ['id', 'nombre', 'identificador'] }),
+    Field.findAll({ where: { complex_id: req.clubId, activa: true }, attributes: ['id', 'nombre', 'identificador', 'deporte'] }),
   ]);
+  const misEscuelas = [...new Set(categorias.map(c => c.escuela_id).filter(Boolean))];
+  const deportes = new Set(categorias.map(c => c.escuela?.deporte || 'futbol'));
   res.json({
     periodo,
-    canchas,
-    avisos: avisos.filter(a => a.categoria_id == null || ids.includes(a.categoria_id)),
+    canchas: canchas.filter(f => deportes.has(f.deporte)),
+    avisos: avisos.filter(a => ids.includes(a.categoria_id) || (a.categoria_id == null && (a.escuela_id == null || misEscuelas.includes(a.escuela_id)))),
     categorias: categorias.map(c => {
       const j = c.toJSON();
       j.horarios.sort((a, b) => a.dia_semana - b.dia_semana || a.hora_inicio.localeCompare(b.hora_inicio));
@@ -87,7 +90,8 @@ const createAviso = handler(async (req, res) => {
   const d = datosAviso(req.body || {});
   if (!d.categoria_id) throw svc.httpError(400, 'Elegí la categoría del aviso.');
   await exigirCategoria(req, d.categoria_id);
-  res.status(201).json(await EscuelaAviso.create({ ...d, complex_id: req.clubId, autor: `Prof. ${req.profesor.nombre} ${req.profesor.apellido}` }));
+  const cat = await EscuelaCategoria.findByPk(d.categoria_id, { attributes: ['escuela_id'] });
+  res.status(201).json(await EscuelaAviso.create({ ...d, complex_id: req.clubId, escuela_id: cat?.escuela_id ?? null, autor: `Prof. ${req.profesor.nombre} ${req.profesor.apellido}` }));
 });
 
 /** GET /alumnos/:id/contexto → datos para los mensajes de WhatsApp (solo alumnos de sus categorías). */

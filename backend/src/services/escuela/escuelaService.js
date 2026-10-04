@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Field, Complex, Profesor, RecurringBooking,
-  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso,
+  Escuela, EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso,
 } = require('../../models');
 const recurring = require('../recurringService');
 const caja = require('../cajaService');
@@ -25,6 +25,7 @@ const { frontendUrl } = require('../../config/urls');
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+const DEPORTE_TXT = { futbol: 'fútbol', padel: 'pádel', tenis: 'tenis', basquet: 'básquet', voley: 'vóley', squash: 'squash', otro: 'otro deporte' };
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
 // ── Fechas ────────────────────────────────────────────────────
@@ -41,6 +42,26 @@ function edad(fechaNac, ref = hoy()) {
 const toMin = (h) => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
 
 // ── Config ────────────────────────────────────────────────────
+/**
+ * ¿El profesor enseña este deporte? deportes vacío/null = cualquiera.
+ * @param {{deportes?: string[]|string|null}} profesor
+ */
+function ensenaDeporte(profesor, deporte) {
+  let ds = profesor?.deportes;
+  if (typeof ds === 'string') { try { ds = JSON.parse(ds); } catch { ds = null; } }
+  return !Array.isArray(ds) || ds.length === 0 || ds.includes(deporte);
+}
+
+/** Escuela a la que pertenece una categoría (o la primera del complejo, por compatibilidad). */
+async function escuelaDeCategoria(categoria, complexId) {
+  if (categoria?.escuela_id) {
+    const e = await Escuela.findByPk(categoria.escuela_id);
+    if (e) return e;
+  }
+  return Escuela.findOne({ where: { complex_id: complexId }, order: [['id', 'ASC']] });
+}
+
+/** @deprecated usar Escuela (migración 046). */
 async function config(complexId) {
   const [cfg] = await EscuelaConfig.findOrCreate({ where: { complex_id: complexId }, defaults: { complex_id: complexId } });
   return cfg;
@@ -68,7 +89,7 @@ function validarCategoria(b) {
  * Valida y normaliza un alumno: categoría del complejo, edad dentro del rango
  * y cupo disponible (si cambia de categoría o se reactiva).
  */
-async function validarAlumno(complexId, b, actual = null) {
+async function validarAlumno(complexId, b, actual = null, escuelaId = null) {
   const d = {};
   const v = (k) => (b[k] !== undefined ? b[k] : actual?.[k]);
   d.nombre = String(v('nombre') || '').trim();
@@ -85,10 +106,10 @@ async function validarAlumno(complexId, b, actual = null) {
   if (!/^\d{10,15}$/.test(d.responsable_whatsapp)) throw httpError(400, 'WhatsApp del responsable inválido: con código de país (ej. 5493811234567).');
   d.responsable_email = String(v('responsable_email') || '').trim() || null;
   d.estado = v('estado') || 'activo';
-  if (!['activo', 'inactivo'].includes(d.estado)) throw httpError(400, 'Estado inválido.');
+  if (!['activo', 'inactivo', 'pendiente'].includes(d.estado)) throw httpError(400, 'Estado inválido.');
 
   d.categoria_id = Number(v('categoria_id'));
-  const cat = await EscuelaCategoria.findOne({ where: { id: d.categoria_id, complex_id: complexId } });
+  const cat = await EscuelaCategoria.findOne({ where: { id: d.categoria_id, complex_id: complexId, ...(escuelaId ? { escuela_id: escuelaId } : {}) } });
   if (!cat) throw httpError(400, 'Elegí una categoría válida.');
   const e = edad(d.fecha_nacimiento);
   if (e < cat.edad_min || e > cat.edad_max) {
@@ -122,8 +143,10 @@ async function validarHorario(complexId, b, horarioId = null) {
   };
   const cat = await EscuelaCategoria.findOne({ where: { id: d.categoria_id, complex_id: complexId } });
   if (!cat) throw httpError(400, 'Categoría inválida.');
+  const escuela = await escuelaDeCategoria(cat, complexId);
+  const deporte = escuela?.deporte || 'futbol';
   const cancha = await Field.findOne({ where: { id: d.field_id, complex_id: complexId } });
-  if (!cancha || cancha.deporte !== 'futbol') throw httpError(400, 'La escuela usa solo canchas de fútbol del complejo.');
+  if (!cancha || cancha.deporte !== deporte) throw httpError(400, `La escuela usa solo canchas de ${DEPORTE_TXT[deporte] || deporte} del complejo.`);
   if (cancha.activa === false) throw httpError(400, 'Esa cancha está deshabilitada.');
   if (!(d.dia_semana >= 0 && d.dia_semana <= 6)) throw httpError(400, 'Día inválido.');
   // La agenda trabaja por horas: el entrenamiento arranca en hora en punto
@@ -182,10 +205,10 @@ const validarPeriodo = (p) => {
 };
 
 /** Crea la cuota PENDIENTE del período para cada alumno activo (idempotente). */
-async function generarCuotas(complexId, periodo) {
+async function generarCuotas(complexId, periodo, categoriaIds = null) {
   validarPeriodo(periodo);
   const alumnos = await EscuelaAlumno.findAll({
-    where: { complex_id: complexId, estado: 'activo' },
+    where: { complex_id: complexId, estado: 'activo', ...(categoriaIds ? { categoria_id: categoriaIds } : {}) },
     include: [{ model: EscuelaCategoria, as: 'categoria' }],
   });
   let creadas = 0;
@@ -240,9 +263,11 @@ function estadoPago(pagos, periodo) {
 
 // ── Avisos (actividad normal / suspendida) ────────────────────
 /** Aviso vigente para una categoría en una fecha: el de la categoría pisa al general. */
-async function avisoDelDia(complexId, categoriaId, fecha = hoy()) {
+/** Aviso del día para una categoría: el propio o el general de SU escuela. */
+async function avisoDelDia(complexId, categoriaId, fecha = hoy(), escuelaId = null) {
+  const general = escuelaId ? { categoria_id: null, [Op.or]: [{ escuela_id: escuelaId }, { escuela_id: null }] } : { categoria_id: null };
   const avisos = await EscuelaAviso.findAll({
-    where: { complex_id: complexId, fecha, [Op.or]: [{ categoria_id: categoriaId }, { categoria_id: null }] },
+    where: { complex_id: complexId, fecha, [Op.or]: [{ categoria_id: categoriaId }, general] },
     order: [['id', 'DESC']],
   });
   return avisos.find(a => a.categoria_id === categoriaId) || avisos[0] || null;
@@ -253,8 +278,9 @@ async function avisoDelDia(complexId, categoriaId, fecha = hoy()) {
  * categoría, horarios, cuota del período, aviso del día y datos de la escuela.
  */
 async function contextoAlumno(alumno, { periodo = periodoActual() } = {}) {
+  if (!alumno.categoria) alumno.categoria = await EscuelaCategoria.findByPk(alumno.categoria_id);
   const [cfg, club, horarios, pagos, aviso, profesores] = await Promise.all([
-    config(alumno.complex_id),
+    escuelaDeCategoria(alumno.categoria, alumno.complex_id),
     Complex.findByPk(alumno.complex_id, { attributes: ['id', 'nombre', 'direccion', 'ciudad'] }),
     EscuelaHorario.findAll({
       where: { categoria_id: alumno.categoria_id },
@@ -262,7 +288,7 @@ async function contextoAlumno(alumno, { periodo = periodoActual() } = {}) {
       order: [['dia_semana', 'ASC'], ['hora_inicio', 'ASC']],
     }),
     EscuelaPago.findAll({ where: { alumno_id: alumno.id }, order: [['periodo', 'DESC']], limit: 12 }),
-    avisoDelDia(alumno.complex_id, alumno.categoria_id),
+    avisoDelDia(alumno.complex_id, alumno.categoria_id, hoy(), alumno.categoria?.escuela_id),
     alumno.categoria?.getProfesores ? alumno.categoria.getProfesores({ attributes: ['nombre', 'apellido'], joinTableAttributes: [] }) : [],
   ]);
   const { estado, pago } = estadoPago(pagos, periodo);
@@ -282,15 +308,15 @@ async function contextoAlumno(alumno, { periodo = periodoActual() } = {}) {
     pago,
     pagos,
     aviso_hoy: aviso,
-    vencimiento: `${periodo}-${String(cfg.dia_vencimiento || 10).padStart(2, '0')}`,
-    escuela: { nombre: cfg.nombre || `Escuela de fútbol ${club?.nombre || ''}`.trim(), whatsapp_oficial: cfg.whatsapp_oficial, club },
+    vencimiento: `${periodo}-${String(cfg?.dia_vencimiento || 10).padStart(2, '0')}`,
+    escuela: { id: cfg?.id, nombre: cfg?.nombre || `Escuela ${club?.nombre || ''}`.trim(), deporte: cfg?.deporte || 'futbol', whatsapp_oficial: cfg?.whatsapp_oficial, club },
     portal_url: portalUrl(alumno),
   };
 }
 
 module.exports = {
-  httpError, num, edad, hoy, periodoActual, DIAS,
-  config, validarCategoria, validarAlumno, nuevoToken, portalUrl,
+  httpError, num, edad, hoy, periodoActual, DIAS, DEPORTE_TXT,
+  config, ensenaDeporte, escuelaDeCategoria, validarCategoria, validarAlumno, nuevoToken, portalUrl,
   crearHorario, actualizarHorario, borrarHorario,
   validarPeriodo, generarCuotas, registrarPago, anularPago, estadoPago,
   avisoDelDia, contextoAlumno,

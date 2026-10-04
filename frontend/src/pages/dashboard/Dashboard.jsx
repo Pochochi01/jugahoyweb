@@ -37,7 +37,7 @@ const TABS = [
   //   torneos → pádel · profesores → pádel o fútbol · escuela → fútbol habilitado
   { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos',    modulo: 'torneos' },
   { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', modulo: 'profesores' },
-  { key: 'escuela',       label: 'Escuela',       icon: Goal,        permiso: 'escuela',    modulo: 'escuela' },
+  { key: 'escuela',       label: 'Escuelas',      icon: Goal,        permiso: 'escuela',    modulo: 'escuela' },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas', deportivo: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },

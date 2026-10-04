@@ -30,12 +30,12 @@ async function requireCanchas(req, res, next) {
 
 /**
  * Exige que el módulo esté habilitado por las canchas del complejo
- * ('escuela' → fútbol habilitado · 'profesores' → pádel o fútbol habilitado).
+ * (escuela / profesores / torneos → al menos una cancha habilitada, de cualquier deporte).
  */
 const MENSAJES = {
-  escuela: 'La Escuela de fútbol requiere al menos una cancha de fútbol habilitada.',
-  profesores: 'El módulo Profesores requiere canchas de pádel o de fútbol habilitadas.',
-  torneos: 'Los torneos requieren canchas de pádel.',
+  escuela: 'Las escuelas requieren al menos una cancha habilitada.',
+  profesores: 'El módulo Profesores requiere al menos una cancha habilitada.',
+  torneos: 'Los torneos requieren al menos una cancha habilitada.',
 };
 function requireModulo(modulo) {
   return async (req, res, next) => {

@@ -1,11 +1,12 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-// Torneo de pádel de un club (tenant). Categoría 1ª (mejor) a 8ª.
+// Torneo de un club (tenant), de cualquier deporte (por defecto pádel). Categoría 1ª (mejor) a 8ª.
 const Torneo = sequelize.define('Torneo', {
   id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   id_tenant:          { type: DataTypes.INTEGER, allowNull: false },   // complexes.id
   nombre:             { type: DataTypes.STRING(150), allowNull: false },
+  deporte:            { type: DataTypes.ENUM('futbol', 'padel', 'tenis', 'basquet', 'voley', 'squash', 'otro'), allowNull: false, defaultValue: 'padel' },
   descripcion:        { type: DataTypes.TEXT },
   categoria:          { type: DataTypes.TINYINT, allowNull: false, validate: { min: 1, max: 8 } },
   genero:             { type: DataTypes.ENUM('masculino', 'femenino', 'mixto'), allowNull: false },

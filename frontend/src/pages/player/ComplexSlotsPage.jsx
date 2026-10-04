@@ -257,6 +257,9 @@ export default function ComplexSlotsPage() {
                     <Star className={`w-5 h-5 ${isFav ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
                   </button>
                 </div>
+                <Link to={`/complejo/${id}/actividades`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-0.5">
+                  Escuelas, profesores y torneos →
+                </Link>
                 <div className="flex items-center gap-1 text-sm text-muted-foreground mt-0.5">
                   <MapPin className="w-3.5 h-3.5" />
                   {complex.ciudad}{complex.provincia ? `, ${complex.provincia}` : ''}

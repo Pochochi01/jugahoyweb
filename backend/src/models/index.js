@@ -56,9 +56,11 @@ const Alumno            = require('./Alumno');
 const MercadoPagoToken  = require('./MercadoPagoToken');
 // Escuela de fútbol
 const {
-  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
-  EscuelaHorario, EscuelaPago, EscuelaAviso,
+  Escuela, EscuelaProfesor, EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
+  EscuelaHorario, EscuelaPago, EscuelaAviso, EscuelaMensaje,
 } = require('./Escuela');
+const TorneoProfesor    = require('./TorneoProfesor');
+const { EntityPhone, EntityPhoneMensaje } = require('./EntityPhone');
 
 // User ↔ Complex
 User.hasMany(Complex, { foreignKey: 'owner_id', as: 'complexes' });
@@ -253,6 +255,21 @@ MercadoPagoToken.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complex' })
 
 // ── Escuela de fútbol ──
 Complex.hasOne(EscuelaConfig,       { foreignKey: 'complex_id', as: 'escuela' });
+Complex.hasMany(Escuela,            { foreignKey: 'complex_id', as: 'escuelas' });
+Escuela.belongsTo(Complex,          { foreignKey: 'complex_id', as: 'club' });
+Escuela.hasMany(EscuelaCategoria,   { foreignKey: 'escuela_id', as: 'categorias' });
+EscuelaCategoria.belongsTo(Escuela, { foreignKey: 'escuela_id', as: 'escuela' });
+Escuela.belongsToMany(Profesor, { through: EscuelaProfesor, foreignKey: 'escuela_id', otherKey: 'profesor_id', as: 'profesores' });
+Profesor.belongsToMany(Escuela, { through: EscuelaProfesor, foreignKey: 'profesor_id', otherKey: 'escuela_id', as: 'escuelas' });
+Torneo.belongsToMany(Profesor,  { through: TorneoProfesor, foreignKey: 'torneo_id', otherKey: 'profesor_id', as: 'profesores' });
+TorneoProfesor.belongsTo(Torneo,   { foreignKey: 'torneo_id', as: 'torneo' });
+EntityPhone.hasMany(EntityPhoneMensaje, { foreignKey: 'entity_phone_id', as: 'mensajes', onDelete: 'CASCADE' });
+// Entidad borrada → se cierra y elimina su teléfono vinculado (require diferido: evita ciclo)
+for (const [modelo, tipo] of [[Torneo, 'torneo'], [Escuela, 'escuela'], [Profesor, 'profesor']]) {
+  modelo.addHook('afterDestroy', (inst) => require('../services/whatsappEntidad').liberarTelefonoDe(tipo, inst.id).catch(() => {}));
+}
+TorneoProfesor.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+Profesor.belongsToMany(Torneo,  { through: TorneoProfesor, foreignKey: 'profesor_id', otherKey: 'torneo_id', as: 'torneos' });
 EscuelaCategoria.hasMany(EscuelaAlumno,  { foreignKey: 'categoria_id', as: 'alumnos' });
 EscuelaAlumno.belongsTo(EscuelaCategoria, { foreignKey: 'categoria_id', as: 'categoria' });
 EscuelaCategoria.hasMany(EscuelaHorario,  { foreignKey: 'categoria_id', as: 'horarios', onDelete: 'CASCADE' });
@@ -304,6 +321,8 @@ module.exports = {
   // MercadoPago OAuth
   MercadoPagoToken,
   // Escuela de fútbol
-  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
-  EscuelaHorario, EscuelaPago, EscuelaAviso,
+  Escuela, EscuelaProfesor, EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
+  EscuelaHorario, EscuelaPago, EscuelaAviso, EscuelaMensaje, TorneoProfesor,
+  // Teléfonos propios por entidad (Baileys)
+  EntityPhone, EntityPhoneMensaje,
 };

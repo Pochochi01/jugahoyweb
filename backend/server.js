@@ -52,6 +52,8 @@ async function start() {
     } catch (err) {
       console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
     }
+    // WhatsApp propio de torneos/escuelas/profesores (Baileys): reabre las sesiones vinculadas
+    require('./src/services/whatsappEntidad').iniciar().catch(err => console.error('✗ WhatsApp de entidades:', err.message));
     // MercadoPago OAuth: renovación proactiva de tokens por vencer (cada 12 h)
     try {
       require('./src/services/mercadopagoOAuth.service').iniciarRenovacionAutomatica(12);

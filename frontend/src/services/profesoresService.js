@@ -32,6 +32,8 @@ export const profesoresAdmin = (cid) => {
     setDisponibilidad: (id, ventanas) => api.put(`${b}/profesores/${id}/disponibilidad`, { ventanas }),
     grilla:            (id, params) => api.get(`${b}/profesores/${id}/grilla`, { params }),
     cancelarClase:     (id, claseId) => api.delete(`${b}/profesores/${id}/clases/${claseId}`),
+    asignaciones:      (id)      => api.get(`${b}/profesores/${id}/asignaciones`),
+    setAsignaciones:   (id, d)   => api.put(`${b}/profesores/${id}/asignaciones`, d),   // { escuela_ids, torneos:[{torneo_id, rol}] }
   };
 };
 
@@ -40,6 +42,7 @@ export const profesorPanel = {
   login:       (dni, password) => profApi.post('/profesores/login', { dni, password }),
   complejos:   ()              => profApi.get('/profesores/me/complejos'),
   consolidado: (params)        => profApi.get('/profesores/me/consolidado', { params }),
+  actividades: ()              => profApi.get('/profesores/me/actividades'),   // escuelas y torneos asignados
   grilla:      (cid, params)   => profApi.get(`/profesores/me/club/${cid}/grilla`, { params }),
   crearClase:  (cid, d)        => profApi.post(`/profesores/me/club/${cid}/clases`, d),
   editarClase: (cid, id, d)    => profApi.put(`/profesores/me/club/${cid}/clases/${id}`, d),

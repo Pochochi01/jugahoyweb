@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Settings, MapPin, Users, CalendarDays, GitBranch, BarChart2, MessageCircle,
-  ImagePlus, ExternalLink, RefreshCw, Check, X, Pencil, Send,
+  ImagePlus, ExternalLink, RefreshCw, Check, X, Pencil, Send, Smartphone,
 } from 'lucide-react';
 import TorneoForm from './TorneoForm';
 import HorariosEditor from './HorariosEditor';
 import InscripcionForm from './InscripcionForm';
+import TelefonoEntidad from '../TelefonoEntidad';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores } from './FixtureViews';
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL,
-  errorResultado,
+  errorResultado, DEPORTES_TORNEO,
 } from '../../utils/torneos';
 
 const SECCIONES = [
@@ -21,6 +22,7 @@ const SECCIONES = [
   { key: 'llave',         label: 'Llave',          icon: GitBranch },
   { key: 'posiciones',    label: 'Posiciones',     icon: BarChart2 },
   { key: 'comunicacion',  label: 'Comunicación',   icon: MessageCircle },
+  { key: 'whatsapp',      label: 'WhatsApp propio', icon: Smartphone },
 ];
 
 const Loader = () => <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-7 w-7 border-2 border-primary border-t-transparent" /></div>;
@@ -94,6 +96,7 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
       {seccion === 'llave'         && <LlaveSeccion svc={svc} torneo={torneo} onChange={recargar} />}
       {seccion === 'posiciones'    && <PosicionesSeccion svc={svc} torneo={torneo} />}
       {seccion === 'comunicacion'  && <ComunicacionSeccion svc={svc} torneo={torneo} />}
+      {seccion === 'whatsapp'      && <TelefonoEntidad svc={svc.telefono(torneo.id)} quienes="inscriptos" />}
     </div>
   );
 }
@@ -158,7 +161,7 @@ function CanchasSeccion({ svc, torneo }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        El complejo tiene <strong className="text-foreground">{data.canchas_complejo}</strong> canchas de pádel.
+        El complejo tiene <strong className="text-foreground">{data.canchas_complejo}</strong> canchas de {(DEPORTES_TORNEO[torneo.deporte] || 'pádel').toLowerCase()}.
         Elegí las que cede al torneo y en qué horarios. Las reservas ya tomadas en esas canchas se respetan.
       </p>
       <div className="space-y-3">

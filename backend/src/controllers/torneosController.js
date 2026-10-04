@@ -7,13 +7,14 @@
 const fs = require('fs');
 const path = require('path');
 const { Op } = require('sequelize');
-const { Torneo, TorneoCancha, TorneoPareja, Field } = require('../models');
+const { Torneo, TorneoCancha, TorneoPareja, Field, Profesor } = require('../models');
+const { DEPORTES } = require('../models/Escuela');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
 
-const CAMPOS = ['nombre', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set',
+const CAMPOS = ['nombre', 'deporte', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set',
   'precio_inscripcion', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'descanso_minimo'];
 
 // Transiciones de estado que el organizador puede pedir a mano
@@ -33,6 +34,7 @@ function validarTorneo(body, actual = {}) {
   const v = { ...actual, ...d };
   const err = (m) => Object.assign(new Error(m), { status: 400 });
   if (!v.nombre || String(v.nombre).trim().length < 3) throw err('Nombre requerido.');
+  if (v.deporte != null && !DEPORTES.includes(v.deporte)) throw err('Deporte inválido.');
   if (!(Number(v.categoria) >= 1 && Number(v.categoria) <= 8)) throw err('Categoría inválida (1ª a 8ª).');
   if (!['masculino', 'femenino', 'mixto'].includes(v.genero)) throw err('Género inválido.');
   if (!v.fecha_inicio || !v.fecha_fin || v.fecha_fin < v.fecha_inicio) throw err('Fechas inválidas.');
@@ -46,21 +48,28 @@ function validarTorneo(body, actual = {}) {
   return d;
 }
 
-async function clubTienePadel(clubId) {
-  return (await Field.count({ where: { complex_id: clubId, deporte: 'padel', activa: true } })) > 0;
+/** ¿El club tiene canchas activas del deporte? (sin deporte: de cualquiera) */
+async function clubTieneDeporte(clubId, deporte = null) {
+  return (await Field.count({ where: { complex_id: clubId, activa: true, ...(deporte ? { deporte } : {}) } })) > 0;
 }
 
 // ── CRUD ──────────────────────────────────────────────────────
 async function list(req, res) {
   try {
-    const torneos = await Torneo.findAll({ where: { id_tenant: req.clubId }, order: [['fecha_inicio', 'DESC']] });
+    const where = { id_tenant: req.clubId };
+    if (req.query.deporte) where.deporte = req.query.deporte;
+    const torneos = await Torneo.findAll({
+      where,
+      include: [{ model: Profesor, as: 'profesores', attributes: ['id', 'nombre', 'apellido'], through: { attributes: ['rol'] } }],
+      order: [['fecha_inicio', 'DESC']],
+    });
     const conteos = await TorneoPareja.findAll({
       where: { torneo_id: torneos.map(t => t.id) },
       attributes: ['torneo_id', 'estado_pago', [Torneo.sequelize.fn('COUNT', '*'), 'n']],
       group: ['torneo_id', 'estado_pago'], raw: true,
     });
     res.json({
-      habilitado: await clubTienePadel(req.clubId),
+      habilitado: await clubTieneDeporte(req.clubId),
       torneos: torneos.map(t => ({
         ...t.toJSON(),
         inscriptas: conteos.filter(c => c.torneo_id === t.id && ['pendiente', 'pagado'].includes(c.estado_pago)).reduce((a, c) => a + Number(c.n), 0),
@@ -76,10 +85,11 @@ async function get(req, res) {
 
 async function create(req, res) {
   try {
-    if (!(await clubTienePadel(req.clubId))) {
-      return res.status(400).json({ message: 'El club no tiene canchas de pádel activas: no puede organizar torneos.' });
-    }
     const data = validarTorneo(req.body);
+    data.deporte = data.deporte || 'padel';
+    if (!(await clubTieneDeporte(req.clubId, data.deporte))) {
+      return res.status(400).json({ message: `El club no tiene canchas de ${data.deporte} activas: no puede organizar ese torneo.` });
+    }
     const torneo = await Torneo.create({ ...data, id_tenant: req.clubId, estado: 'borrador' });
     res.status(201).json(torneo);
   } catch (err) { send(res, err); }
@@ -91,11 +101,15 @@ async function update(req, res) {
     const data = validarTorneo(req.body, t.toJSON());
     // Con fixture armado no se tocan los parámetros que lo determinan
     if (!['borrador', 'inscripcion'].includes(t.estado)) {
-      for (const k of ['categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
+      for (const k of ['deporte', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
         if (data[k] !== undefined && String(data[k]) !== String(t[k])) {
           return res.status(409).json({ message: `No se puede cambiar "${k}" con el fixture armado.` });
         }
       }
+    }
+    if (data.deporte && data.deporte !== t.deporte) {
+      if (await TorneoCancha.count({ where: { torneo_id: t.id } })) return res.status(409).json({ message: 'Quitá las canchas asignadas antes de cambiar el deporte.' });
+      if (!(await clubTieneDeporte(req.clubId, data.deporte))) return res.status(400).json({ message: `El club no tiene canchas de ${data.deporte} activas.` });
     }
     await t.update(data);
     res.json(t);
@@ -152,7 +166,7 @@ async function getCanchas(req, res) {
   try {
     const [disponibles, asignadas] = await Promise.all([
       Field.findAll({
-        where: { complex_id: req.clubId, deporte: 'padel' },
+        where: { complex_id: req.clubId, deporte: req.torneo.deporte || 'padel' },
         attributes: ['id', 'nombre', 'identificador', 'activa', 'hora_apertura', 'hora_cierre', 'techada'],
         order: [['nombre', 'ASC']],
       }),
@@ -181,8 +195,9 @@ async function setCanchas(req, res) {
     const lista = Array.isArray(req.body?.canchas) ? req.body.canchas : [];
     const ids = lista.map(c => Number(c.field_id));
     if (new Set(ids).size !== ids.length) return res.status(400).json({ message: 'Hay canchas repetidas.' });
-    const validas = await Field.count({ where: { id: ids, complex_id: req.clubId, deporte: 'padel' } });
-    if (validas !== ids.length) return res.status(400).json({ message: 'Alguna cancha no es de pádel o no pertenece al club.' });
+    const deporte = t.deporte || 'padel';
+    const validas = await Field.count({ where: { id: ids, complex_id: req.clubId, deporte } });
+    if (validas !== ids.length) return res.status(400).json({ message: `Alguna cancha no es de ${deporte} o no pertenece al club.` });
 
     const filas = lista.map(c => ({
       torneo_id: t.id,

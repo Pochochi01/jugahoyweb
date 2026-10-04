@@ -6,12 +6,17 @@
  * Rutas: /api/profesores/club/:complexId/...
  */
 const bcrypt = require('bcryptjs');
-const { Profesor, ProfesorCancha, HorarioProfesor, Field } = require('../models');
+const {
+  Profesor, ProfesorCancha, HorarioProfesor, Field, Escuela, EscuelaProfesor, EscuelaCategoria, EscuelaProfesorCategoria,
+  Torneo, TorneoProfesor,
+} = require('../models');
+const { DEPORTES } = require('../models/Escuela');
+const { ensenaDeporte } = require('../services/escuela/escuelaService');
 const svc = require('../services/profesores/profesorService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
-// Canchas donde un profesor puede dar clases (pádel y, para la Escuela, fútbol)
-const DEPORTES_CLASES = ['padel', 'futbol'];
+// Canchas donde un profesor puede dar clases: cualquier deporte
+const DEPORTES_CLASES = DEPORTES;
 
 function validar(body, parcial = false) {
   const out = {};
@@ -24,6 +29,11 @@ function validar(body, parcial = false) {
   }
   if (body.whatsapp !== undefined) out.whatsapp = String(body.whatsapp || '').replace(/\D/g, '') || null;
   if (body.activo !== undefined) out.activo = Boolean(body.activo);
+  if (body.deportes !== undefined) {
+    const ds = Array.isArray(body.deportes) ? [...new Set(body.deportes)] : [];
+    if (ds.some(d => !DEPORTES.includes(d))) throw svc.httpError(400, 'Deporte inválido.');
+    out.deportes = ds.length ? ds : null;
+  }
   return out;
 }
 
@@ -33,7 +43,11 @@ async function list(req, res) {
   try {
     const profes = await Profesor.findAll({
       where: { id_tenant: req.clubId },
-      include: [{ model: ProfesorCancha, as: 'disponibilidad' }],
+      include: [
+        { model: ProfesorCancha, as: 'disponibilidad' },
+        { model: Escuela, as: 'escuelas', attributes: ['id', 'nombre', 'deporte'], through: { attributes: [] } },
+        { model: Torneo, as: 'torneos', attributes: ['id', 'nombre', 'deporte', 'estado'], through: { attributes: ['rol'] } },
+      ],
       order: [['apellido', 'ASC'], ['nombre', 'ASC']],
     });
     res.json(profes);
@@ -134,4 +148,70 @@ async function cancelarClase(req, res) {
   } catch (err) { send(res, err); }
 }
 
-module.exports = { list, get, create, update, remove, canchas, setDisponibilidad, grilla, cancelarClase };
+/**
+ * GET /:id/asignaciones → escuelas y torneos del complejo, marcando los asignados.
+ * Un profesor puede estar en varias escuelas y torneos, siempre de SU complejo.
+ */
+async function getAsignaciones(req, res) {
+  try {
+    const p = await cargar(req, req.params.id);
+    if (!p) return res.status(404).json({ message: 'Profesor no encontrado' });
+    const [escuelas, torneos, mias, misTorneos] = await Promise.all([
+      Escuela.findAll({ where: { complex_id: req.clubId }, attributes: ['id', 'nombre', 'deporte', 'estado'], order: [['nombre', 'ASC']] }),
+      Torneo.findAll({ where: { id_tenant: req.clubId }, attributes: ['id', 'nombre', 'deporte', 'estado', 'fecha_inicio'], order: [['fecha_inicio', 'DESC']] }),
+      EscuelaProfesor.findAll({ where: { profesor_id: p.id }, raw: true }),
+      TorneoProfesor.findAll({ where: { profesor_id: p.id }, raw: true }),
+    ]);
+    res.json({
+      deportes: p.deportes || [],
+      escuelas: escuelas.map(e => ({ ...e.toJSON(), asignado: mias.some(m => m.escuela_id === e.id), deporte_ok: ensenaDeporte(p, e.deporte) })),
+      torneos: torneos.map(t => {
+        const m = misTorneos.find(x => x.torneo_id === t.id);
+        return { ...t.toJSON(), asignado: Boolean(m), rol: m?.rol || null, deporte_ok: ensenaDeporte(p, t.deporte) };
+      }),
+    });
+  } catch (err) { send(res, err); }
+}
+
+/**
+ * PUT /:id/asignaciones { escuela_ids: [], torneos: [{ torneo_id, rol? }] }
+ * Reemplaza las asignaciones. Valida que cada escuela/torneo sea de este
+ * complejo y de un deporte que el profesor enseña. Al sacarlo de una escuela
+ * se quitan también sus categorías de esa escuela.
+ */
+async function setAsignaciones(req, res) {
+  try {
+    const p = await cargar(req, req.params.id);
+    if (!p) return res.status(404).json({ message: 'Profesor no encontrado' });
+    const escuelaIds = [...new Set((req.body?.escuela_ids || []).map(Number))];
+    const torneosIn = (req.body?.torneos || []).map(t => ({ torneo_id: Number(t?.torneo_id ?? t), rol: String(t?.rol || '').trim().slice(0, 40) || null }));
+    const torneoIds = [...new Set(torneosIn.map(t => t.torneo_id))];
+
+    const [escuelas, torneos] = await Promise.all([
+      Escuela.findAll({ where: { id: escuelaIds, complex_id: req.clubId } }),
+      Torneo.findAll({ where: { id: torneoIds, id_tenant: req.clubId } }),
+    ]);
+    if (escuelas.length !== escuelaIds.length) return res.status(400).json({ message: 'Alguna escuela no pertenece a este complejo.' });
+    if (torneos.length !== torneoIds.length) return res.status(400).json({ message: 'Algún torneo no pertenece a este complejo.' });
+    const fuera = [...escuelas, ...torneos].filter(x => !ensenaDeporte(p, x.deporte));
+    if (fuera.length) {
+      return res.status(400).json({ message: `${p.nombre} ${p.apellido} no enseña ${[...new Set(fuera.map(x => x.deporte))].join(', ')}: agregá el deporte al profesor o quitá ${fuera.map(x => x.nombre).join(', ')}.` });
+    }
+
+    await Profesor.sequelize.transaction(async (t) => {
+      const antes = (await EscuelaProfesor.findAll({ where: { profesor_id: p.id }, raw: true, transaction: t })).map(x => x.escuela_id);
+      const quitadas = antes.filter(id => !escuelaIds.includes(id));
+      if (quitadas.length) {
+        const cats = (await EscuelaCategoria.findAll({ where: { escuela_id: quitadas }, attributes: ['id'], raw: true, transaction: t })).map(c => c.id);
+        if (cats.length) await EscuelaProfesorCategoria.destroy({ where: { profesor_id: p.id, categoria_id: cats }, transaction: t });
+      }
+      await EscuelaProfesor.destroy({ where: { profesor_id: p.id }, transaction: t });
+      await EscuelaProfesor.bulkCreate(escuelaIds.map(escuela_id => ({ escuela_id, profesor_id: p.id })), { transaction: t });
+      await TorneoProfesor.destroy({ where: { profesor_id: p.id }, transaction: t });
+      await TorneoProfesor.bulkCreate(torneoIds.map(torneo_id => ({ torneo_id, profesor_id: p.id, rol: torneosIn.find(x => x.torneo_id === torneo_id).rol })), { transaction: t });
+    });
+    return getAsignaciones(req, res);
+  } catch (err) { send(res, err); }
+}
+
+module.exports = { getAsignaciones, setAsignaciones, list, get, create, update, remove, canchas, setDisponibilidad, grilla, cancelarClase };

@@ -2,11 +2,34 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 /**
- * Escuela de Fútbol — modelos.
+ * Escuelas deportivas — modelos (N escuelas por complejo, cualquier deporte).
  * Los entrenadores son registros de `profesores` (login por DNI, por complejo)
  * vinculados a categorías por EscuelaProfesorCategoria.
  */
 
+const DEPORTES = ['futbol', 'padel', 'tenis', 'basquet', 'voley', 'squash', 'otro'];
+
+// Escuela de un complejo (N por complejo, de cualquier deporte). Categorías,
+// alumnos, horarios, cuotas y avisos cuelgan de ella.
+const Escuela = sequelize.define('Escuela', {
+  id:               { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  complex_id:       { type: DataTypes.INTEGER, allowNull: false },
+  nombre:           { type: DataTypes.STRING(150), allowNull: false },
+  deporte:          { type: DataTypes.ENUM(...DEPORTES), allowNull: false, defaultValue: 'futbol' },
+  descripcion:      { type: DataTypes.TEXT },
+  estado:           { type: DataTypes.ENUM('activa', 'inactiva'), defaultValue: 'activa' },
+  whatsapp_oficial: { type: DataTypes.STRING(30) },
+  dia_vencimiento:  { type: DataTypes.TINYINT, defaultValue: 10 },
+}, { tableName: 'escuelas' });
+
+// Profesor asignado a una escuela (además de las categorías que entrena).
+const EscuelaProfesor = sequelize.define('EscuelaProfesor', {
+  id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  escuela_id:  { type: DataTypes.INTEGER, allowNull: false },
+  profesor_id: { type: DataTypes.INTEGER, allowNull: false },
+}, { tableName: 'escuela_profesores' });
+
+/** @deprecated reemplazada por `escuelas` (migración 046); se conserva solo por historial. */
 const EscuelaConfig = sequelize.define('EscuelaConfig', {
   id:               { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   complex_id:       { type: DataTypes.INTEGER, allowNull: false, unique: true },
@@ -19,6 +42,7 @@ const EscuelaConfig = sequelize.define('EscuelaConfig', {
 const EscuelaCategoria = sequelize.define('EscuelaCategoria', {
   id:            { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   complex_id:    { type: DataTypes.INTEGER, allowNull: false },
+  escuela_id:    { type: DataTypes.INTEGER, allowNull: true },
   nombre:        { type: DataTypes.STRING(50), allowNull: false },     // "Sub-10"
   edad_min:      { type: DataTypes.TINYINT, allowNull: false },
   edad_max:      { type: DataTypes.TINYINT, allowNull: false },
@@ -39,7 +63,8 @@ const EscuelaAlumno = sequelize.define('EscuelaAlumno', {
   responsable_nombre:   { type: DataTypes.STRING(150), allowNull: false },
   responsable_whatsapp: { type: DataTypes.STRING(30), allowNull: false },   // dígitos con código de país
   responsable_email:    { type: DataTypes.STRING(150) },
-  estado:               { type: DataTypes.ENUM('activo', 'inactivo'), defaultValue: 'activo' },
+  // pendiente = pre‑inscripción desde la web (no ocupa cupo hasta que el club la confirma)
+  estado:               { type: DataTypes.ENUM('activo', 'inactivo', 'pendiente'), defaultValue: 'activo' },
   // Token del portal del alumno/padre (link sin contraseña que va en los mensajes)
   token_portal:         { type: DataTypes.STRING(64), allowNull: false, unique: true },
 }, { tableName: 'escuela_alumnos' });
@@ -76,6 +101,7 @@ const EscuelaPago = sequelize.define('EscuelaPago', {
 const EscuelaAviso = sequelize.define('EscuelaAviso', {
   id:           { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   complex_id:   { type: DataTypes.INTEGER, allowNull: false },
+  escuela_id:   { type: DataTypes.INTEGER, allowNull: true },
   categoria_id: { type: DataTypes.INTEGER, allowNull: true },   // null = toda la escuela
   fecha:        { type: DataTypes.DATEONLY, allowNull: false },
   estado:       { type: DataTypes.ENUM('normal', 'suspendida'), allowNull: false },
@@ -83,7 +109,26 @@ const EscuelaAviso = sequelize.define('EscuelaAviso', {
   autor:        { type: DataTypes.STRING(150) },
 }, { tableName: 'escuela_avisos' });
 
+// Mensaje a los padres (borrador editable → envío masivo personalizado por alumno).
+const EscuelaMensaje = sequelize.define('EscuelaMensaje', {
+  id:                  { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  tenant_id:           { type: DataTypes.INTEGER, allowNull: false },
+  escuela_id:          { type: DataTypes.INTEGER, allowNull: false },
+  tipo:                { type: DataTypes.ENUM('suspension', 'normal', 'recordatorio_pago', 'recibo'), allowNull: false },
+  contenido:           { type: DataTypes.TEXT, allowNull: false },
+  categoria_id:        { type: DataTypes.INTEGER, allowNull: true },
+  periodo:             { type: DataTypes.STRING(7) },
+  fecha:               { type: DataTypes.DATEONLY },
+  estado:              { type: DataTypes.ENUM('borrador', 'enviado'), defaultValue: 'borrador' },
+  envio_id:            { type: DataTypes.STRING(36) },
+  total_destinatarios: { type: DataTypes.INTEGER },
+  creado_por:          { type: DataTypes.STRING(150) },
+  enviado_por:         { type: DataTypes.STRING(150) },
+  enviado_at:          { type: DataTypes.DATE },
+}, { tableName: 'escuela_mensajes' });
+
 module.exports = {
-  EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
+  EscuelaMensaje,
+  DEPORTES, Escuela, EscuelaProfesor, EscuelaConfig, EscuelaCategoria, EscuelaAlumno, EscuelaProfesorCategoria,
   EscuelaHorario, EscuelaPago, EscuelaAviso,
 };

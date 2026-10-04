@@ -9,15 +9,26 @@
  *                 plantilla tipo 'torneo' (una variable {{1}} con el texto).
  *   - 'baileys' → sesión de WhatsApp Web del club (texto libre + imágenes).
  *
+ * Si el TORNEO tiene su propio teléfono vinculado (entity_phones, QR Baileys),
+ * los avisos de ese torneo salen desde ese número (con prioridad sobre el canal del club).
+ *
  * Nunca lanza: un fallo de WhatsApp no debe romper la inscripción, el pago
  * ni la carga de resultados. Devuelve { ok, via | error } por destinatario.
  */
 const integrations = require('../integrations.service');
 const waWindow     = require('../whatsappWindowService');
 const baileys      = require('../baileysService');
+const waEntidad    = require('../whatsappEntidad');
 const { frontendUrl } = require('../../config/urls');
 
 const digitos = (t) => String(t || '').replace(/\D/g, '');
+
+/** Teléfono propio del torneo, solo si está vinculado y con sesión viva. */
+async function telefonoDelTorneo(clubId, torneoId) {
+  const { EntityPhone } = require('../../models');
+  const fila = await EntityPhone.findOne({ where: { tenant_id: clubId, entity_type: 'torneo', entity_id: torneoId } });
+  return fila && waEntidad.sesiones.sesionValida(fila) ? fila : null;
+}
 
 async function proveedor(clubId) {
   const integ = await integrations.getIntegration(clubId);
@@ -28,10 +39,18 @@ async function proveedor(clubId) {
  * Envía un texto a un teléfono por el canal del club.
  * @returns {Promise<{ok:boolean, via?:string, error?:string}>}
  */
-async function enviar(clubId, telefono, texto, { imagen } = {}) {
+async function enviar(clubId, telefono, texto, { imagen, torneoId } = {}) {
   const tel = digitos(telefono);
   if (!tel) return { ok: false, error: 'sin teléfono' };
   try {
+    if (torneoId) {
+      const propio = await telefonoDelTorneo(clubId, torneoId);
+      if (propio) {
+        if (imagen) await waEntidad.sesiones.enviarImagen(propio, tel, imagen, texto);
+        else await waEntidad.sesiones.enviarTexto(propio, tel, texto);
+        return { ok: true, via: 'telefono_torneo' };
+      }
+    }
     if (await proveedor(clubId) === 'baileys') {
       if (imagen) await baileys.enviarImagen(clubId, tel, imagen, texto);
       else await baileys.enviarTexto(clubId, tel, texto);
@@ -57,7 +76,7 @@ async function enviar(clubId, telefono, texto, { imagen } = {}) {
 /** Envía el mismo texto a los dos jugadores de una pareja. */
 async function aPareja(clubId, pareja, texto, opts) {
   const jugadores = pareja?.jugadores || [];
-  return Promise.all(jugadores.map(j => enviar(clubId, j.whatsapp, texto, opts)));
+  return Promise.all(jugadores.map(j => enviar(clubId, j.whatsapp, texto, { torneoId: pareja?.torneo_id, ...opts })));
 }
 
 // ── Formateo ──────────────────────────────────────────────────

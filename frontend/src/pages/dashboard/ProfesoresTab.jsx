@@ -1,16 +1,23 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { GraduationCap, Plus, Pencil, Trash2, Clock, CalendarDays, X, Info } from 'lucide-react';
+import { GraduationCap, Plus, Pencil, Trash2, Clock, CalendarDays, X, Info, Link2, Smartphone } from 'lucide-react';
 import { profesoresAdmin } from '../../services/profesoresService';
+import { telefonoProfesorAdmin } from '../../services/telefonoEntidadService';
+import TelefonoEntidad from '../../components/TelefonoEntidad';
 import GrillaSemanal, { SemanaNav, inicioSemana, DIAS_SEMANA } from '../../components/profesores/GrillaSemanal';
 
-const VACIO = { nombre: '', apellido: '', dni: '', whatsapp: '' };
+const VACIO = { nombre: '', apellido: '', dni: '', whatsapp: '', deportes: [] };
+const DEPORTES = [
+  ['futbol', 'Fútbol'], ['padel', 'Pádel'], ['tenis', 'Tenis'], ['basquet', 'Básquet'], ['voley', 'Vóley'], ['squash', 'Squash'], ['otro', 'Otro'],
+];
+const deporteLabel = (d) => DEPORTES.find(x => x[0] === d)?.[1] || d;
 const HORAS = Array.from({ length: 18 }, (_, i) => `${String(i + 7).padStart(2, '0')}:00`).concat('00:00'); // 07:00 … 00:00
 const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];   // lunes primero
 const errMsg = (e) => e?.message || 'Ocurrió un error';
 
 /**
- * Tab "Profesores": solo para complejos con canchas de pádel.
- * CRUD de profesores (acceso por DNI) + ventanas de cancha/horario para clases.
+ * Tab "Profesores" (cualquier deporte).
+ * CRUD de profesores (acceso por DNI, deportes que enseña), ventanas de
+ * cancha/horario para clases y asignación a escuelas y torneos del complejo.
  */
 export default function ProfesoresTab({ complexId }) {
   const svc = useMemo(() => profesoresAdmin(complexId), [complexId]);
@@ -19,6 +26,8 @@ export default function ProfesoresTab({ complexId }) {
   const [form, setForm] = useState(null);           // alta/edición
   const [horarios, setHorarios] = useState(null);   // profesor cuyas ventanas se editan
   const [agenda, setAgenda] = useState(null);       // profesor cuya grilla se ve
+  const [asignar, setAsignar] = useState(null);     // profesor cuyas escuelas/torneos se editan
+  const [whatsapp, setWhatsapp] = useState(null);   // profesor cuyo teléfono vinculado se ve
   const [error, setError] = useState('');
 
   const cargar = useCallback(() => svc.list().then(setProfes).catch(e => { setProfes([]); setError(errMsg(e)); }), [svc]);
@@ -39,13 +48,21 @@ export default function ProfesoresTab({ complexId }) {
 
   if (horarios) return <VentanasEditor svc={svc} profesor={horarios} canchas={canchas} onClose={() => { setHorarios(null); cargar(); }} />;
   if (agenda) return <AgendaProfesor svc={svc} profesor={agenda} onClose={() => setAgenda(null)} />;
+  if (asignar) return <Asignaciones svc={svc} profesor={asignar} onClose={() => { setAsignar(null); cargar(); }} />;
+  if (whatsapp) return (
+    <div className="space-y-3">
+      <button className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1" onClick={() => setWhatsapp(null)}><X className="w-4 h-4" /> Volver a profesores</button>
+      <p className="text-xs text-muted-foreground">El profesor vincula su propio teléfono desde su panel (/profesor → Mi WhatsApp). Desde acá podés ver el estado y desvincularlo.</p>
+      <TelefonoEntidad svc={telefonoProfesorAdmin(complexId, whatsapp.id)} acciones={['desconectar']} quienes="alumnos" />
+    </div>
+  );
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   return (
     <div className="space-y-5 max-w-4xl">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><GraduationCap className="w-5 h-5 text-primary" /> Profesores de pádel</h2>
+        <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><GraduationCap className="w-5 h-5 text-primary" /> Profesores</h2>
         {!form && <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setForm(VACIO)}><Plus className="w-4 h-4" /> Nuevo profesor</button>}
       </div>
       <div className="card text-xs text-muted-foreground flex gap-2">
@@ -59,6 +76,19 @@ export default function ProfesoresTab({ complexId }) {
           <input className="input" placeholder="Apellido" value={form.apellido} onChange={e => set('apellido', e.target.value)} required />
           <input className="input" inputMode="numeric" placeholder="DNI (usuario y contraseña)" value={form.dni} onChange={e => set('dni', e.target.value)} required />
           <input className="input" inputMode="tel" placeholder="WhatsApp" value={form.whatsapp || ''} onChange={e => set('whatsapp', e.target.value)} />
+          <fieldset className="sm:col-span-2">
+            <legend className="text-xs text-muted-foreground mb-1">Deportes que enseña (sin marcar = cualquiera)</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {DEPORTES.map(([v, l]) => {
+                const on = (form.deportes || []).includes(v);
+                return (
+                  <button key={v} type="button" aria-pressed={on}
+                    onClick={() => set('deportes', on ? form.deportes.filter(x => x !== v) : [...(form.deportes || []), v])}
+                    className={`px-2.5 py-1 rounded-full text-xs ${on ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>{l}</button>
+                );
+              })}
+            </div>
+          </fieldset>
           <div className="sm:col-span-2 flex gap-2">
             <button className="btn-primary text-sm">Guardar</button>
             <button type="button" className="btn-outline text-sm" onClick={() => setForm(null)}>Cancelar</button>
@@ -73,20 +103,87 @@ export default function ProfesoresTab({ complexId }) {
           <div key={p.id} className="card py-3 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="font-medium">{p.apellido}, {p.nombre} {!p.activo && <span className="badge-red ml-1">Inactivo</span>}</div>
-              <div className="text-xs text-muted-foreground">DNI {p.dni}{p.whatsapp ? ` · ${p.whatsapp}` : ''} · {p.disponibilidad?.length || 0} franjas habilitadas</div>
+              <div className="text-xs text-muted-foreground">DNI {p.dni}{p.whatsapp ? ` · ${p.whatsapp}` : ''} · {p.disponibilidad?.length || 0} franjas habilitadas
+                · {p.deportes?.length ? p.deportes.map(deporteLabel).join(', ') : 'todos los deportes'}</div>
+              {(p.escuelas?.length > 0 || p.torneos?.length > 0) && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {p.escuelas?.map(e => <span key={`e${e.id}`} className="text-[11px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">🏫 {e.nombre}</span>)}
+                  {p.torneos?.map(t => <span key={`t${t.id}`} className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">🏆 {t.nombre}{t.TorneoProfesor?.rol ? ` · ${t.TorneoProfesor.rol}` : ''}</span>)}
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-1">
               <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setHorarios(p)}><Clock className="w-3.5 h-3.5" /> Canchas y horarios</button>
               <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setAgenda(p)}><CalendarDays className="w-3.5 h-3.5" /> Agenda</button>
+              <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setAsignar(p)}><Link2 className="w-3.5 h-3.5" /> Escuelas y torneos</button>
+              <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setWhatsapp(p)}><Smartphone className="w-3.5 h-3.5" /> WhatsApp</button>
               <button className={`text-xs px-2 ${p.activo ? 'text-green-400' : 'text-red-400'}`} onClick={async () => { await svc.update(p.id, { activo: !p.activo }); cargar(); }}>
                 {p.activo ? 'Activo' : 'Inactivo'}
               </button>
-              <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar" onClick={() => setForm({ id: p.id, nombre: p.nombre, apellido: p.apellido, dni: p.dni, whatsapp: p.whatsapp || '' })}><Pencil className="w-4 h-4" /></button>
+              <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar" onClick={() => setForm({ id: p.id, nombre: p.nombre, apellido: p.apellido, dni: p.dni, whatsapp: p.whatsapp || '', deportes: p.deportes || [] })}><Pencil className="w-4 h-4" /></button>
               <button className="p-1.5 rounded hover:bg-red-500/10 text-red-400" aria-label="Eliminar" onClick={() => eliminar(p)}><Trash2 className="w-4 h-4" /></button>
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Fuera de Asignaciones: si se define adentro, React remonta la fila en cada render (pierde clics y el foco del rol).
+const Fila = ({ item, onToggle, extra }) => (
+  <label className={`flex flex-wrap items-center gap-2 py-1.5 text-sm ${item.deporte_ok ? '' : 'opacity-50'}`}>
+    <input type="checkbox" checked={item.asignado} disabled={!item.deporte_ok && !item.asignado} onChange={onToggle} />
+    <span className="font-medium">{item.nombre}</span>
+    <span className="text-xs text-muted-foreground">{deporteLabel(item.deporte)}{item.estado ? ` · ${item.estado}` : ''}{!item.deporte_ok ? ' · no enseña este deporte' : ''}</span>
+    {extra}
+  </label>
+);
+
+/**
+ * Asignación del profesor a escuelas y torneos del complejo. Solo se pueden
+ * marcar los de un deporte que enseña (el backend lo vuelve a validar).
+ */
+function Asignaciones({ svc, profesor, onClose }) {
+  const [d, setD] = useState(null);
+  const [msg, setMsg] = useState({});
+  useEffect(() => { svc.asignaciones(profesor.id).then(setD).catch(e => setMsg({ error: errMsg(e) })); }, [svc, profesor.id]);
+  const toggle = (lista, id) => setD(x => ({ ...x, [lista]: x[lista].map(i => (i.id === id ? { ...i, asignado: !i.asignado } : i)) }));
+  const setRol = (id, rol) => setD(x => ({ ...x, torneos: x.torneos.map(t => (t.id === id ? { ...t, rol } : t)) }));
+  const guardar = async () => {
+    setMsg({});
+    try {
+      setD(await svc.setAsignaciones(profesor.id, {
+        escuela_ids: d.escuelas.filter(e => e.asignado).map(e => e.id),
+        torneos: d.torneos.filter(t => t.asignado).map(t => ({ torneo_id: t.id, rol: t.rol })),
+      }));
+      setMsg({ ok: 'Asignaciones guardadas.' });
+    } catch (e) { setMsg({ error: errMsg(e) }); }
+  };
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-bold mr-auto">{profesor.apellido}, {profesor.nombre} · escuelas y torneos</h2>
+        <button className="p-1.5 rounded hover:bg-muted" aria-label="Cerrar" onClick={onClose}><X className="w-5 h-5" /></button>
+      </div>
+      {!d ? <p className="text-sm text-muted-foreground">{msg.error || 'Cargando…'}</p> : <>
+        <div className="card">
+          <h3 className="font-semibold text-sm mb-1">Escuelas</h3>
+          {d.escuelas.length ? d.escuelas.map(e => <Fila key={e.id} item={e} onToggle={() => toggle('escuelas', e.id)} />) : <p className="text-xs text-muted-foreground">El complejo no tiene escuelas.</p>}
+          <p className="text-[11px] text-muted-foreground mt-1">Las categorías que entrena se eligen en Escuela → Entrenadores.</p>
+        </div>
+        <div className="card">
+          <h3 className="font-semibold text-sm mb-1">Torneos</h3>
+          {d.torneos.length ? d.torneos.map(t => (
+            <Fila key={t.id} item={t} onToggle={() => toggle('torneos', t.id)} extra={t.asignado && (
+              <input className="input !w-40 !py-1 text-xs" placeholder="Rol (ej. árbitro)" value={t.rol || ''} maxLength={40} onChange={e => setRol(t.id, e.target.value)} />
+            )} />
+          )) : <p className="text-xs text-muted-foreground">El complejo no tiene torneos.</p>}
+        </div>
+        {msg.error && <p className="text-sm text-red-400">{msg.error}</p>}
+        {msg.ok && <p className="text-sm text-green-400">{msg.ok}</p>}
+        <button className="btn-primary text-sm" onClick={guardar}>Guardar asignaciones</button>
+      </>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-// Profesor de pádel de UN complejo. El mismo DNI puede existir en varios
+// Profesor de UN complejo (cualquier deporte). El mismo DNI puede existir en varios
 // complejos (un registro por complejo); al loguearse elige en cuál operar.
 // Acceso: usuario = DNI, password = DNI (se guarda hasheado).
 const Profesor = sequelize.define('Profesor', {
@@ -12,6 +12,8 @@ const Profesor = sequelize.define('Profesor', {
   dni:       { type: DataTypes.STRING(15), allowNull: false },
   password:  { type: DataTypes.STRING(255), allowNull: false },
   whatsapp:  { type: DataTypes.STRING(30) },
+  // Deportes que enseña: ['futbol','tenis'] · null/[] = cualquiera
+  deportes:  { type: DataTypes.JSON, allowNull: true },
   activo:    { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {
   tableName: 'profesores',

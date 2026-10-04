@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { telefonoTorneo } from './telefonoEntidadService';
 import api from './api';
 
 // ── Cliente del organizador ───────────────────────────────────
@@ -34,6 +35,8 @@ export function torneosStaff(client, cid) {
   const b = `/torneos/club/${cid}`;
   const t = (tid) => `${b}/torneos/${tid}`;
   return {
+    // Teléfono propio del torneo (QR Baileys) → telefonoApi
+    telefono: (tid) => telefonoTorneo(client, cid, tid),
     // Organizadores (solo admin del club)
     listOrganizadores:  ()          => client.get(`${b}/organizadores`),
     createOrganizador:  (d)         => client.post(`${b}/organizadores`, d),

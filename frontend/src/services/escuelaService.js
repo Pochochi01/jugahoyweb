@@ -1,9 +1,32 @@
 import api from './api';
+
+const apiBase = api;
 import { profApi } from './profesoresService';
 
-/** Panel admin / colaborador de la Escuela de fútbol. */
-export const escuelaAdmin = (cid) => {
+/** Escuelas del complejo (N por complejo, cualquier deporte). */
+export const escuelasAdmin = (cid) => {
+  const b = `/escuela/club/${cid}/escuelas`;
+  return {
+    list:   ()        => api.get(b),
+    create: (d)       => api.post(b, d),
+    update: (id, d)   => api.put(`${b}/${id}`, d),
+    remove: (id)      => api.delete(`${b}/${id}`),
+  };
+};
+
+/**
+ * Panel admin / colaborador de UNA escuela: todas las llamadas llevan
+ * ?escuela_id= (el backend valida que la escuela sea de este complejo).
+ */
+export const escuelaAdmin = (cid, escuelaId) => {
   const b = `/escuela/club/${cid}`;
+  const conEscuela = (params) => ({ params: { ...params, escuela_id: escuelaId } });
+  const api = {
+    get:    (url, cfg = {}) => apiBase.get(url, conEscuela(cfg.params)),
+    delete: (url, cfg = {}) => apiBase.delete(url, conEscuela(cfg.params)),
+    post:   (url, d)        => apiBase.post(url, d, conEscuela()),
+    put:    (url, d)        => apiBase.put(url, d, conEscuela()),
+  };
   return {
     config:        ()          => api.get(`${b}/config`),
     guardarConfig: (d)         => api.put(`${b}/config`, d),
@@ -35,6 +58,16 @@ export const escuelaAdmin = (cid) => {
     pagar:          (id, metodo_pago) => api.post(`${b}/pagos/${id}/pagar`, { metodo_pago }),
     anular:         (id)       => api.post(`${b}/pagos/${id}/anular`),
     borrarPago:     (id)       => api.delete(`${b}/pagos/${id}`),
+
+    // Mensajes a los padres (borrador → envío masivo por el WhatsApp de la escuela)
+    plantillasMensaje: ()        => api.get(`${b}/mensajes/plantillas`),
+    mensajes:          ()        => api.get(`${b}/mensajes`),
+    crearMensaje:      (d)       => api.post(`${b}/mensajes`, d),
+    editarMensaje:     (id, d)   => api.put(`${b}/mensajes/${id}`, d),
+    borrarMensaje:     (id)      => api.delete(`${b}/mensajes/${id}`),
+    duplicarMensaje:   (id)      => api.post(`${b}/mensajes/${id}/duplicar`),
+    destinatariosMensaje: (id)   => api.get(`${b}/mensajes/${id}/destinatarios`),
+    enviarMensaje:     (id, d)   => api.post(`${b}/mensajes/${id}/enviar`, d),   // { alumno_ids?, textos? }
 
     avisos:         (params)   => api.get(`${b}/avisos`, { params }),
     crearAviso:     (d)        => api.post(`${b}/avisos`, d),

@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { MessageCircle, Megaphone, Users, CalendarDays } from 'lucide-react';
+import { MessageCircle, Megaphone, Users, CalendarDays, Smartphone } from 'lucide-react';
+import TelefonoEntidad from '../../components/TelefonoEntidad';
+import { telefonoEscuelaEntrenador } from '../../services/telefonoEntidadService';
 import { escuelaProfesor } from '../../services/escuelaService';
 import {
   WhatsAppAlumno, EnvioMasivo, HorariosEditor, AvisoForm, PAGO_BADGE, hoyISO,
 } from '../../components/escuela/EscuelaShared';
 
 /**
- * Escuela de fútbol — pantalla del ENTRENADOR (dentro del panel de profesor).
+ * Escuelas — pantalla del ENTRENADOR (dentro del panel de profesor).
  * Solo sus categorías asignadas: alumnos (con WhatsApp al responsable),
  * horarios de entrenamiento y avisos de actividad normal / suspendida.
  */
@@ -28,7 +30,7 @@ export default function EscuelaEntrenador({ complexId }) {
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-border">
-        {[['alumnos', 'Alumnos', Users], ['horarios', 'Horarios', CalendarDays], ['avisos', 'Avisos', Megaphone]].map(([k, l, Icon]) => (
+        {[['alumnos', 'Alumnos', Users], ['horarios', 'Horarios', CalendarDays], ['avisos', 'Avisos', Megaphone], ['whatsapp', 'WhatsApp escuela', Smartphone]].map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px ${vista === k ? 'border-primary text-primary font-medium' : 'border-transparent text-muted-foreground'}`}>
             <Icon className="w-4 h-4" /> {l}
@@ -36,9 +38,10 @@ export default function EscuelaEntrenador({ complexId }) {
         ))}
       </div>
 
+      {vista === 'whatsapp' && <WhatsAppEscuelas complexId={complexId} categorias={r.categorias} />}
       {vista === 'alumnos' && r.categorias.map(c => (
         <section key={c.id} className="space-y-1.5">
-          <h3 className="font-semibold">{c.nombre} <span className="text-xs text-muted-foreground font-normal">· {c.alumnos.length} alumnos</span></h3>
+          <h3 className="font-semibold">{c.nombre} <span className="text-xs text-muted-foreground font-normal">{c.escuela?.nombre ? `· ${c.escuela.nombre} ` : ''}· {c.alumnos.length} alumnos</span></h3>
           {c.alumnos.length === 0 && <div className="card text-sm text-muted-foreground py-4 text-center">Sin alumnos.</div>}
           {c.alumnos.map(a => (
             <div key={a.id} className="card py-2 flex items-center gap-2 text-sm">
@@ -87,6 +90,24 @@ export default function EscuelaEntrenador({ complexId }) {
       {wa && <WhatsAppAlumno alumno={wa} cargarContexto={() => svc.contexto(wa.id)} onClose={() => setWa(null)} />}
       {masivo && <EnvioMasivo titulo={masivo.titulo} alumnos={masivo.alumnos} tipo="actividad" aviso={masivo.aviso} textoGrupo={masivo.textoGrupo}
         cargarContexto={(id) => svc.contexto(id)} onClose={() => setMasivo(null)} />}
+    </div>
+  );
+}
+
+/** WhatsApp de cada escuela donde entrena (el admin lo vincula; el entrenador envía). */
+function WhatsAppEscuelas({ complexId, categorias }) {
+  const escuelas = [...new Map(categorias.filter(c => c.escuela).map(c => [c.escuela.id, c.escuela])).values()];
+  const [eid, setEid] = useState(escuelas[0]?.id || null);
+  const svc = useMemo(() => (eid ? telefonoEscuelaEntrenador(complexId, eid) : null), [complexId, eid]);
+  if (!escuelas.length) return <p className="text-sm text-muted-foreground">No tenés escuelas asignadas.</p>;
+  return (
+    <div className="space-y-3">
+      {escuelas.length > 1 && (
+        <select className="input !w-auto text-sm" value={eid} onChange={e => setEid(Number(e.target.value))} aria-label="Escuela">
+          {escuelas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        </select>
+      )}
+      {svc && <TelefonoEntidad key={eid} svc={svc} acciones={['enviar']} quienes="alumnos (responsables)" categorias={categorias.filter(c => c.escuela?.id === eid)} />}
     </div>
   );
 }

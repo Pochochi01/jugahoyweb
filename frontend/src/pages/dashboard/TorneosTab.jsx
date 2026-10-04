@@ -5,10 +5,10 @@ import api from '../../services/api';
 import { torneosStaff } from '../../services/torneosService';
 import TorneoManager from '../../components/torneos/TorneoManager';
 import TorneoForm from '../../components/torneos/TorneoForm';
-import { ESTADO_TORNEO, GENEROS, catLabel, fechaCorta, errMsg } from '../../utils/torneos';
+import { ESTADO_TORNEO, GENEROS, DEPORTES_TORNEO, catLabel, fechaCorta, errMsg } from '../../utils/torneos';
 
 /**
- * Tab "Torneos" del panel del club. Visible solo si el complejo tiene canchas de pádel.
+ * Tab "Torneos" del panel del club (cualquier deporte; cada torneo usa las canchas de su deporte).
  * Los admins además gestionan organizadores (login propio en /organizador/login).
  */
 export default function TorneosTab({ complexId }) {
@@ -21,7 +21,7 @@ export default function TorneosTab({ complexId }) {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><Trophy className="w-5 h-5 text-primary" /> Torneos de pádel</h2>
+        <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><Trophy className="w-5 h-5 text-primary" /> Torneos</h2>
         {[['torneos', 'Torneos', Trophy], ['ranking', 'Ranking anual', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-white' : 'bg-muted'}`}>
@@ -47,7 +47,7 @@ export function ListaTorneos({ svc, onOpen }) {
   return (
     <div className="space-y-4">
       {!data.habilitado && (
-        <div className="card text-sm text-amber-400">El complejo no tiene canchas de pádel activas: agregalas en Configuración para organizar torneos.</div>
+        <div className="card text-sm text-amber-400">El complejo no tiene canchas activas: agregalas en Configuración para organizar torneos.</div>
       )}
       {data.habilitado && !creando && (
         <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setCreando(true)}><Plus className="w-4 h-4" /> Nuevo torneo</button>
@@ -65,7 +65,7 @@ export function ListaTorneos({ svc, onOpen }) {
               <span className="font-semibold">{t.nombre}</span>
               <span className={ESTADO_TORNEO[t.estado].cls}>{ESTADO_TORNEO[t.estado].label}</span>
             </div>
-            <div className="text-xs text-muted-foreground">{t.tipo === 'anual' ? 'Anual · ' : ''}{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
+            <div className="text-xs text-muted-foreground">{DEPORTES_TORNEO[t.deporte] || 'Pádel'} · {t.tipo === 'anual' ? 'Anual · ' : ''}{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
             <div className="text-xs">{t.inscriptas}/{t.cupo_parejas} parejas · {t.pagadas} pagadas</div>
           </button>
         ))}

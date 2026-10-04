@@ -22,7 +22,7 @@ async function portal(req, res) {
     // Avisos: de hoy en adelante (y la última semana) para su categoría o toda la escuela
     const desde = new Date(`${svc.hoy()}T12:00:00`); desde.setDate(desde.getDate() - 7);
     const avisos = await EscuelaAviso.findAll({
-      where: { complex_id: a.complex_id, fecha: { [Op.gte]: desde.toISOString().slice(0, 10) }, [Op.or]: [{ categoria_id: a.categoria_id }, { categoria_id: null }] },
+      where: { complex_id: a.complex_id, fecha: { [Op.gte]: desde.toISOString().slice(0, 10) }, [Op.or]: [{ categoria_id: a.categoria_id }, { categoria_id: null, escuela_id: a.categoria?.escuela_id ?? null }] },
       order: [['fecha', 'DESC']], limit: 20,
     });
     delete ctx.alumno.responsable_whatsapp;
