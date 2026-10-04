@@ -21,3 +21,7 @@ logs/*.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Sesiones de WhatsApp (Baileys): credenciales, NUNCA al repositorio
+backend/sessions/
+backend/baileys_auth/

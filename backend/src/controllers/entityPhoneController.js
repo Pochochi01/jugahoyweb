@@ -9,6 +9,7 @@
  *   POST   /whatsapp/conectar        genera el QR para vincular el teléfono
  *   DELETE /whatsapp                 desvincula (cierra la sesión en el teléfono)
  *   GET    /whatsapp/destinatarios   inscriptos/alumnos permitidos (?categoria_id para escuelas)
+ *   GET    /whatsapp/red             diagnóstico de salida del servidor a web.whatsapp.com
  *   POST   /whatsapp/enviar          { mensaje, numeros?: [], categoria_id? } → 202 (sale en segundo plano)
  */
 const router = require('express').Router;
@@ -17,6 +18,7 @@ const sesiones = require('../services/whatsappEntidad/sesiones');
 const envios = require('../services/whatsappEntidad/envios');
 const { destinatarios } = require('../services/whatsappEntidad/entidades');
 const baileysLib = require('../utils/baileysLib');
+const red = require('../services/whatsappEntidad/red');
 const { telefonoDeEntidad, requiereTelefonoVinculado, actor } = require('../middlewares/entidadTelefono');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.code ? { code: err.code } : {}), ...(err.ajenos ? { ajenos: err.ajenos } : {}) });
@@ -67,6 +69,8 @@ const desconectar = h(async (req, res) => {
   res.json(await respuestaEstado(req));
 });
 
+const diagnosticoRed = h(async (req, res) => res.json(await red.diagnosticar({ usarCache: req.query.forzar !== '1' })));
+
 const listarDestinatarios = h(async (req, res) => {
   const lista = await destinatarios(req.entidad, { categoria_id: req.query.categoria_id });
   res.json({ total: lista.length, destinatarios: lista });
@@ -94,9 +98,10 @@ function rutasTelefono({ acciones = ['estado', 'conectar', 'desconectar', 'desti
   r.get('/', si('estado') ? estado : no);
   r.post('/conectar', si('conectar') ? conectar : no);
   r.delete('/', si('desconectar') ? desconectar : no);
+  r.get('/red', si('estado') || si('conectar') ? diagnosticoRed : no);
   r.get('/destinatarios', si('destinatarios') ? listarDestinatarios : no);
   r.post('/enviar', si('enviar') ? [requiereTelefonoVinculado, enviar] : no);
   return r;
 }
 
-module.exports = { rutasTelefono, estado, conectar, desconectar, listarDestinatarios, enviar };
+module.exports = { rutasTelefono, diagnosticoRed, estado, conectar, desconectar, listarDestinatarios, enviar };

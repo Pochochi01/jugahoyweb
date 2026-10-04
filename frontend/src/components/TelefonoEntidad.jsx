@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Smartphone, QrCode, Unlink, Send, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Smartphone, QrCode, Unlink, Send, RefreshCw, CheckCircle2, AlertTriangle, Wifi, Loader2 } from 'lucide-react';
 
 const errMsg = (e) => e?.message || 'Ocurrió un error';
 const fechaHora = (f) => (f ? new Date(f).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
@@ -22,14 +22,15 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
   const [mensaje, setMensaje] = useState('');
   const [msg, setMsg] = useState({});
   const [ocupado, setOcupado] = useState(false);
+  const [diag, setDiag] = useState(null);         // diagnóstico de red del servidor
   const puede = (a) => acciones.includes(a);
 
   const cargar = useCallback(() => svc.estado().then(setSt).catch(e => setMsg({ error: errMsg(e) })), [svc]);
   useEffect(() => { cargar(); }, [cargar]);
   // Mientras se espera el escaneo o hay un envío en curso, refrescar
   useEffect(() => {
-    if (!st || !(st.estado === 'esperando_qr' || st.estado === 'conectando' || st.envio_en_curso)) return undefined;
-    const t = setInterval(cargar, 2500);
+    if (!st || !(['esperando_qr', 'conectando', 'reconectando'].includes(st.estado) || st.envio_en_curso)) return undefined;
+    const t = setInterval(cargar, st.estado === 'reconectando' ? 5000 : 2500);
     return () => clearInterval(t);
   }, [st, cargar]);
 
@@ -60,6 +61,10 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
       setMsg({ ok: r.message }); setMensaje(''); cargar();
     } catch (e) { setMsg({ error: errMsg(e) }); } finally { setOcupado(false); }
   };
+  const probarRed = async () => {
+    setDiag({ cargando: true });
+    try { setDiag(await svc.red(true)); } catch (e) { setDiag({ error: errMsg(e) }); }
+  };
   const toggle = (n) => setSel(s => { const x = new Set(s); if (x.has(n)) x.delete(n); else x.add(n); return x; });
   const vista = useMemo(() => (mensaje ? `📣 *${st?.entidad?.nombre || ''}*\n\n${mensaje.replace(/\{nombre\}/gi, (dest?.[0]?.nombre || 'Juan').split(' ')[0])}` : ''), [mensaje, st, dest]);
 
@@ -77,11 +82,22 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
             ? <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-500/15 text-green-300"><CheckCircle2 className="w-3.5 h-3.5" /> Conectado · +{st.numero}</span>
             : st.estado === 'esperando_qr'
               ? <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300">Esperando escaneo</span>
-              : <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/70">No conectado</span>}
+              : st.estado === 'reconectando' || st.estado === 'conectando'
+                ? <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-sky-500/15 text-sky-300"><Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    {st.estado === 'reconectando' ? `Reconectando${st.reintentos ? ` (intento ${st.reintentos})` : ''}` : 'Conectando…'}</span>
+                : <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/70">No conectado</span>}
         </div>
         {st.error && <p className="text-xs text-amber-400 flex gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {st.error}</p>}
 
-        {!conectado && st.estado !== 'esperando_qr' && (puede('conectar')
+        {st.estado === 'reconectando' && (
+          <p className="text-xs text-sky-300">Se cortó la conexión con WhatsApp. Se reintenta solo con la sesión guardada (no hace falta escanear de nuevo)
+            {st.proximo_intento && ` · próximo intento ${new Date(st.proximo_intento).toLocaleTimeString('es-AR')}`}.
+            {puede('conectar') && <button className="ml-1 underline" onClick={conectar}>Reintentar ahora</button>}</p>
+        )}
+        {st.puede_reconectar && puede('conectar') && (
+          <button className="btn-primary text-sm flex items-center gap-1.5" disabled={ocupado} onClick={conectar}><RefreshCw className="w-4 h-4" /> Reconectar +{st.numero} (sin QR)</button>
+        )}
+        {!conectado && !st.puede_reconectar && !['esperando_qr', 'reconectando', 'conectando'].includes(st.estado) && (puede('conectar')
           ? <button className="btn-primary text-sm flex items-center gap-1.5" disabled={ocupado} onClick={conectar}><QrCode className="w-4 h-4" /> {ocupado ? 'Generando QR…' : 'Conectar teléfono'}</button>
           : <p className="text-xs text-muted-foreground">El teléfono todavía no está vinculado.</p>)}
 
@@ -99,8 +115,21 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
           </div>
         )}
 
-        {conectado && puede('desconectar') && (
-          <button className="text-xs text-red-400 hover:underline flex items-center gap-1" disabled={ocupado} onClick={desconectar}><Unlink className="w-3.5 h-3.5" /> Desvincular teléfono</button>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {(conectado || st.estado === 'reconectando' || st.puede_reconectar) && puede('desconectar') && (
+            <button className="text-xs text-red-400 hover:underline flex items-center gap-1" disabled={ocupado} onClick={desconectar}><Unlink className="w-3.5 h-3.5" /> Desvincular y liberar teléfono</button>
+          )}
+          {(puede('conectar') || puede('desconectar')) && (
+            <button className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" onClick={probarRed}><Wifi className="w-3.5 h-3.5" /> Probar conexión del servidor con WhatsApp</button>
+          )}
+        </div>
+        {diag && (
+          <div className="rounded-lg border border-border p-2 text-xs space-y-1">
+            {diag.cargando ? <p className="text-muted-foreground">Probando DNS, TLS y WebSocket…</p> : diag.error ? <p className="text-red-400">{diag.error}</p> : <>
+              <p className={diag.ok ? 'text-green-400' : 'text-amber-400'}>{diag.ok ? '✔ El servidor llega a WhatsApp Web sin bloqueos.' : `⚠ ${diag.sugerencia}`}{diag.proxy && ` (proxy: ${diag.proxy})`}</p>
+              {diag.pasos.map(p => <p key={p.paso} className="text-muted-foreground">{p.ok ? '✔' : '✘'} {p.paso} · {p.ms} ms{p.error ? ` · ${p.error}` : ''}</p>)}
+            </>}
+          </div>
         )}
       </div>
 

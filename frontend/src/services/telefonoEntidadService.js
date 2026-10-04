@@ -13,6 +13,7 @@ export function telefonoApi(client, base) {
     desconectar:   ()        => client.delete(base),
     destinatarios: (params)  => client.get(`${base}/destinatarios`, { params }),
     enviar:        (d)       => client.post(`${base}/enviar`, d),   // { mensaje, numeros?, categoria_id? }
+    red:           (forzar)  => client.get(`${base}/red`, { params: forzar ? { forzar: 1 } : {} }),   // diagnóstico de salida a WhatsApp Web
   };
 }
 

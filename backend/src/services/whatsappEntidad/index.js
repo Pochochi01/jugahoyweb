@@ -2,7 +2,9 @@
 /**
  * services/whatsappEntidad — WhatsApp propio de torneos, escuelas y profesores (Baileys).
  *
- *   sesiones.js   conexión por QR, sesión cifrada en BD, unicidad del número
+ *   sesiones.js   conexión por QR, reconexión automática, unicidad del número
+ *   almacenes.js  persistencia de la sesión: BD cifrada (def.) o archivos sessions/<tipo><id>
+ *   red.js        diagnóstico de salida a web.whatsapp.com (DNS / firewall / proxy)
  *   entidades.js  entidad del tenant + lista blanca de destinatarios
  *   envios.js     cola de envío con pausa, límites y auditoría
  *
@@ -12,6 +14,8 @@
 const sesiones = require('./sesiones');
 const entidades = require('./entidades');
 const envios = require('./envios');
+const red = require('./red');
+const almacenes = require('./almacenes');
 const { EntityPhone } = require('../../models');
 
 const QUIENES = { torneo: 'los inscriptos del torneo', escuela: 'los alumnos y sus familias', profesor: 'tus alumnos' };
@@ -32,9 +36,25 @@ async function liberarTelefonoDe(tipo, id) {
   await fila.destroy();
 }
 
-async function iniciar() {
-  const n = await sesiones.restaurarTodas();
-  if (n) console.log(`[wa-entidad] restaurando ${n} teléfono(s) de torneos/escuelas/profesores`);
+let apagando = false;
+/** pm2 restart/stop manda SIGINT: guardar sesiones y cerrar sockets sin cerrar sesión en WhatsApp. */
+async function alApagar(senal) {
+  if (apagando) return;
+  apagando = true;
+  const n = await Promise.race([sesiones.cerrarTodo(), new Promise(r => setTimeout(() => r(-1), 1200))]);
+  console.log(`[wa-entidad] ${senal}: ${n >= 0 ? `${n} sesión(es) guardadas y cerradas` : 'cierre por tiempo'}`);
+  process.exit(0);
 }
 
-module.exports = { sesiones, entidades, envios, liberarTelefonoDe, iniciar };
+async function iniciar({ senales = true } = {}) {
+  if (senales) { process.once('SIGINT', () => alApagar('SIGINT')); process.once('SIGTERM', () => alApagar('SIGTERM')); }
+  sesiones.iniciarVigilancia();
+  const n = await sesiones.restaurarTodas();
+  if (n) {
+    console.log(`[wa-entidad] restaurando ${n} teléfono(s) de torneos/escuelas/profesores (almacén: ${almacenes.actual().tipo})`);
+    // Con sesiones que reabrir, avisar en el log si el servidor no llega a WhatsApp Web
+    red.diagnosticar().then(d => { if (!d.ok) console.warn(`[wa-entidad] ⚠ red: ${d.sugerencia}`, JSON.stringify(d.pasos.filter(p => !p.ok))); }).catch(() => {});
+  }
+}
+
+module.exports = { sesiones, entidades, envios, red, almacenes, liberarTelefonoDe, iniciar };
