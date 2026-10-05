@@ -365,12 +365,12 @@ async function cancelBooking(req, res) {
     const horasLiberadas = booking.timeSlots.map(s => s.hora);
     const deporteCancha = booking.field?.deporte;
 
-    // El admin (y el colaborador con permiso) pueden cancelar cuando quieran —
-    // NO aplica la regla de las 2 h — PERO un turno que ya comenzó o pasó no
-    // puede cancelarse (para eso está "marcar no asistió").
-    if (yaComenzo(booking)) {
+    // El admin (y el colaborador con permiso 'cancelar_turnos') pueden cancelar
+    // desde el slot en cualquier momento, también un turno ya iniciado. Solo se
+    // bloquea si ya se cobró (habría que anular el cobro en caja primero).
+    if (booking.cobrado) {
       await t.rollback();
-      return res.status(400).json({ message: MSG_YA_COMENZO });
+      return res.status(409).json({ message: 'El turno ya fue cobrado: anulá el cobro antes de cancelarlo.' });
     }
 
     // Liberar todos los slots de esta reserva
@@ -417,11 +417,15 @@ async function cancelBooking(req, res) {
       });
     }
 
-    // Aviso por WhatsApp si la reserva se hizo por el bot (best-effort, no bloquea).
+    // Aviso por el chatbot (WhatsApp oficial del club) al número del turno,
+    // venga la reserva del bot, la web o el panel (best-effort, no bloquea).
     // MULTI-TENANT: se envía con las credenciales del club dueño de la reserva.
-    if (esReservaWhatsApp(booking)) {
+    const telAviso = booking.telefono_cliente || (booking.user_id ? (await User.findByPk(booking.user_id, { attributes: ['telefono'] }))?.telefono : null);
+    let avisoWhatsApp = false;
+    if (telAviso) {
+      avisoWhatsApp = true;
       integrations.getMetaCredentials(complexId)
-        .then(creds => wa.sendCancellationNotice(booking.telefono_cliente, {
+        .then(creds => wa.sendCancellationNotice(String(telAviso).replace(/\D/g, ''), {
           fecha:  booking.fecha,
           hora:   booking.hora_inicio,
           cancha: booking.field?.nombre || 'la cancha',
@@ -430,7 +434,7 @@ async function cancelBooking(req, res) {
         .catch(err => console.error('[WhatsApp] aviso cancelación:', err.message));
     }
 
-    res.json({ message: 'Reserva cancelada', booking });
+    res.json({ message: avisoWhatsApp ? 'Reserva cancelada. Avisamos al cliente por WhatsApp.' : 'Reserva cancelada (sin teléfono para avisar).', booking, aviso_whatsapp: avisoWhatsApp });
   } catch (err) {
     await t.rollback();
     res.status(500).json({ message: err.message });

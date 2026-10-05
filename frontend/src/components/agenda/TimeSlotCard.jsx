@@ -1,4 +1,4 @@
-import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, UserX, MessageCircle, DollarSign, GraduationCap, Trophy } from 'lucide-react';
+import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, MessageCircle, DollarSign, GraduationCap, Trophy } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
 import { waLink } from '../../utils/whatsapp';
 
@@ -32,8 +32,8 @@ const STYLES = {
     icon:   'text-success', text: 'text-success', hint: 'text-success/80',
   },
   asignado:   { ...RESERVA, card: tinte('warning', 0.09, 0.32), badge: badgeDe('warning'), icon: 'text-warning', label: 'Asignado' },
-  asistido:   { ...RESERVA, card: tinte('success', 0.10, 0.32), badge: badgeDe('success'), icon: 'text-success', label: 'Asistido' },
-  noasistido: { ...RESERVA, card: tinte('danger', 0.09, 0.32),  badge: badgeDe('danger'),  icon: 'text-danger',  label: 'No asistió' },
+  asistido:   { ...RESERVA, card: tinte('success', 0.13, 0.40), badge: badgeDe('success'), icon: 'text-success', label: 'Asistido' },
+  noasistido: { ...RESERVA, card: tinte('danger', 0.13, 0.40),  badge: badgeDe('danger'),  icon: 'text-danger',  label: 'No asistió' },
   pendiente:  { ...RESERVA, card: tinte('warning', 0.06, 0.5, 'dashed'), badge: badgeDe('warning'), icon: 'text-warning', label: 'Pendiente' },
   secondary: { card: tinte('foreground', 0.025, 0.08), text: 'text-muted-foreground' },
   // Clase de profesor (violeta) / partido de torneo (azul): ocupan la cancha sin ser reservas
@@ -55,10 +55,15 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
   const isPendiente  = isOcupado && slot.booking?.estado === 'pendiente';
   const isNoAsistido = isOcupado && slot.booking?.estado === 'no_asistido';
   const isConfirmado = isOcupado && slot.booking?.estado === 'confirmado';
-  const isAsistido   = isConfirmado && slot.past;   // ya comenzó → asistido (verde)
+  // ¿Ya empezó el turno? (en vivo: no espera a recargar la agenda)
+  const empezo = slot.past || (slot.booking?.hora_inicio && slot.fecha
+    && new Date(`${slot.fecha}T${slot.booking.hora_inicio}:00`) <= new Date());
+  // Flujo: Asignado (antes de empezar) → Asistido (al empezar) ↔ Cancelado (click).
+  // Una vez iniciado, "Asignado" ya no vuelve.
+  const isAsistido   = isConfirmado && empezo;
   const isCobrado    = isOcupado && !!slot.booking?.cobrado;
   // Se puede marcar ausencia solo si el turno ya empezó y está confirmado
-  const puedeMarcarAusencia = isConfirmado && slot.isFirstOfBooking && slot.past;
+  const puedeMarcarAusencia = isConfirmado && slot.isFirstOfBooking && empezo;
   // El turno (primer slot, no pendiente) es gestionable: cobrar / agregar consumos
   const esGestionable = isOcupado && slot.isFirstOfBooking && slot.booking && !isPendiente && onManage;
 
@@ -148,31 +153,30 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
             <div className="flex items-center gap-1.5 shrink-0">
               {isNoAsistido ? (
                 <>
-                  <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgb(var(--muted-foreground) / 0.18)', color: 'rgb(var(--muted-foreground))', border: '1px solid rgb(var(--muted-foreground) / 0.3)' }}>
-                    <UserX className="w-3 h-3" /> No asistió
-                  </span>
-                  {/* Corregir → asistió (solo administradores) */}
-                  {onCorrectNoShow && (
-                    <button
-                      onClick={e => { e.stopPropagation(); onCorrectNoShow(slot.booking_id); }}
-                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.30)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.25)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.15)'}
-                      title="Corregir: marcar como asistido"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5" /> Asistió
-                    </button>
-                  )}
+                  <button type="button" disabled={!onCorrectNoShow}
+                    onClick={e => { e.stopPropagation(); onCorrectNoShow?.(slot.booking_id); }}
+                    title={onCorrectNoShow ? 'Click para volver a Asistido' : 'No asistió'}
+                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-[filter,transform] duration-150 enabled:hover:brightness-110 enabled:active:scale-[0.96] disabled:cursor-default"
+                    style={S.badge}>
+                    <XCircle className="w-3 h-3" /> No asistió
+                  </button>
                 </>
               ) : (
                 <>
                   {/* Badge de estado: amarillo (asignado) / verde (asistido) / ámbar (pendiente) */}
-                  <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style={S.badge}>
-                    {isAsistido ? <CheckCircle className="w-3 h-3" /> : isPendiente ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                    {S.label}
-                  </span>
+                  {puedeMarcarAusencia && onNoShow ? (
+                    <button type="button" onClick={e => { e.stopPropagation(); onNoShow(slot.booking_id); }}
+                      title="Click para marcar No asistió"
+                      className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-[filter,transform] duration-150 hover:brightness-110 active:scale-[0.96]"
+                      style={S.badge}>
+                      <CheckCircle className="w-3 h-3" /> {S.label}
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={S.badge}>
+                      {isAsistido ? <CheckCircle className="w-3 h-3" /> : isPendiente ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                      {S.label}
+                    </span>
+                  )}
 
                   {/* Cobrado */}
                   {isCobrado && (
@@ -196,31 +200,18 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                     </button>
                   )}
 
-                  {/* Marcar como no asistido — solo si el turno ya expiró */}
-                  {puedeMarcarAusencia && onNoShow && (
-                    <button
-                      onClick={e => { e.stopPropagation(); onNoShow(slot.booking_id); }}
-                      className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgb(var(--muted-foreground) / 0.14)', color: 'rgb(var(--muted-foreground))', border: '1px solid rgb(var(--muted-foreground) / 0.28)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--muted-foreground) / 0.24)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--muted-foreground) / 0.14)'}
-                      title="Marcar como no asistido"
-                    >
-                      <UserX className="w-3.5 h-3.5" /> No asistió
-                    </button>
-                  )}
 
                   {/* Cancelar — solo con permiso (onCancel) y si el turno NO empezó */}
-                  {onCancel && !slot.past && (
+                  {onCancel && !isCobrado && (
                     <button
                       onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
                       style={{ background: 'rgb(var(--danger) / 0.12)', color: 'rgb(var(--danger))', border: '1px solid rgb(var(--danger) / 0.25)' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.22)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.12)'}
-                      title="Cancelar esta reserva"
+                      title="Cancelar el turno (se avisa al cliente por WhatsApp)"
                     >
-                      <XCircle className="w-3.5 h-3.5" /> Cancelar
+                      <XCircle className="w-3.5 h-3.5" /> Cancelar turno
                     </button>
                   )}
                 </>

@@ -319,8 +319,8 @@ export default function AgendaTab({ complexId }) {
   // Cancela una reserva puntual (un solo turno).
   const doCancel = async (bookingId) => {
     try {
-      await agendaService.cancelar(complexId, bookingId);
-      showToast('success', 'Reserva cancelada.');
+      const r = await agendaService.cancelar(complexId, bookingId);
+      showToast('success', r?.message || 'Turno cancelado.');
       loadSlots(); loadConteos();
     } catch (err) {
       // Muestra el motivo del backend (ej. regla de las 2 h / 15 min)
@@ -335,7 +335,7 @@ export default function AgendaTab({ complexId }) {
       setCancelFijo({ bookingId, recurringId: booking.recurring_id, nombre: booking.nombre_cliente });
       return;
     }
-    if (!window.confirm('¿Cancelar esta reserva y liberar todos los horarios?')) return;
+    if (!window.confirm('¿Cancelar este turno y liberar los horarios? Se le avisa al cliente por WhatsApp.')) return;
     doCancel(bookingId);
   };
 
@@ -367,7 +367,7 @@ export default function AgendaTab({ complexId }) {
   };
 
   const handleNoShow = async (bookingId) => {
-    if (!window.confirm('¿Marcar este turno como "no asistido"? El cliente no se presentó.')) return;
+    if (!window.confirm('¿Marcar este turno como "No asistió"? (el cliente no se presentó)')) return;
     try {
       await agendaService.noAsistido(complexId, bookingId);
       showToast('success', 'Turno marcado como no asistido.');
@@ -378,10 +378,10 @@ export default function AgendaTab({ complexId }) {
   };
 
   const handleCorrectNoShow = async (bookingId) => {
-    if (!window.confirm('¿Corregir y marcar este turno como asistido?')) return;
+    if (!window.confirm('¿Volver este turno a "Asistido"?')) return;
     try {
       await agendaService.asistio(complexId, bookingId);
-      showToast('success', 'Turno corregido: asistió.');
+      showToast('success', 'Turno marcado como asistido.');
       loadSlots();
     } catch (err) {
       showToast('error', err?.response?.data?.message || 'No se pudo corregir.');
@@ -498,7 +498,7 @@ export default function AgendaTab({ complexId }) {
           onCancel={puedeCancelar ? handleCancel : undefined}
           onNoShow={handleNoShow}
           onConfirm={handleConfirm}
-          onCorrectNoShow={esAdmin ? handleCorrectNoShow : undefined}
+          onCorrectNoShow={handleCorrectNoShow}
         />
       )}
 

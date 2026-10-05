@@ -19,8 +19,8 @@ router.put('/:complexId/cancelar/:bookingId', requireComplexAccess, requirePermi
 router.put('/:complexId/confirmar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.confirmBooking);
 router.put('/:complexId/rechazar/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.rejectBooking);
 router.patch('/:complexId/no-asistido/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.markNoShow);
-// Corregir asistencia (no_asistido → confirmado): SOLO administradores, no colaboradores.
-router.patch('/:complexId/asistio/:bookingId', requireComplexAccess, requireRole('general_admin', 'complex_admin'), ctrl.correctNoShow);
+// Cancelado (no_asistido) → Asistido (confirmado): mismo permiso que marcar la ausencia.
+router.patch('/:complexId/asistio/:bookingId', requireComplexAccess, requirePermission('agenda'), ctrl.correctNoShow);
 
 // Turnos fijos (recurrentes): admins y colaboradores con permiso de agenda.
 router.get   ('/:complexId/fijos',      requireComplexAccess, requirePermission('agenda'), ctrl.listTurnosFijos);

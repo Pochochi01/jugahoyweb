@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import TimeSlotCard from './TimeSlotCard';
 import { CalendarX } from 'lucide-react';
 
@@ -15,6 +16,8 @@ const GRUPOS = [
 ];
 
 export default function TimeSlotList({ slots, loading, onSelect, onManage, onCancel, onNoShow, onConfirm, onCorrectNoShow }) {
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 30000); return () => clearInterval(t); }, []);
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3">
       <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
