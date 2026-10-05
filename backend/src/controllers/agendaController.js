@@ -365,9 +365,11 @@ async function cancelBooking(req, res) {
     const horasLiberadas = booking.timeSlots.map(s => s.hora);
     const deporteCancha = booking.field?.deporte;
 
-    // El admin (y el colaborador con permiso 'cancelar_turnos') pueden cancelar
-    // desde el slot en cualquier momento, también un turno ya iniciado. Solo se
-    // bloquea si ya se cobró (habría que anular el cobro en caja primero).
+    // Cancelar solo ANTES de que empiece el turno (después: Asistido / No asistió).
+    if (yaComenzo(booking)) {
+      await t.rollback();
+      return res.status(400).json({ message: MSG_YA_COMENZO });
+    }
     if (booking.cobrado) {
       await t.rollback();
       return res.status(409).json({ message: 'El turno ya fue cobrado: anulá el cobro antes de cancelarlo.' });

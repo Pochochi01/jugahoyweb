@@ -172,10 +172,12 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                       <CheckCircle className="w-3 h-3" /> {S.label}
                     </button>
                   ) : (
-                    <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={S.badge}>
+                    <button type="button" disabled onClick={e => e.stopPropagation()}
+                      title={isPendiente ? 'Solicitud pendiente de confirmación' : 'Pasa a Asistido automáticamente al iniciar el turno'}
+                      className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full cursor-default" style={S.badge}>
                       {isAsistido ? <CheckCircle className="w-3 h-3" /> : isPendiente ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                       {S.label}
-                    </span>
+                    </button>
                   )}
 
                   {/* Cobrado */}
@@ -202,7 +204,8 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
 
 
                   {/* Cancelar — solo con permiso (onCancel) y si el turno NO empezó */}
-                  {onCancel && !isCobrado && (
+                  {/* Cancelar: solo antes de que empiece el turno */}
+                  {onCancel && !isCobrado && !empezo && (
                     <button
                       onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
