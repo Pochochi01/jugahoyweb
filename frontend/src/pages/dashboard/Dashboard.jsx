@@ -6,8 +6,9 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal, ChevronsUpDown,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal,
 } from 'lucide-react';
+import ComplexSwitcher from '../../components/ComplexSwitcher';
 import BrandLogo from '../../components/BrandLogo';
 import ThemeToggle from '../../components/ThemeToggle';
 import { esAlmacen, nombreComercio, modulosComplejo } from '../../utils/modoComplejo';
@@ -250,24 +251,14 @@ export default function Dashboard() {
       {/* complejo activo / selector */}
       {selectedComplex && activeTab !== 'usuarios' && activeTab !== 'imagenes' && (
         <div className="px-3 pb-3">
-          <div className="rounded-xl border border-border bg-card px-3 py-2.5">
-            {complexes.length > 1 ? (
-              <>
-                <label htmlFor="complejo-activo" className="sr-only">Complejo activo</label>
-                <div className="relative">
-                  <select id="complejo-activo" value={selectedComplex?.id || ''}
-                    onChange={e => setSelectedComplex(complexes.find(c => c.id === parseInt(e.target.value)))}
-                    className="w-full appearance-none bg-transparent pr-6 text-sm font-semibold text-foreground focus:outline-none cursor-pointer">
-                    {complexes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                  </select>
-                  <ChevronsUpDown className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                </div>
-              </>
-            ) : (
+          {complexes.length > 1 ? (
+            <ComplexSwitcher complexes={complexes} selected={selectedComplex} onSelect={setSelectedComplex} />
+          ) : (
+            <div className="rounded-xl border border-border bg-card px-3 py-2.5">
               <div className="text-sm font-semibold text-foreground truncate">{selectedComplex.nombre}</div>
-            )}
-            {selectedComplex.ciudad && <div className="text-xs text-muted-foreground truncate mt-0.5">{selectedComplex.ciudad}</div>}
-          </div>
+              {selectedComplex.ciudad && <div className="text-xs text-muted-foreground truncate mt-0.5">{selectedComplex.ciudad}</div>}
+            </div>
+          )}
         </div>
       )}
 

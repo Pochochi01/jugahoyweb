@@ -100,6 +100,11 @@
   :focus-visible { outline: 2px solid rgb(var(--ring)); outline-offset: 2px; border-radius: 6px; }
   :focus:not(:focus-visible) { outline: none; }
   input[type="checkbox"], input[type="radio"] { accent-color: rgb(var(--primary)); }
+  /* Lista desplegada de los <select> nativos: sin esto, en tema oscuro Windows la
+     pinta clara con texto claro. Se fuerza el fondo y el texto del tema. */
+  select option, select optgroup { background-color: rgb(var(--elevated)); color: rgb(var(--foreground)); }
+  select option:checked { background-color: rgb(var(--primary) / 0.25); }
+  select option:disabled { color: rgb(var(--muted-foreground)); }
 
   * { scrollbar-width: thin; scrollbar-color: rgb(var(--border)) transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
