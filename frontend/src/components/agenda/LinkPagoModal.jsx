@@ -37,7 +37,7 @@ export default function LinkPagoModal({ pago, booking, onClose }) {
           <button className="btn-outline text-sm flex-1 flex items-center justify-center gap-1.5" onClick={copiar}>
             {copiado ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado' : 'Copiar mensaje'}
           </button>
-          <a className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700"
+          <a className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-green-700 hover:bg-green-800"
             href={`https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`} target="_blank" rel="noreferrer">
             <MessageCircle className="w-4 h-4" /> Enviar por WhatsApp
           </a>

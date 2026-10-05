@@ -110,7 +110,7 @@ export default function ActividadesPage() {
                   <div className="font-semibold">{t.nombre} <span className="text-xs font-normal text-muted-foreground">· {t.deporte_label}</span></div>
                   <div className="text-xs text-muted-foreground">{fecha(t.fecha_inicio)} al {fecha(t.fecha_fin)} · {t.categoria}ª {t.genero}{t.precio_inscripcion ? ` · ${money(t.precio_inscripcion)}` : ''}</div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span className={`px-1.5 py-0.5 rounded ${t.inscripcion_abierta ? 'bg-green-500/15 text-green-300' : 'bg-white/10 text-white/70'}`}>
+                    <span className={`px-1.5 py-0.5 rounded ${t.inscripcion_abierta ? 'bg-green-500/15 text-green-300' : 'bg-muted text-foreground/70'}`}>
                       {t.estado === 'inscripcion' && !t.inscripcion_abierta ? 'Cupo completo' : ESTADO_TORNEO[t.estado]}
                     </span>
                     <span className="flex items-center gap-1 text-muted-foreground"><Users className="w-3 h-3" /> {t.inscriptas}/{t.cupo_parejas} inscriptos</span>

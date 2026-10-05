@@ -238,7 +238,7 @@ export default function HomePage() {
             Sumarte es gratis. Gestioná tu agenda, caja, colaboradores y reservas online desde un solo panel.
           </p>
           <Link to="/adherir-complejo"
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-600 text-white font-bold px-8 sm:px-10 py-3.5 sm:py-4 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 text-sm sm:text-base glow-green">
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-600 text-primary-foreground font-bold px-8 sm:px-10 py-3.5 sm:py-4 rounded-xl transition-all duration-300 hover:scale-105 active:scale-95 text-sm sm:text-base glow-green">
             Adherí tu complejo <ChevronRight className="w-5 h-5" />
           </Link>
         </div>

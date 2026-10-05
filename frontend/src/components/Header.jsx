@@ -4,6 +4,7 @@ import { Menu, X, LogOut, LayoutDashboard, CalendarCheck, ShieldCheck } from 'lu
 import { useState } from 'react';
 import NotificationBell from './NotificationBell';
 import BrandLogo from './BrandLogo';
+import ThemeToggle from './ThemeToggle';
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -39,29 +40,21 @@ export default function Header() {
   const navLinks = isPlayer ? playerLinks : guestLinks;
 
   return (
-    <header
-      className="sticky top-0 z-50 border-b"
-      style={{
-        background: 'rgba(6,10,18,0.92)',
-        borderColor: 'rgba(255,255,255,0.07)',
-        WebkitBackdropFilter: 'blur(20px)',
-        backdropFilter: 'blur(20px)',
-      }}
-    >
+    <header className="sticky top-0 z-50 glass !border-x-0 !border-t-0">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-16 sm:h-[4.5rem]">
 
           {/* Logo */}
           <Link to="/" className="flex items-center" aria-label="JugaHoy — inicio">
-            <BrandLogo emblem="h-12 sm:h-14" text="text-2xl sm:text-3xl" />
+            <BrandLogo emblem="h-10 sm:h-12" text="text-2xl sm:text-[1.75rem]" />
           </Link>
 
           {/* Nav desktop */}
-          <nav className="hidden md:flex items-center gap-7">
+          <nav className="hidden md:flex items-center gap-1" aria-label="Principal">
             {navLinks.map(l => (
               <Link
                 key={l.to} to={l.to}
-                className="text-sm font-medium text-white/55 hover:text-white transition-colors duration-200"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-160"
               >
                 {l.label}
               </Link>
@@ -73,51 +66,44 @@ export default function Header() {
             {user ? (
               <>
                 <NotificationBell />
-                <div className="h-5 w-px mx-2" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                <ThemeToggle compact />
+                <div className="h-5 w-px mx-2 bg-border" aria-hidden="true" />
 
                 {isPlayer ? (
-                  <Link to="/mis-turnos"
-                    className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 px-2 transition-colors">
+                  <Link to="/mis-turnos" className="btn-ghost !text-primary">
                     <CalendarCheck className="w-4 h-4" /> Mis turnos
                   </Link>
                 ) : (
                   <>
                     {isGeneralAdmin && (
-                      <Link to="/admin"
-                        className="flex items-center gap-1.5 text-sm font-medium text-purple-400 hover:text-purple-300 px-2 transition-colors">
+                      <Link to="/admin" className="btn-ghost !text-info">
                         <ShieldCheck className="w-4 h-4" /> Admin
                       </Link>
                     )}
-                    <Link to="/dashboard"
-                      className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 px-2 transition-colors">
-                      <LayoutDashboard className="w-4 h-4" /> Dashboard
+                    <Link to="/dashboard" className="btn-ghost !text-primary">
+                      <LayoutDashboard className="w-4 h-4" aria-hidden="true" /> Panel
                     </Link>
                   </>
                 )}
 
-                <button onClick={handleLogout}
-                  className="flex items-center gap-1.5 text-sm text-white/40 hover:text-red-400 transition-colors px-2">
-                  <LogOut className="w-4 h-4" />
+                <button onClick={handleLogout} className="btn-icon hover:!text-danger hover:!bg-danger/10" aria-label="Cerrar sesión" title="Cerrar sesión">
+                  <LogOut className="w-[18px] h-[18px]" />
                 </button>
               </>
             ) : (
-              <div className="flex items-center gap-3">
-                <Link to="/login"
-                  className="text-sm font-medium text-white/60 hover:text-white transition-colors px-2">
-                  Iniciar sesión
-                </Link>
-                <Link to="/registro"
-                  className="btn-primary text-sm py-2 px-5 glow-green">
-                  Registrarse
-                </Link>
+              <div className="flex items-center gap-2">
+                <ThemeToggle compact />
+                <Link to="/login" className="btn-ghost">Entrar</Link>
+                <Link to="/registro" className="btn-primary">Crear cuenta</Link>
               </div>
             )}
           </div>
 
           {/* Hamburguesa mobile */}
           <button
-            className="md:hidden p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+            className="btn-icon md:hidden -mr-2"
             onClick={() => setMobileOpen(o => !o)}
+            aria-label={mobileOpen ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={mobileOpen}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -126,23 +112,24 @@ export default function Header() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div
-          className="md:hidden border-t px-4 py-5 space-y-1"
-          style={{ background: '#060a12', borderColor: 'rgba(255,255,255,0.07)' }}
-        >
+        <div className="md:hidden border-t border-border bg-background px-4 py-4 space-y-1 animate-fade-in">
           {navLinks.map(l => (
             <Link key={l.to} to={l.to} onClick={() => setMobileOpen(false)}
-              className="block px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors">
+              className="block px-3 py-3 rounded-lg text-[15px] font-medium text-foreground hover:bg-muted transition-colors duration-160">
               {l.label}
             </Link>
           ))}
 
-          <div className="pt-3 mt-3 border-t space-y-1" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-sm text-muted-foreground">Tema</span>
+            <ThemeToggle />
+          </div>
+          <div className="pt-3 mt-2 border-t border-border space-y-1">
             {user ? (
               <>
                 <div className="flex items-center gap-2 px-3 py-2">
                   <NotificationBell />
-                  <span className="text-sm text-white/40">Notificaciones</span>
+                  <span className="text-sm text-muted-foreground">Notificaciones</span>
                 </div>
                 {isPlayer ? (
                   <Link to="/mis-turnos" onClick={() => setMobileOpen(false)}
@@ -153,31 +140,25 @@ export default function Header() {
                   <>
                     {isGeneralAdmin && (
                       <Link to="/admin" onClick={() => setMobileOpen(false)}
-                        className="block px-3 py-2.5 rounded-lg text-sm font-medium text-purple-400 hover:bg-purple-500/10 transition-colors">
+                        className="block px-3 py-3 rounded-lg text-sm font-medium text-info hover:bg-info/10 transition-colors duration-160">
                         Panel de administración
                       </Link>
                     )}
                     <Link to="/dashboard" onClick={() => setMobileOpen(false)}
                       className="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary hover:bg-primary/10 transition-colors">
-                      Dashboard
+                      Panel del complejo
                     </Link>
                   </>
                 )}
                 <button onClick={() => { handleLogout(); setMobileOpen(false); }}
-                  className="block w-full text-left px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors">
+                  className="block w-full text-left px-3 py-3 rounded-lg text-sm font-medium text-danger hover:bg-danger/10 transition-colors duration-160">
                   Cerrar sesión
                 </button>
               </>
             ) : (
               <div className="space-y-2 pt-1">
-                <Link to="/login" onClick={() => setMobileOpen(false)}
-                  className="block text-center py-2.5 rounded-lg text-sm font-medium border border-border text-foreground hover:border-primary hover:text-primary transition-colors">
-                  Iniciar sesión
-                </Link>
-                <Link to="/registro" onClick={() => setMobileOpen(false)}
-                  className="block text-center btn-primary text-sm py-2.5">
-                  Registrarse
-                </Link>
+                <Link to="/login" onClick={() => setMobileOpen(false)} className="btn-outline w-full">Entrar</Link>
+                <Link to="/registro" onClick={() => setMobileOpen(false)} className="btn-primary w-full">Crear cuenta</Link>
               </div>
             )}
           </div>

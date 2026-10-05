@@ -12,10 +12,14 @@ import LinkPagoModal from '../../components/agenda/LinkPagoModal';
 import TurnoModal from '../../components/agenda/TurnoModal';
 
 function today() { return new Date().toISOString().split('T')[0]; }
+/** "lunes 5 de octubre de 2026" → "Lunes 5 de octubre" (+ año si no es el actual). */
 function formatDateDisplay(d) {
-  return new Date(d + 'T12:00:00').toLocaleDateString('es-AR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const dt = new Date(d + 'T12:00:00');
+  const s = dt.toLocaleDateString('es-AR', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    ...(dt.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+  }).replace(',', '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function shiftDate(d, n) {
   const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n);
@@ -33,9 +37,9 @@ function avisoCancelacion(fecha, hora) {
 
 // ── Estilos inline dark reutilizables ─────────────────────────────────────────
 const DARK = {
-  surface:  { background: '#0d1220', border: '1px solid #1e2a3d' },
-  amber:    { background: 'rgba(245,158,11,0.07)',  border: '1px solid rgba(245,158,11,0.22)' },
-  amberCard:{ background: 'rgba(245,158,11,0.04)',  border: '1px solid rgba(245,158,11,0.16)' },
+  surface:  { background: 'rgb(var(--card))', border: '1px solid rgb(var(--border))' },
+  amber:    { background: 'rgb(var(--warning) / 0.07)',  border: '1px solid rgb(var(--warning) / 0.22)' },
+  amberCard:{ background: 'rgb(var(--warning) / 0.04)',  border: '1px solid rgb(var(--warning) / 0.16)' },
 };
 
 // ── Panel de solicitudes pendientes ──────────────────────────────────────────
@@ -94,7 +98,7 @@ function PendingPanel({ complexId, onUpdated }) {
                 <User className="w-3.5 h-3.5 text-amber-500" />
                 {b.nombre_cliente}
               </div>
-              <div className="flex items-center gap-3 mt-1 text-xs text-white/40 flex-wrap">
+              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <CalendarDays className="w-3 h-3" />
                   {new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -114,16 +118,16 @@ function PendingPanel({ complexId, onUpdated }) {
             <div className="flex gap-2 shrink-0">
               <button disabled={!!processing} onClick={() => confirmar(b)}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-150"
-                style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.30)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}>
+                style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.30)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.25)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.15)'}>
                 {processing === b.id ? '...' : <><CheckCircle className="w-3.5 h-3.5" /> Confirmar</>}
               </button>
               <button disabled={!!processing} onClick={() => { setRejectModal(b); setMotivo(''); }}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-150"
-                style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}>
+                style={{ background: 'rgb(var(--danger) / 0.12)', color: 'rgb(var(--danger))', border: '1px solid rgb(var(--danger) / 0.25)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.22)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.12)'}>
                 <XCircle className="w-3.5 h-3.5" /> Rechazar
               </button>
             </div>
@@ -136,7 +140,7 @@ function PendingPanel({ complexId, onUpdated }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setRejectModal(null)} />
           <div className="relative z-10 rounded-2xl p-6 w-full max-w-sm shadow-2xl" style={DARK.surface}>
-            <h3 className="font-bold text-white mb-1">Rechazar solicitud</h3>
+            <h3 className="font-bold text-foreground mb-1">Rechazar solicitud</h3>
             <p className="text-sm text-muted-foreground mb-4">
               {rejectModal.nombre_cliente} — {rejectModal.fecha} {rejectModal.hora_inicio}
             </p>
@@ -148,7 +152,7 @@ function PendingPanel({ complexId, onUpdated }) {
               <button onClick={() => setRejectModal(null)} className="btn-outline flex-1 text-sm">Cancelar</button>
               <button onClick={rechazar} disabled={!!processing}
                 className="flex-1 text-sm font-semibold py-2.5 rounded-lg transition-colors"
-                style={{ background: 'rgba(239,68,68,0.85)', color: '#fff' }}>
+                style={{ background: 'rgb(var(--danger) / 0.85)', color: '#fff' }}>
                 {processing ? 'Rechazando...' : 'Rechazar turno'}
               </button>
             </div>
@@ -195,14 +199,14 @@ function FijosModal({ complexId, onClose, onChanged }) {
       <div className="relative z-10 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto" style={DARK.surface}>
         <div className="flex items-center gap-2 mb-4">
           <Repeat className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-white">Turnos fijos</h3>
+          <h3 className="font-bold text-foreground">Turnos fijos</h3>
         </div>
 
         {loading ? (
           <p className="text-sm text-muted-foreground py-6 text-center">Cargando...</p>
         ) : fijos.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            No hay turnos fijos activos. Podés crear uno tildando <strong className="text-white/60">“Turno fijo”</strong> al reservar un horario.
+            No hay turnos fijos activos. Podés crear uno tildando <strong className="text-foreground/70">“Turno fijo”</strong> al reservar un horario.
           </p>
         ) : (
           <div className="space-y-2">
@@ -213,7 +217,7 @@ function FijosModal({ complexId, onClose, onChanged }) {
                     <User className="w-3.5 h-3.5 text-amber-500" />
                     {f.nombre_cliente}
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-white/40 flex-wrap">
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                     <span className="flex items-center gap-1">
                       <Repeat className="w-3 h-3" /> {DIAS[f.dia_semana]}
                     </span>
@@ -229,9 +233,9 @@ function FijosModal({ complexId, onClose, onChanged }) {
                 </div>
                 <button disabled={!!processing} onClick={() => baja(f)}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-150 shrink-0"
-                  style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}>
+                  style={{ background: 'rgb(var(--danger) / 0.12)', color: 'rgb(var(--danger))', border: '1px solid rgb(var(--danger) / 0.25)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.12)'}>
                   {processing === f.id ? '...' : <><Trash2 className="w-3.5 h-3.5" /> Dar de baja</>}
                 </button>
               </div>
@@ -401,49 +405,35 @@ export default function AgendaTab({ complexId }) {
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Agenda</h2>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowFijos(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-muted-foreground hover:text-white transition-colors"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e2a3d' }}
-            title="Gestionar turnos fijos">
-            <Repeat className="w-4 h-4" /> Turnos fijos
+        <h2 className="sr-only">Agenda del día</h2>
+        <div className="flex items-center gap-2 ml-auto">
+          <button onClick={() => setShowFijos(true)} className="btn-outline btn-sm" title="Gestionar turnos fijos">
+            <Repeat className="w-4 h-4" aria-hidden="true" /> Turnos fijos
           </button>
-          <button onClick={loadSlots}
-            className="p-2 rounded-lg text-muted-foreground hover:text-white transition-colors"
-            style={{ background: 'rgba(255,255,255,0.04)' }}
-            title="Actualizar">
+          <button onClick={loadSlots} className="btn-icon" aria-label="Actualizar agenda" title="Actualizar">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-primary' : ''}`} />
           </button>
         </div>
       </div>
 
       {/* ── Navegación de fecha ── */}
-      <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={DARK.surface}>
-        <button onClick={() => setDate(d => shiftDate(d, -1))}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-white transition-colors"
-          style={{ background: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex items-center gap-1 sm:gap-2 rounded-2xl border border-border bg-card p-1.5 shadow-sm">
+        <button onClick={() => setDate(d => shiftDate(d, -1))} className="btn-icon shrink-0" aria-label="Día anterior">
           <ChevronLeft className="w-5 h-5" />
         </button>
-
-        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-          <CalendarDays className="w-4 h-4 text-primary shrink-0" />
-          <span className="text-sm font-semibold capitalize truncate text-white">{formatDateDisplay(date)}</span>
-        </div>
-
-        <button onClick={() => setDate(d => shiftDate(d, 1))}
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-white transition-colors"
-          style={{ background: 'rgba(255,255,255,0.04)' }}>
+        <label className="relative flex-1 min-w-0 flex items-center justify-center gap-2 rounded-lg py-2 cursor-pointer hover:bg-muted transition-colors duration-160">
+          <CalendarDays className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+          <span className="text-sm sm:text-base font-semibold truncate text-foreground">{formatDateDisplay(date)}</span>
+          <input type="date" value={date} aria-label="Elegir fecha en el calendario"
+            onChange={e => e.target.value && setDate(e.target.value)}
+            onClick={e => e.currentTarget.showPicker?.()}
+            className="absolute inset-0 opacity-0 cursor-pointer" />
+        </label>
+        <button onClick={() => setDate(d => shiftDate(d, 1))} className="btn-icon shrink-0" aria-label="Día siguiente">
           <ChevronRight className="w-5 h-5" />
         </button>
-
-        <div className="h-5 w-px bg-border" />
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="text-xs text-muted-foreground bg-transparent border-none outline-none cursor-pointer" />
         {date !== today() && (
-          <button onClick={() => setDate(today())} className="text-xs text-primary font-medium hover:text-primary/80 transition-colors">
-            Hoy
-          </button>
+          <button onClick={() => setDate(today())} className="btn-outline btn-sm shrink-0">Hoy</button>
         )}
       </div>
 
@@ -454,21 +444,19 @@ export default function AgendaTab({ complexId }) {
             const conteo = conteos[f.id] || 0;
             return (
               <button key={f.id} onClick={() => setSelectedField(f)}
-                className="relative px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-                style={selectedField?.id === f.id
-                  ? { background: '#22c55e', color: '#fff', border: '1px solid #22c55e' }
-                  : { background: 'rgba(255,255,255,0.04)', color: '#94a3b8', border: '1px solid #1e2a3d' }
-                }
-                onMouseEnter={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#fff'; }}
-                onMouseLeave={e => { if (selectedField?.id !== f.id) e.currentTarget.style.color = '#94a3b8'; }}
+                aria-pressed={selectedField?.id === f.id}
+                className={`relative px-4 py-2 rounded-xl text-sm font-semibold border transition-[background-color,border-color,color] duration-160 ease-out
+                  ${selectedField?.id === f.id
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-foreground/25'}`}
               >
                 {f.nombre}
-                <span className="ml-1.5 text-xs opacity-60 capitalize">({f.deporte})</span>
+                <span className="ml-1.5 text-xs font-medium opacity-70 capitalize">{f.deporte}</span>
                 {/* Badge de notificación: cantidad de turnos del día en esta cancha */}
                 {conteo > 0 && (
                   <span
-                    className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] font-bold text-white shadow"
-                    style={{ background: '#ef4444', border: '2px solid #0a0e1a' }}
+                    className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] font-bold text-danger-foreground tabular"
+                    style={{ background: 'rgb(var(--danger))', border: '2px solid rgb(var(--background))' }}
                     title={`${conteo} turno${conteo !== 1 ? 's' : ''} agendado${conteo !== 1 ? 's' : ''} este día`}>
                     {conteo}
                   </span>
@@ -479,7 +467,7 @@ export default function AgendaTab({ complexId }) {
         </div>
       ) : (
         <div className="rounded-xl py-8 text-center text-sm text-muted-foreground" style={DARK.surface}>
-          Sin canchas activas. Agregá una en <strong className="text-white/60">Configuración</strong>.
+          Sin canchas activas. Agregá una en <strong className="text-foreground/70">Configuración</strong>.
         </div>
       )}
 
@@ -487,9 +475,9 @@ export default function AgendaTab({ complexId }) {
       {selectedField && !loading && slots.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { value: libres,   label: 'Libres',   color: '#4ade80', bg: 'rgba(34,197,94,0.08)',   border: 'rgba(34,197,94,0.20)' },
-            { value: ocupados, label: 'Reservas', color: '#f87171', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.20)' },
-            { value: pasados,  label: 'Pasados',  color: '#94a3b8', bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.07)' },
+            { value: libres,   label: 'Libres',   color: 'rgb(var(--success))', bg: 'rgb(var(--success) / 0.08)',   border: 'rgb(var(--success) / 0.20)' },
+            { value: ocupados, label: 'Reservas', color: 'rgb(var(--info))', bg: 'rgb(var(--info) / 0.08)',   border: 'rgb(var(--info) / 0.22)' },
+            { value: pasados,  label: 'Pasados',  color: 'rgb(var(--muted-foreground))', bg: 'rgb(var(--foreground) / 0.03)', border: 'rgb(var(--foreground) / 0.07)' },
           ].map(({ value, label, color, bg, border }) => (
             <div key={label} className="rounded-xl py-3 text-center"
               style={{ background: bg, border: `1px solid ${border}` }}>
@@ -543,22 +531,22 @@ export default function AgendaTab({ complexId }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setCancelFijo(null)} />
           <div className="relative z-10 rounded-2xl p-6 w-full max-w-sm shadow-2xl" style={DARK.surface}>
-            <h3 className="font-bold text-white mb-1">Cancelar turno fijo</h3>
+            <h3 className="font-bold text-foreground mb-1">Cancelar turno fijo</h3>
             <p className="text-sm text-muted-foreground mb-5">
-              El turno de <strong className="text-white/80">{cancelFijo.nombre}</strong> es un turno fijo (se repite cada semana). ¿Qué querés cancelar?
+              El turno de <strong className="text-foreground/85">{cancelFijo.nombre}</strong> es un turno fijo (se repite cada semana). ¿Qué querés cancelar?
             </p>
             <div className="space-y-2.5">
               <button
                 onClick={() => { const id = cancelFijo.bookingId; setCancelFijo(null); doCancel(id); }}
                 className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors"
-                style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.3)' }}>
+                style={{ background: 'rgb(var(--warning) / 0.12)', color: 'rgb(var(--warning))', border: '1px solid rgb(var(--warning) / 0.3)' }}>
                 Solo el turno de este día
                 <span className="block text-xs font-normal text-amber-200/60 mt-0.5">Libera este horario; el turno fijo sigue vigente.</span>
               </button>
               <button
                 onClick={handleBajaFijoCompleto}
                 className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors"
-                style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }}>
+                style={{ background: 'rgb(var(--danger) / 0.12)', color: 'rgb(var(--danger))', border: '1px solid rgb(var(--danger) / 0.3)' }}>
                 Todo el turno fijo
                 <span className="block text-xs font-normal text-red-200/60 mt-0.5">Elimina también las próximas semanas (turnos futuros no jugados).</span>
               </button>
@@ -579,9 +567,11 @@ export default function AgendaTab({ complexId }) {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-xl text-sm font-medium text-white"
-          style={{ background: toast.type === 'success' ? '#16a34a' : '#dc2626', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-          {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+        <div role="status" aria-live="polite"
+          className="fixed inset-x-4 bottom-4 sm:inset-x-auto sm:right-6 sm:bottom-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border bg-elevated text-foreground shadow-pop text-sm font-medium animate-pop-in">
+          {toast.type === 'success'
+            ? <CheckCircle className="w-5 h-5 text-success shrink-0" aria-hidden="true" />
+            : <XCircle className="w-5 h-5 text-danger shrink-0" aria-hidden="true" />}
           {toast.msg}
         </div>
       )}

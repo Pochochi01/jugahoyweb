@@ -64,7 +64,7 @@ export function WhatsAppAlumno({ alumno, cargarContexto, tipoInicial = 'automati
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(TIPOS_MENSAJE).map(([k, l]) => (
               <button key={k} onClick={() => setTipo(k)}
-                className={`px-2.5 py-1 rounded-full text-xs ${tipo === k ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>{l}</button>
+                className={`px-2.5 py-1 rounded-full text-xs ${tipo === k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{l}</button>
             ))}
           </div>
           <div className="text-xs text-muted-foreground">
@@ -76,7 +76,7 @@ export function WhatsAppAlumno({ alumno, cargarContexto, tipoInicial = 'automati
             <button className="btn-outline text-sm flex-1 flex items-center justify-center gap-1.5" onClick={copiar}>
               {copiado ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copiado ? 'Copiado' : 'Copiar'}
             </button>
-            <button className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700" onClick={abrir}>
+            <button className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-green-700 hover:bg-green-800" onClick={abrir}>
               <MessageCircle className="w-4 h-4" /> Abrir WhatsApp
             </button>
           </div>
@@ -122,7 +122,7 @@ export function EnvioMasivo({ titulo, alumnos, cargarContexto, tipo, aviso, text
                 <div className="text-[11px] text-muted-foreground truncate">{a.responsable_nombre} · {a.responsable_whatsapp}</div>
               </div>
               {enviados.has(a.id) && <CheckCircle2 className="w-4 h-4 text-green-400" aria-label="Enviado" />}
-              <button className="p-2 rounded-lg bg-green-600 text-white hover:bg-green-700" onClick={() => abrir(a)} aria-label={`WhatsApp a ${a.responsable_nombre}`}>
+              <button className="p-2 rounded-lg bg-green-700 text-white hover:bg-green-800" onClick={() => abrir(a)} aria-label={`WhatsApp a ${a.responsable_nombre}`}>
                 <MessageCircle className="w-4 h-4" />
               </button>
             </div>
@@ -226,7 +226,7 @@ export function AvisoForm({ categorias, permitirGeneral = true, onGuardar, onCan
         <div className="flex gap-1">
           {['normal', 'suspendida'].map(e => (
             <button type="button" key={e} onClick={() => set('estado', e)}
-              className={`flex-1 rounded-lg text-sm py-2 ${f.estado === e ? (e === 'normal' ? 'bg-green-600 text-white' : 'bg-red-600 text-white') : 'bg-muted'}`}>
+              className={`flex-1 rounded-lg text-sm py-2 ${f.estado === e ? (e === 'normal' ? 'bg-green-700 text-white' : 'bg-red-600 text-white') : 'bg-muted'}`}>
               {e === 'normal' ? 'Normal' : 'Suspendida'}
             </button>
           ))}

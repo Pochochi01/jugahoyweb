@@ -88,7 +88,7 @@ export default function InvitePage() {
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
 
           {/* Banner */}
-          <div className="bg-primary px-6 py-5 text-white">
+          <div className="bg-primary px-6 py-5 text-primary-foreground">
             <div className="flex items-center gap-2 text-primary-foreground/80 text-sm mb-1">
               <CheckCircle className="w-4 h-4" />
               <span>Tenés una invitación</span>

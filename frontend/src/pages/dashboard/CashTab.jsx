@@ -144,7 +144,7 @@ export default function CashTab({ complexId }) {
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Totales por método de pago</div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {porMetodo.map(m => (
-                  <div key={m.v} className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div key={m.v} className="rounded-lg px-3 py-2" style={{ background: 'rgb(var(--foreground) / 0.03)', border: '1px solid rgb(var(--foreground) / 0.07)' }}>
                     <MetodoChip metodo={m.v} />
                     <div className="mt-1.5 text-sm font-bold text-green-400">{money(m.ing)}</div>
                     {m.egr > 0 && <div className="text-xs text-red-400">-{money(m.egr)}</div>}

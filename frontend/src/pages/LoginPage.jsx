@@ -3,18 +3,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { resolvePostAuthRoute, storePendingInvite, storeChatbotContext } from '../utils/authRedirect';
-import { Eye, EyeOff, ArrowRight, Phone, RotateCcw } from 'lucide-react';
-import BrandLogo from '../components/BrandLogo';
+import { Eye, EyeOff, ArrowRight, Phone, ArrowLeft, MailCheck, Loader2 } from 'lucide-react';
+import AuthLayout, { GoogleIcon, Divider } from '../components/AuthLayout';
 
-// ── Ícono de Google ───────────────────────────────────────────
-function GoogleIcon() {
+/** Botón de envío con estado de carga (sin cambiar de ancho). */
+function SubmitButton({ loading, children, loadingText }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.4 30.3 0 24 0 14.7 0 6.7 5.4 2.7 13.3l7.9 6.1C12.5 13.2 17.8 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
-      <path fill="#FBBC05" d="M10.6 28.5a14.6 14.6 0 0 1 0-9l-7.9-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.7 10.7l7.9-6.2z"/>
-      <path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.5-5.8c-2.1 1.4-4.8 2.2-8 2.2-6.2 0-11.5-3.7-13.4-9.2l-7.9 6.2C6.7 42.6 14.7 48 24 48z"/>
-    </svg>
+    <button type="submit" disabled={loading} className="btn-primary btn-lg w-full">
+      {loading ? <><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />{loadingText}</> : children}
+    </button>
   );
 }
 
@@ -25,7 +22,7 @@ export default function LoginPage() {
 
   const [form,      setForm]      = useState({ email: '', password: '' });
   const [showPass,  setShowPass]  = useState(false);
-  const [error,     setError]     = useState(searchParams.get('error') ? 'Error al autenticar con Google. Intentá de nuevo.' : '');
+  const [error,     setError]     = useState(searchParams.get('error') ? 'No pudimos entrar con Google. Probá de nuevo.' : '');
   const [loading,   setLoading]   = useState(false);
 
   // Modo "Continuar con teléfono"
@@ -69,7 +66,7 @@ export default function LoginPage() {
       const user = await login(form.email, form.password);
       navigate(await resolvePostAuthRoute(user));
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Credenciales incorrectas');
+      setError(err.response?.data?.message || err.message || 'El email o la contraseña no coinciden.');
     } finally {
       setLoading(false);
     }
@@ -88,7 +85,7 @@ export default function LoginPage() {
       await authService.sendOTP(phone);
       setOtpSent(true);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Error al enviar el código');
+      setError(err.response?.data?.message || err.message || 'No pudimos enviar el código. Revisá el número.');
     } finally {
       setPhoneLoad(false);
     }
@@ -103,7 +100,7 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token);
       navigate(await resolvePostAuthRoute(data.user));
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Código inválido o expirado');
+      setError(err.response?.data?.message || err.message || 'El código no es válido o venció. Pedí uno nuevo.');
     } finally {
       setPhoneLoad(false);
     }
@@ -117,188 +114,145 @@ export default function LoginPage() {
       await authService.requestPasswordReset(resetEmail);
       setResetSent(true);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Error al enviar el correo');
+      setError(err.response?.data?.message || err.message || 'No pudimos enviar el correo. Probá de nuevo.');
     } finally {
       setResetLoading(false);
     }
   };
 
-  const divider = (
-    <div className="flex items-center gap-3 my-4">
-      <div className="flex-1 h-px" style={{ background: '#1e2a3d' }} />
-      <span className="text-xs text-muted-foreground">o continuá con</span>
-      <div className="flex-1 h-px" style={{ background: '#1e2a3d' }} />
-    </div>
+  const volver = (fn) => () => { fn(); setError(''); };
+  const VolverBtn = ({ onClick }) => (
+    <button type="button" onClick={onClick} className="btn-ghost w-full mt-2">
+      <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Volver al inicio de sesión
+    </button>
   );
 
+  const titulo = resetMode ? 'Recuperar contraseña' : phoneMode ? 'Entrar con tu teléfono' : 'Hola de nuevo';
+  const subtitulo = resetMode
+    ? 'Te mandamos un enlace para crear una contraseña nueva.'
+    : phoneMode
+      ? (otpSent ? `Escribí el código que enviamos al ${phone}.` : 'Te enviamos un código por SMS para entrar sin contraseña.')
+      : 'Entrá para reservar y ver tus turnos.';
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm">
+    <AuthLayout
+      title={titulo}
+      subtitle={subtitulo}
+      footer={!resetMode && !phoneMode && (
+        <>¿No tenés cuenta?{' '}
+          <Link to="/registro" className="font-semibold text-primary hover:underline">Creá una gratis</Link>
+        </>
+      )}
+    >
+      {error && (
+        <div className="alert-error mb-5" role="alert">{error}</div>
+      )}
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-block mb-6" aria-label="JugaHoy — inicio">
-            <BrandLogo emblem="h-16" text="text-4xl" tagline tagClass="text-[0.6rem] mt-1 tracking-[0.22em]" />
-          </Link>
-          <h1 className="text-2xl font-black text-white mb-1">
-            {resetMode ? 'Recuperar contraseña' : phoneMode ? 'Continuar con teléfono' : 'Bienvenido de vuelta'}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {resetMode ? 'Te enviamos un enlace por email' : phoneMode ? 'Ingresá tu número para recibir el código' : 'Ingresá a tu cuenta'}
-          </p>
-        </div>
-
-        <div className="card">
-          {/* Mensajes de error */}
-          {error && (
-            <div className="mb-4 px-4 py-3 rounded-lg text-sm text-red-400 border"
-              style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' }}>
-              {error}
+      {/* ── Recuperar contraseña ─────────────────────────── */}
+      {resetMode && (
+        resetSent ? (
+          <div className="alert-success flex-col items-center text-center py-6" role="status">
+            <MailCheck className="w-7 h-7" aria-hidden="true" />
+            <p className="font-semibold">Te enviamos el enlace</p>
+            <p className="text-muted-foreground text-xs">Revisá tu bandeja de entrada (y la carpeta de spam) en {resetEmail}.</p>
+            <button onClick={volver(() => { setResetMode(false); setResetSent(false); })} className="btn-outline mt-2">
+              Volver al inicio de sesión
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleResetRequest} className="space-y-5" noValidate={false}>
+            <div>
+              <label htmlFor="reset-email" className="label">Email de tu cuenta</label>
+              <input id="reset-email" type="email" className="input" placeholder="nombre@email.com" required autoComplete="email" autoFocus
+                value={resetEmail} onChange={e => setResetEmail(e.target.value)} />
             </div>
-          )}
+            <SubmitButton loading={resetLoading} loadingText="Enviando…">
+              Enviar enlace <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </SubmitButton>
+            <VolverBtn onClick={volver(() => setResetMode(false))} />
+          </form>
+        )
+      )}
 
-          {/* ── Modo recuperar contraseña ───────────────────── */}
-          {resetMode && (
-            resetSent ? (
-              <div className="text-center py-4">
-                <div className="text-3xl mb-3">📧</div>
-                <p className="text-primary font-semibold text-sm">Correo enviado</p>
-                <p className="text-muted-foreground text-xs mt-1">Revisá tu bandeja de entrada.</p>
-                <button onClick={() => { setResetMode(false); setResetSent(false); setError(''); }}
-                  className="mt-4 text-xs text-primary hover:underline">
-                  Volver al inicio de sesión
+      {/* ── Teléfono (OTP) ───────────────────────────────── */}
+      {!resetMode && phoneMode && (
+        <>
+          {!otpSent ? (
+            <form onSubmit={handleSendOTP} className="space-y-5">
+              <div>
+                <label htmlFor="tel" className="label">Número de celular</label>
+                <input id="tel" type="tel" className="input" placeholder="+54 9 381 555-0142" required autoComplete="tel" inputMode="tel" autoFocus
+                  value={phone} onChange={e => setPhone(e.target.value)} />
+                <p className="hint">Con código de área. Te llega un SMS con 6 dígitos.</p>
+              </div>
+              <SubmitButton loading={phoneLoad} loadingText="Enviando…">
+                <Phone className="w-4 h-4" aria-hidden="true" /> Enviar código
+              </SubmitButton>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOTP} className="space-y-5">
+              <div>
+                <label htmlFor="otp" className="label">Código de 6 dígitos</label>
+                <input id="otp" type="text" className="input text-center text-xl font-bold tracking-[0.4em] tabular" placeholder="000000"
+                  maxLength={6} required autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" autoFocus
+                  value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ''))} />
+              </div>
+              <SubmitButton loading={phoneLoad} loadingText="Verificando…">
+                Entrar <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </SubmitButton>
+              <button type="button" onClick={() => { setOtpSent(false); setOtp(''); }} className="btn-ghost w-full">
+                ¿No llegó? Pedir otro código
+              </button>
+            </form>
+          )}
+          <VolverBtn onClick={volver(() => { setPhoneMode(false); setOtpSent(false); setOtp(''); })} />
+        </>
+      )}
+
+      {/* ── Email y contraseña ───────────────────────────── */}
+      {!resetMode && !phoneMode && (
+        <>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="email" className="label">Email</label>
+              <input id="email" type="email" className="input" placeholder="nombre@email.com" required autoComplete="email" inputMode="email"
+                value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <label htmlFor="password" className="label mb-0">Contraseña</label>
+                <button type="button" onClick={volver(() => { setResetMode(true); setResetEmail(form.email); })}
+                  className="text-xs font-medium text-primary hover:underline">
+                  ¿La olvidaste?
                 </button>
               </div>
-            ) : (
-              <form onSubmit={handleResetRequest} className="space-y-4">
-                <div>
-                  <label className="label">Email de tu cuenta</label>
-                  <input type="email" className="input" placeholder="tu@email.com" required
-                    value={resetEmail} onChange={e => setResetEmail(e.target.value)} />
-                </div>
-                <button type="submit" disabled={resetLoading}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2">
-                  {resetLoading ? 'Enviando…' : <><span>Enviar enlace</span><ArrowRight className="w-4 h-4" /></>}
+              <div className="relative">
+                <input id="password" type={showPass ? 'text' : 'password'} className="input pr-11" required autoComplete="current-password"
+                  value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+                <button type="button" onClick={() => setShowPass(s => !s)}
+                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPass}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center w-9 h-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-160">
+                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-                <button type="button" onClick={() => { setResetMode(false); setError(''); }}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center">
-                  ← Volver
-                </button>
-              </form>
-            )
-          )}
-
-          {/* ── Modo teléfono (OTP) ─────────────────────────── */}
-          {!resetMode && phoneMode && (
-            <div className="space-y-4">
-              {!otpSent ? (
-                <form onSubmit={handleSendOTP} className="space-y-4">
-                  <div>
-                    <label className="label">Número de teléfono</label>
-                    <input type="tel" className="input" placeholder="+54 11 0000-0000" required
-                      value={phone} onChange={e => setPhone(e.target.value)} />
-                  </div>
-                  <button type="submit" disabled={phoneLoad}
-                    className="btn-primary w-full py-3 flex items-center justify-center gap-2">
-                    {phoneLoad ? 'Enviando…' : <><Phone className="w-4 h-4" /><span>Enviar código</span></>}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOTP} className="space-y-4">
-                  <p className="text-xs text-muted-foreground text-center">
-                    Código enviado a <span className="text-foreground font-medium">{phone}</span>
-                  </p>
-                  <div>
-                    <label className="label">Código de 6 dígitos</label>
-                    <input type="text" className="input text-center tracking-[0.3em] text-lg font-bold"
-                      placeholder="000000" maxLength={6} required
-                      value={otp} onChange={e => setOtp(e.target.value)} />
-                  </div>
-                  <button type="submit" disabled={phoneLoad}
-                    className="btn-primary w-full py-3 flex items-center justify-center gap-2">
-                    {phoneLoad ? 'Verificando…' : <><span>Verificar código</span><ArrowRight className="w-4 h-4" /></>}
-                  </button>
-                  <button type="button" onClick={() => { setOtpSent(false); setOtp(''); }}
-                    className="w-full text-xs text-primary hover:underline text-center">
-                    Reenviar código
-                  </button>
-                </form>
-              )}
-              <button type="button" onClick={() => { setPhoneMode(false); setError(''); setOtpSent(false); setOtp(''); }}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center">
-                ← Volver
-              </button>
+              </div>
             </div>
-          )}
+            <SubmitButton loading={loading} loadingText="Entrando…">
+              Entrar <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </SubmitButton>
+          </form>
 
-          {/* ── Login normal ────────────────────────────────── */}
-          {!resetMode && !phoneMode && (
-            <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="label">Email</label>
-                  <input type="email" className="input" placeholder="tu@email.com" required
-                    value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="label mb-0">Contraseña</label>
-                    <button type="button" onClick={() => { setResetMode(true); setError(''); }}
-                      className="text-xs text-primary hover:underline">
-                      ¿Olvidaste tu contraseña?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type={showPass ? 'text' : 'password'}
-                      className="input pr-10" placeholder="••••••••" required
-                      value={form.password}
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    />
-                    <button type="button" onClick={() => setShowPass(s => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-                <button type="submit" disabled={loading}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 glow-green">
-                  {loading ? 'Ingresando...' : <><span>Ingresar</span><ArrowRight className="w-4 h-4" /></>}
-                </button>
-              </form>
+          <Divider>o seguí con</Divider>
 
-              {divider}
-
-              {/* Botón Google */}
-              <button onClick={handleGoogle}
-                className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-150 mb-2"
-                style={{ background: '#fff', color: '#1e293b', border: '1px solid #d1d5db' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                <GoogleIcon />
-                Continuar con Google
-              </button>
-
-              {/* Botón teléfono */}
-              <button onClick={() => { setPhoneMode(true); setError(''); }}
-                className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-150"
-                style={{ background: 'rgba(14,165,233,0.12)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.25)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(14,165,233,0.2)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(14,165,233,0.12)'}>
-                <Phone className="w-4 h-4" />
-                Continuar con teléfono
-              </button>
-            </>
-          )}
-
-          {!resetMode && !phoneMode && (
-            <p className="text-center text-sm text-muted-foreground mt-5">
-              ¿No tenés cuenta?{' '}
-              <Link to="/registro" className="text-primary font-semibold hover:underline">Registrarse</Link>
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+          <div className="grid gap-2.5">
+            <button type="button" onClick={handleGoogle} className="btn-google">
+              <GoogleIcon /> Google
+            </button>
+            <button type="button" onClick={volver(() => setPhoneMode(true))} className="btn-outline w-full">
+              <Phone className="w-4 h-4" aria-hidden="true" /> Celular (código por SMS)
+            </button>
+          </div>
+        </>
+      )}
+    </AuthLayout>
   );
 }

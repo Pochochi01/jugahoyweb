@@ -48,26 +48,26 @@ export default function TimeSlotList({ slots, loading, onSelect, onManage, onCan
             {/* ── Cabecera del grupo ── */}
             <div className="flex items-center gap-2 mb-3">
               <span className="text-sm">{grupo.emoji}</span>
-              <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-white/35">
+              <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
                 {grupo.label}
               </h4>
               {grupo.note && (
                 <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}>
+                  style={{ background: 'rgb(var(--info) / 0.15)', color: 'rgb(var(--info))', border: '1px solid rgb(var(--info) / 0.25)' }}>
                   {grupo.note}
                 </span>
               )}
               {/* Línea separadora */}
-              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+              <div className="flex-1 h-px" style={{ background: 'rgb(var(--foreground) / 0.06)' }} />
               {/* Contadores */}
               <div className="flex items-center gap-3 text-xs">
                 {libres > 0 && (
-                  <span style={{ color: 'rgba(74,222,128,0.7)' }}>
+                  <span style={{ color: 'rgb(var(--success) / 0.7)' }}>
                     {libres} libre{libres !== 1 ? 's' : ''}
                   </span>
                 )}
                 {ocupados > 0 && (
-                  <span style={{ color: 'rgba(248,113,113,0.7)' }}>
+                  <span style={{ color: 'rgb(var(--danger) / 0.7)' }}>
                     {ocupados} reserva{ocupados !== 1 ? 's' : ''}
                   </span>
                 )}

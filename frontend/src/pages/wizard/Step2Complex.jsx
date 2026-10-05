@@ -164,7 +164,7 @@ export default function Step2Complex({ onNext, onBack, initial }) {
           <div className="flex flex-wrap gap-2">
             {PRESTACIONES.map(p => (
               <button key={p} type="button" onClick={() => togglePrestacion(p)}
-                className={`px-3 py-1 rounded-full text-sm border transition-colors ${form.prestaciones.includes(p) ? 'bg-primary text-white border-primary' : 'border-border hover:border-primary'}`}>
+                className={`px-3 py-1 rounded-full text-sm border transition-colors ${form.prestaciones.includes(p) ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:border-primary'}`}>
                 {p}
               </button>
             ))}

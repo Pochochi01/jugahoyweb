@@ -10,13 +10,27 @@
     <meta name="description" content="Plataforma integral para gestión y reserva de complejos deportivos" />
 
     <!-- ── PWA ──
-         El color de tema lo define el manifest (theme_color: #060a12), que es el
-         estándar para la app instalada. Se omite el <meta name="theme-color">
-         (Chrome/Safari lo tomarían del manifest; Firefox/Opera no lo soportan). -->
+         El manifest define theme_color para la app instalada; en el navegador,
+         <meta name="theme-color"> sigue al tema elegido (claro / oscuro). -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="JugaHoy" />
+    <meta name="theme-color" content="#070b14" />
+    <!-- Tema aplicado ANTES de pintar (sin destello). Lógica completa: src/utils/theme.js -->
+    <script>
+      (function () {
+        var t = 'dark';
+        try {
+          var p = localStorage.getItem('theme') || 'dark';
+          t = p === 'system'
+            ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+            : (p === 'light' ? 'light' : 'dark');
+        } catch (e) { /* sin storage: oscuro */ }
+        document.documentElement.dataset.theme = t;
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', t === 'light' ? '#f5f7fb' : '#070b14');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

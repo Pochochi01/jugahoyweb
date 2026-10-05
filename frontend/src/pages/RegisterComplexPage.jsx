@@ -116,7 +116,7 @@ export default function RegisterComplexPage() {
             {STEPS.map((label, i) => (
               <div key={i} className="flex items-center flex-1 last:flex-none">
                 <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold border-2 transition-colors
-                  ${i < step ? 'bg-primary border-primary text-white'
+                  ${i < step ? 'bg-primary border-primary text-primary-foreground'
                     : i === step ? 'border-primary text-primary'
                     : 'border-border text-muted-foreground'}`}>
                   {i < step ? '✓' : i + 1}

@@ -88,7 +88,7 @@ export default function EscuelaPortalPage() {
 
         {wa && (
           <a href={`https://wa.me/${wa}?text=${encodeURIComponent(`Hola! Soy responsable de ${d.alumno.nombre} (${d.categoria?.nombre}).`)}`} target="_blank" rel="noreferrer"
-            className="flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-white bg-green-600 hover:bg-green-700">
+            className="flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-white bg-green-700 hover:bg-green-800">
             <MessageCircle className="w-5 h-5" /> Escribir a la escuela
           </a>
         )}

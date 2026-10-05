@@ -540,7 +540,7 @@ function PosicionesSeccion({ svc, torneo }) {
     <div className="space-y-4">
       <div className="flex gap-2">
         {[['zonas', 'Por zona (parejas)'], ['jugadores', 'Por jugador']].map(([k, l]) => (
-          <button key={k} onClick={() => setVista(k)} className={`px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-white' : 'bg-muted'}`}>{l}</button>
+          <button key={k} onClick={() => setVista(k)} className={`px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{l}</button>
         ))}
       </div>
       {vista === 'zonas'

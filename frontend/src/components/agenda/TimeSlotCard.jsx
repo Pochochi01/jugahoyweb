@@ -7,52 +7,41 @@ const METODO_LABELS = {
   mercadopago: 'MercadoPago', tarjeta: 'Tarjeta',
 };
 
-// ── Paleta dark por estado del turno ─────────────────────────────────────────
-//   asignado  = amarillo (turno confirmado, aún no comenzó)
-//   asistido  = verde    (turno confirmado cuya hora de inicio ya pasó)
-//   noasistido= rojo     (marcado como "no asistió")
-//   pendiente = ámbar    (solicitud web esperando confirmación)
-// Textos claros sobre fondos translúcidos oscuros → contraste/legibilidad OK.
+// ── Colores por estado del turno (tokens del tema, claro y oscuro) ───────────
+//   asignado  = ámbar  (turno confirmado, aún no comenzó)
+//   asistido  = verde  (turno confirmado cuya hora de inicio ya pasó)
+//   noasistido= rojo   (marcado como "no asistió")
+//   pendiente = ámbar con borde punteado (solicitud web esperando confirmación)
+// Fondo tintado suave + borde del mismo tono; el estado se lee en el badge,
+// no en un borde lateral grueso.
+const tinte = (v, fondo, borde, estilo = 'solid') => ({
+  background: `rgb(var(--${v}) / ${fondo})`,
+  border: `1px ${estilo} rgb(var(--${v}) / ${borde})`,
+});
+const badgeDe = (v) => ({
+  background: `rgb(var(--${v}) / 0.16)`,
+  color: `rgb(var(--${v}))`,
+  border: `1px solid rgb(var(--${v}) / 0.35)`,
+});
+const RESERVA = { name: 'text-foreground', phone: 'text-foreground/80', method: 'text-muted-foreground', time: 'text-foreground', monto: 'text-success' };
+
 const STYLES = {
   libre: {
-    card:   { background: 'rgba(34,197,94,0.07)',  border: '1px solid rgba(34,197,94,0.22)',  cursor: 'pointer' },
-    hover:  { background: 'rgba(34,197,94,0.13)',  border: '1px solid rgba(34,197,94,0.40)' },
-    icon:   'text-green-400', text: 'text-green-300', hint: 'text-green-500',
+    card:   { ...tinte('success', 0.06, 0.22), cursor: 'pointer' },
+    hover:  tinte('success', 0.12, 0.42),
+    icon:   'text-success', text: 'text-success', hint: 'text-success/80',
   },
-  asignado: {  // amarillo
-    card:   { background: 'rgba(234,179,8,0.12)',  border: '1px solid rgba(234,179,8,0.30)', borderLeft: '3px solid rgba(234,179,8,0.7)' },
-    name:   'text-yellow-100', phone: 'text-yellow-200', method: 'text-yellow-300', time: 'text-yellow-100',
-    badge:  { background: 'rgba(234,179,8,0.22)', color: '#fde68a', border: '1px solid rgba(234,179,8,0.4)' },
-    monto:  'text-green-300', icon: 'text-yellow-300', label: 'Asignado',
-  },
-  asistido: {  // verde
-    card:   { background: 'rgba(34,197,94,0.13)',  border: '1px solid rgba(34,197,94,0.32)', borderLeft: '3px solid rgba(34,197,94,0.7)' },
-    name:   'text-green-100', phone: 'text-green-200', method: 'text-green-300', time: 'text-green-100',
-    badge:  { background: 'rgba(34,197,94,0.22)', color: '#86efac', border: '1px solid rgba(34,197,94,0.4)' },
-    monto:  'text-green-300', icon: 'text-green-300', label: 'Asistido',
-  },
-  noasistido: {  // rojo
-    card:   { background: 'rgba(239,68,68,0.13)',  border: '1px solid rgba(239,68,68,0.32)', borderLeft: '3px solid rgba(239,68,68,0.7)' },
-    name:   'text-red-100', phone: 'text-red-200', method: 'text-red-300', time: 'text-red-100',
-    badge:  { background: 'rgba(239,68,68,0.22)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.4)' },
-    monto:  'text-green-300', icon: 'text-red-300', label: 'No asistió',
-  },
-  pendiente: {  // ámbar
-    card:   { background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.28)', borderLeft: '3px solid rgba(245,158,11,0.55)' },
-    name:   'text-amber-100', phone: 'text-amber-200', method: 'text-amber-300', time: 'text-amber-100',
-    badge:  { background: 'rgba(245,158,11,0.20)', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.35)' },
-    monto:  'text-green-300', icon: 'text-amber-300', label: 'Pendiente',
-  },
-  secondary: {
-    card:   { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderLeft: '3px solid rgba(255,255,255,0.15)' },
-    text:   'text-white/40',
-  },
+  asignado:   { ...RESERVA, card: tinte('warning', 0.09, 0.32), badge: badgeDe('warning'), icon: 'text-warning', label: 'Asignado' },
+  asistido:   { ...RESERVA, card: tinte('success', 0.10, 0.32), badge: badgeDe('success'), icon: 'text-success', label: 'Asistido' },
+  noasistido: { ...RESERVA, card: tinte('danger', 0.09, 0.32),  badge: badgeDe('danger'),  icon: 'text-danger',  label: 'No asistió' },
+  pendiente:  { ...RESERVA, card: tinte('warning', 0.06, 0.5, 'dashed'), badge: badgeDe('warning'), icon: 'text-warning', label: 'Pendiente' },
+  secondary: { card: tinte('foreground', 0.025, 0.08), text: 'text-muted-foreground' },
   // Clase de profesor (violeta) / partido de torneo (azul): ocupan la cancha sin ser reservas
-  clase:  { card: { background: 'rgba(168,85,247,0.10)', border: '1px solid rgba(168,85,247,0.35)' }, icon: 'text-purple-400', text: 'text-purple-200' },
-  torneo: { card: { background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.35)' }, icon: 'text-blue-400',   text: 'text-blue-200' },
+  clase:  { card: tinte('violet', 0.09, 0.35), icon: 'text-violet', text: 'text-foreground' },
+  torneo: { card: tinte('info', 0.09, 0.35),   icon: 'text-info',   text: 'text-foreground' },
   past: {
-    card:   { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: 0.35, cursor: 'not-allowed' },
-    icon:   'text-white/20', text: 'text-white/25',
+    card: { ...tinte('foreground', 0.02, 0.06), opacity: 0.45, cursor: 'not-allowed' },
+    icon: 'text-muted-foreground', text: 'text-muted-foreground',
   },
 };
 
@@ -130,12 +119,12 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
             <span className={`text-xs font-medium truncate ${STYLES[bloqueo.tipo].text}`}>· {bloqueo.titulo}</span>
           </div>
           {bloqueo.detalle && (
-            <div className="text-xs text-white/70 truncate">
+            <div className="text-xs text-foreground/70 truncate">
               {bloqueo.tipo === 'clase' ? 'Alumnos: ' : ''}{bloqueo.detalle}
             </div>
           )}
           {bloqueo.staff?.length > 0 && (
-            <div className="text-[11px] text-white/60 truncate">Staff: {bloqueo.staff.join(', ')}</div>
+            <div className="text-[11px] text-foreground/70 truncate">Staff: {bloqueo.staff.join(', ')}</div>
           )}
           {bloqueo.profesor?.whatsapp && waLink(bloqueo.profesor.whatsapp) && (
             <a href={waLink(bloqueo.profesor.whatsapp)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
@@ -160,7 +149,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               {isNoAsistido ? (
                 <>
                   <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(148,163,184,0.18)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.3)' }}>
+                    style={{ background: 'rgb(var(--muted-foreground) / 0.18)', color: 'rgb(var(--muted-foreground))', border: '1px solid rgb(var(--muted-foreground) / 0.3)' }}>
                     <UserX className="w-3 h-3" /> No asistió
                   </span>
                   {/* Corregir → asistió (solo administradores) */}
@@ -168,9 +157,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                     <button
                       onClick={e => { e.stopPropagation(); onCorrectNoShow(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.30)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}
+                      style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.30)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.15)'}
                       title="Corregir: marcar como asistido"
                     >
                       <CheckCircle className="w-3.5 h-3.5" /> Asistió
@@ -188,7 +177,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                   {/* Cobrado */}
                   {isCobrado && (
                     <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(16,185,129,0.2)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.4)' }}>
+                      style={{ background: 'rgb(var(--success) / 0.2)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.4)' }}>
                       <DollarSign className="w-3 h-3" /> Cobrado
                     </span>
                   )}
@@ -198,9 +187,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                     <button
                       onClick={e => { e.stopPropagation(); onConfirm(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.30)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}
+                      style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.30)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.15)'}
                       title="Confirmar este turno"
                     >
                       <CheckCircle className="w-3.5 h-3.5" /> Confirmar
@@ -212,9 +201,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                     <button
                       onClick={e => { e.stopPropagation(); onNoShow(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgba(148,163,184,0.14)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.28)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(148,163,184,0.24)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(148,163,184,0.14)'}
+                      style={{ background: 'rgb(var(--muted-foreground) / 0.14)', color: 'rgb(var(--muted-foreground))', border: '1px solid rgb(var(--muted-foreground) / 0.28)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--muted-foreground) / 0.24)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--muted-foreground) / 0.14)'}
                       title="Marcar como no asistido"
                     >
                       <UserX className="w-3.5 h-3.5" /> No asistió
@@ -226,9 +215,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                     <button
                       onClick={e => { e.stopPropagation(); onCancel(slot.booking_id); }}
                       className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg transition-all duration-150"
-                      style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.22)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                      style={{ background: 'rgb(var(--danger) / 0.12)', color: 'rgb(var(--danger))', border: '1px solid rgb(var(--danger) / 0.25)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.22)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--danger) / 0.12)'}
                       title="Cancelar esta reserva"
                     >
                       <XCircle className="w-3.5 h-3.5" /> Cancelar
@@ -245,7 +234,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               <GraduationCap className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">
                 {slot.escuela.escuela}{slot.escuela.categoria ? ` · ${slot.escuela.categoria}` : ''}
-                {slot.escuela.entrenadores?.length > 0 && <span className="text-white/60"> · Prof. {slot.escuela.entrenadores.join(', ')}</span>}
+                {slot.escuela.entrenadores?.length > 0 && <span className="text-foreground/70"> · Prof. {slot.escuela.entrenadores.join(', ')}</span>}
               </span>
             </div>
           )}
@@ -265,9 +254,9 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
                   onClick={e => e.stopPropagation()}
                   title="Escribir al cliente por WhatsApp"
                   className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-md transition-colors"
-                  style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.22)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.12)'}
+                  style={{ background: 'rgb(var(--success) / 0.12)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.25)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.12)'}
                 >
                   <MessageCircle className="w-3 h-3 shrink-0" /> {slot.booking.telefono_cliente}
                 </a>
@@ -289,7 +278,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               if (b.estado === 'pendiente_pago') { txt = `Esperando pago online (${b.tipo_pago === 'seña' ? 'seña' : 'total'})`; cls = 'bg-amber-500/15 text-amber-300'; }
               else if (pagadoOnline > 0 && pagadoOnline < Number(b.monto)) { txt = `Seña online · saldo $${(Number(b.monto) - pagadoOnline).toLocaleString('es-AR')}`; cls = 'bg-sky-500/15 text-sky-300'; }
               else if (pagadoOnline > 0) { txt = 'Pagado online'; cls = 'bg-green-500/15 text-green-300'; }
-              else if (b.tipo_pago === 'complejo' && !b.cobrado) { txt = 'Paga en el complejo'; cls = 'bg-white/10 text-white/70'; }
+              else if (b.tipo_pago === 'complejo' && !b.cobrado) { txt = 'Paga en el complejo'; cls = 'bg-muted text-foreground/70'; }
               return txt && <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${cls}`}>{txt}</span>;
             })()}
             <span className="text-xs font-medium px-1.5 py-0.5 rounded" style={S.badge}>
@@ -337,18 +326,18 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
             {isPast && (
               <div className="flex items-center gap-1.5">
                 <Lock className="w-3 h-3 text-white/20" />
-                <span className="text-xs text-white/25">Horario pasado</span>
+                <span className="text-xs text-muted-foreground">Horario pasado</span>
               </div>
             )}
             {isSecondary && (
-              <span className="text-xs italic" style={{ color: 'rgba(239,68,68,0.45)' }}>continuación</span>
+              <span className="text-xs italic" style={{ color: 'rgb(var(--danger) / 0.45)' }}>continuación</span>
             )}
           </div>
 
           {/* Badge libre */}
           {isLibre && !isPast && (
             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
-              style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }}>
+              style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.25)' }}>
               Libre
             </span>
           )}

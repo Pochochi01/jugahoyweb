@@ -84,7 +84,7 @@ export default function ProfesoresTab({ complexId }) {
                 return (
                   <button key={v} type="button" aria-pressed={on}
                     onClick={() => set('deportes', on ? form.deportes.filter(x => x !== v) : [...(form.deportes || []), v])}
-                    className={`px-2.5 py-1 rounded-full text-xs ${on ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>{l}</button>
+                    className={`px-2.5 py-1 rounded-full text-xs ${on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>{l}</button>
                 );
               })}
             </div>
@@ -231,7 +231,7 @@ function VentanasEditor({ svc, profesor, canchas, onClose }) {
           {ORDEN_DIAS.map(d => (
             <button key={d} type="button"
               onClick={() => setNueva(n => ({ ...n, dias: n.dias.includes(d) ? n.dias.filter(x => x !== d) : [...n.dias, d] }))}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${nueva.dias.includes(d) ? 'bg-primary text-white' : 'bg-muted'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${nueva.dias.includes(d) ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
               {DIAS_SEMANA[d]}
             </button>
           ))}

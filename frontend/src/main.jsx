@@ -8,6 +8,8 @@ import 'aos/dist/aos.css';
 // Tipografía del wordmark (similar al logo). Self-hosted → funciona offline en la PWA.
 import '@fontsource/poppins/latin-700.css';
 import '@fontsource/poppins/latin-700-italic.css';
+// Tipografía de la interfaz (variable, self-hosted). Ver DESIGN.md.
+import '@fontsource-variable/plus-jakarta-sans';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

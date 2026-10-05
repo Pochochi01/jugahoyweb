@@ -50,7 +50,7 @@ export default function EscuelaEntrenador({ complexId }) {
                 <div className="text-[11px] text-muted-foreground truncate">{a.responsable_nombre} · {a.responsable_whatsapp}</div>
               </div>
               <span className={PAGO_BADGE[a.pago_estado].cls}>{PAGO_BADGE[a.pago_estado].label}</span>
-              <button className="p-1.5 rounded bg-green-600 text-white" aria-label={`WhatsApp a ${a.responsable_nombre}`} onClick={() => setWa(a)}><MessageCircle className="w-4 h-4" /></button>
+              <button className="p-1.5 rounded bg-green-700 text-white" aria-label={`WhatsApp a ${a.responsable_nombre}`} onClick={() => setWa(a)}><MessageCircle className="w-4 h-4" /></button>
             </div>
           ))}
         </section>

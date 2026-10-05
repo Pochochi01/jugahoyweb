@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "frontend/src/index.css"
+        ],
+        "createdAt": "2026-10-05T01:50:26.235Z",
+        "reason": "Claude: compat layer remaps translucent white text to --muted-foreground only under light theme; resulting surfaces are near-white tints with >6:1 contrast"
+      }
+    ]
+  }
+}

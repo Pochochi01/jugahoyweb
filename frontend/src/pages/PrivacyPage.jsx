@@ -10,9 +10,9 @@ function Section({ n, title, children }) {
         <span className="w-8 h-8 rounded-lg bg-primary/15 text-primary font-bold text-sm flex items-center justify-center shrink-0">
           {n}
         </span>
-        <h2 className="text-lg sm:text-xl font-bold text-white">{title}</h2>
+        <h2 className="text-lg sm:text-xl font-bold text-foreground">{title}</h2>
       </div>
-      <div className="text-white/60 text-sm sm:text-[15px] leading-relaxed space-y-2 pl-11">
+      <div className="text-foreground/70 text-sm sm:text-[15px] leading-relaxed space-y-2 pl-11">
         {children}
       </div>
     </section>
@@ -39,14 +39,14 @@ export default function PrivacyPage() {
 
       <main className="flex-1">
         {/* Hero */}
-        <div className="border-b" style={{ borderColor: '#1e2a3d', background: 'linear-gradient(180deg,#0a0e1a 0%,#060a12 100%)' }}>
+        <div className="border-b" style={{ borderColor: 'rgb(var(--border))', background: 'linear-gradient(180deg,#0a0e1a 0%,#060a12 100%)' }}>
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-14 text-center" data-aos="fade-up">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/15 mb-4">
               <ShieldCheck className="w-7 h-7 text-primary" />
             </div>
-            <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">Política de Privacidad</h1>
+            <h1 className="text-3xl sm:text-4xl font-black text-foreground mb-2">Política de Privacidad</h1>
             <p className="text-primary font-semibold">Donde Juego</p>
-            <p className="text-white/40 text-sm mt-3">Última actualización: 15 de julio de 2026</p>
+            <p className="text-muted-foreground text-sm mt-3">Última actualización: 15 de julio de 2026</p>
           </div>
         </div>
 
@@ -54,17 +54,17 @@ export default function PrivacyPage() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
           <div className="card space-y-8" data-aos="fade-up">
 
-            <p className="text-white/70 text-sm sm:text-[15px] leading-relaxed">
-              En <strong className="text-white">Donde Juego</strong>, valoramos y respetamos la privacidad de nuestros
+            <p className="text-foreground/70 text-sm sm:text-[15px] leading-relaxed">
+              En <strong className="text-foreground">Donde Juego</strong>, valoramos y respetamos la privacidad de nuestros
               usuarios y administradores de complejos deportivos. Esta política explica cómo recopilamos, utilizamos y
               protegemos la información personal en nuestra plataforma de gestión de turnos, cantina y estadísticas.
             </p>
 
             <Section n={1} title="Información que recopilamos">
               <Bullets>
-                <Item><strong className="text-white/80">Datos de registro:</strong> nombre, correo electrónico, número de teléfono y contraseña.</Item>
-                <Item><strong className="text-white/80">Datos de uso del sistema:</strong> reservas de turnos, consumos en cantina, estadísticas de uso de canchas.</Item>
-                <Item><strong className="text-white/80">Información técnica:</strong> dirección IP, tipo de dispositivo, navegador y zona horaria (ajustada siempre al huso horario de Argentina).</Item>
+                <Item><strong className="text-foreground/85">Datos de registro:</strong> nombre, correo electrónico, número de teléfono y contraseña.</Item>
+                <Item><strong className="text-foreground/85">Datos de uso del sistema:</strong> reservas de turnos, consumos en cantina, estadísticas de uso de canchas.</Item>
+                <Item><strong className="text-foreground/85">Información técnica:</strong> dirección IP, tipo de dispositivo, navegador y zona horaria (ajustada siempre al huso horario de Argentina).</Item>
               </Bullets>
             </Section>
 
@@ -118,8 +118,8 @@ export default function PrivacyPage() {
                     <Mail className="w-4 h-4 text-primary" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-xs text-white/40">Correo de soporte</span>
-                    <span className="block text-sm font-medium text-white group-hover:text-primary transition-colors truncate">
+                    <span className="block text-xs text-muted-foreground">Correo de soporte</span>
+                    <span className="block text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">
                       largomauroandres@hotmail.com
                     </span>
                   </span>
@@ -130,8 +130,8 @@ export default function PrivacyPage() {
                     <Phone className="w-4 h-4 text-primary" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-xs text-white/40">Teléfono de contacto</span>
-                    <span className="block text-sm font-medium text-white group-hover:text-primary transition-colors">
+                    <span className="block text-xs text-muted-foreground">Teléfono de contacto</span>
+                    <span className="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">
                       3815900938
                     </span>
                   </span>

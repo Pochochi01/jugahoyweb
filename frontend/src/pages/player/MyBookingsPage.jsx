@@ -129,12 +129,12 @@ export default function MyBookingsPage() {
               <button key={f.key} onClick={() => setFiltro(f.key)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all
                   ${filtro === f.key
-                    ? 'bg-primary text-white border-primary'
+                    ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-white text-muted-foreground border-border hover:border-primary hover:text-primary'
                   }`}>
                 {f.label}
                 {f.key === 'proximos' && proxCount > 0 && (
-                  <span className={`ml-1.5 text-xs ${filtro === f.key ? 'text-white/80' : 'text-primary'}`}>
+                  <span className={`ml-1.5 text-xs ${filtro === f.key ? 'text-foreground/85' : 'text-primary'}`}>
                     ({proxCount})
                   </span>
                 )}
@@ -191,7 +191,7 @@ export default function MyBookingsPage() {
                               {/* Canal de origen: WhatsApp o Web */}
                               {/whatsapp/i.test(b.notas || '')
                                 ? <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(37,211,102,0.15)', color: '#25D366', border: '1px solid rgba(37,211,102,0.35)' }}>📱 WhatsApp</span>
-                                : <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)' }}>🌐 Web</span>}
+                                : <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'rgb(var(--info) / 0.15)', color: '#818cf8', border: '1px solid rgb(var(--info) / 0.35)' }}>🌐 Web</span>}
                             </div>
                             {complex && (
                               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
@@ -246,9 +246,9 @@ export default function MyBookingsPage() {
                           {wa && (
                             <a href={wa} target="_blank" rel="noopener noreferrer"
                               className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 sm:py-1.5 rounded-lg border transition-colors w-full sm:w-auto"
-                              style={{ background: 'rgba(34,197,94,0.10)', color: '#16a34a', borderColor: 'rgba(34,197,94,0.30)' }}
-                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.18)'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.10)'}>
+                              style={{ background: 'rgb(var(--success) / 0.10)', color: 'rgb(var(--primary))', borderColor: 'rgb(var(--success) / 0.30)' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.18)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgb(var(--success) / 0.10)'}>
                               <MessageCircle className="w-4 h-4" /> Comunicarme por WhatsApp
                             </a>
                           )}
@@ -274,7 +274,7 @@ export default function MyBookingsPage() {
 
       {/* toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium text-white
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium text-foreground
           ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           {toast.msg}

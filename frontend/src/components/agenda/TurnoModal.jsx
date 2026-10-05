@@ -6,8 +6,8 @@ import {
 import { agendaService } from '../../services/agendaService';
 
 const DARK = {
-  surface: { background: '#0d1220', border: '1px solid #1e2a3d' },
-  row:     { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' },
+  surface: { background: 'rgb(var(--card))', border: '1px solid rgb(var(--border))' },
+  row:     { background: 'rgb(var(--foreground) / 0.03)', border: '1px solid rgb(var(--foreground) / 0.07)' },
 };
 
 const METODOS = [
@@ -47,7 +47,7 @@ export default function TurnoModal({ complexId, slot, onClose, onChanged, showTo
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-5 pb-3 border-b border-border">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-white font-bold">
+            <div className="flex items-center gap-2 text-foreground font-bold">
               {view === 'consumos' ? <ShoppingCart className="w-4 h-4 text-primary" />
                 : view === 'cobrar' ? <DollarSign className="w-4 h-4 text-primary" />
                 : <User className="w-4 h-4 text-primary" />}
@@ -64,7 +64,7 @@ export default function TurnoModal({ complexId, slot, onClose, onChanged, showTo
               </div>
             )}
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-white hover:bg-white/5 transition-colors shrink-0">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -103,21 +103,21 @@ function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar }) {
       {/* Resumen */}
       <div className="rounded-xl p-4" style={DARK.row}>
         {totales.pagado_online > 0 ? (<>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white/70">{money(totales.cancha_total)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-foreground/70">{money(totales.cancha_total)}</span></div>
           <div className="flex justify-between text-sm mt-1"><span className="text-sky-300">{b?.tipo_pago === 'seña' ? 'Seña' : 'Pagado'} online (MercadoPago)</span><span className="text-sky-300 font-semibold">− {money(totales.pagado_online)}</span></div>
-          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-foreground font-semibold">{money(totales.cancha)}</span></div>
         </>) : (
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-foreground font-semibold">{money(totales.cancha)}</span></div>
         )}
-        <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Consumos</span><span className="text-white font-semibold">{money(totales.consumos)}</span></div>
+        <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Consumos</span><span className="text-foreground font-semibold">{money(totales.consumos)}</span></div>
         <div className="flex justify-between text-base mt-2 pt-2 border-t border-border">
-          <span className="text-white font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
+          <span className="text-foreground font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
         </div>
       </div>
 
       {yaCobrado && (
         <div className="rounded-lg px-4 py-3 text-sm flex items-center gap-2"
-          style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac' }}>
+          style={{ background: 'rgb(var(--success) / 0.12)', border: '1px solid rgb(var(--success) / 0.3)', color: 'rgb(var(--success))' }}>
           <CheckCircle className="w-4 h-4 shrink-0" />
           Turno cobrado{b.cobro_detalle?.jugadores ? ` — ${b.cobro_detalle.jugadores} jugador${b.cobro_detalle.jugadores !== 1 ? 'es' : ''} · ${money(b.cobro_detalle.por_jugador)} c/u` : ''}.
         </div>
@@ -125,13 +125,12 @@ function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar }) {
 
       <div className="grid grid-cols-1 gap-3">
         <button onClick={onCobrar} disabled={yaCobrado}
-          className="flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: yaCobrado ? '#334155' : '#16a34a' }}>
+          className="btn-primary btn-lg w-full font-bold disabled:!bg-muted disabled:!text-muted-foreground">
           <DollarSign className="w-5 h-5" /> Cobrar turno
         </button>
         <button onClick={onConsumos} disabled={yaCobrado}
           className="flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+          style={{ background: 'rgb(var(--info) / 0.15)', color: 'rgb(var(--info))', border: '1px solid rgb(var(--info) / 0.35)' }}>
           <ShoppingCart className="w-5 h-5" /> Agregar consumos
         </button>
       </div>
@@ -184,24 +183,24 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
 
   return (
     <div className="space-y-4">
-      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors">
+      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" /> Volver
       </button>
 
       {/* Consumos ya cargados */}
       <div>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-2">Consumos del turno</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Consumos del turno</h4>
         {consumos.length === 0 ? (
           <p className="text-sm text-muted-foreground italic py-2">Todavía no hay consumos.</p>
         ) : (
           <div className="rounded-lg overflow-hidden" style={DARK.row}>
-            <div className="grid grid-cols-[3rem_1fr_5rem_5rem_2rem] gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white/35 border-b border-border">
+            <div className="grid grid-cols-[3rem_1fr_5rem_5rem_2rem] gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
               <span className="text-center">Cant.</span><span>Producto</span><span className="text-right">Precio</span><span className="text-right">Total</span><span />
             </div>
             {consumos.map(c => (
               <div key={c.id} className="grid grid-cols-[3rem_1fr_5rem_5rem_2rem] gap-2 px-3 py-2 text-sm items-center border-b border-border/50 last:border-0">
-                <span className="text-center tabular-nums text-white/80">{Number(c.cantidad)}</span>
-                <span className="text-white truncate">{c.nombre_producto}</span>
+                <span className="text-center tabular-nums text-foreground/85">{Number(c.cantidad)}</span>
+                <span className="text-foreground truncate">{c.nombre_producto}</span>
                 <span className="text-right tabular-nums text-muted-foreground">{money(c.precio_unitario)}</span>
                 <span className="text-right tabular-nums text-green-400 font-semibold">{money(c.subtotal)}</span>
                 {!yaCobrado && (
@@ -213,7 +212,7 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
               </div>
             ))}
             <div className="flex justify-between px-3 py-2 text-sm font-bold bg-white/[0.02]">
-              <span className="text-white">Total consumos</span><span className="text-green-400">{money(totales.consumos)}</span>
+              <span className="text-foreground">Total consumos</span><span className="text-green-400">{money(totales.consumos)}</span>
             </div>
           </div>
         )}
@@ -222,7 +221,7 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
       {/* Selector de productos */}
       {!yaCobrado && (
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-white/40 mb-2">Agregar producto</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Agregar producto</h4>
           <div className="relative mb-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input className="input pl-9" placeholder="Buscar producto…" value={q} onChange={e => setQ(e.target.value)} />
@@ -235,7 +234,7 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
                 <div key={p.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={DARK.row}>
                   <Beer className="w-4 h-4 text-amber-400/70 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">{p.nombre}</div>
+                    <div className="text-sm text-foreground truncate">{p.nombre}</div>
                     <div className="text-xs text-muted-foreground">{money(p.precio_venta)} · stock {Number(p.stock)}</div>
                   </div>
                   {sinStock ? (
@@ -243,13 +242,13 @@ function ConsumosView({ complexId, bookingId, consumos, totales, yaCobrado, savi
                   ) : (
                     <>
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setCant(p.id, getCant(p.id) - 1)} className="p-1 rounded bg-white/5 text-white/70 hover:text-white"><Minus className="w-3 h-3" /></button>
-                        <span className="w-6 text-center text-sm tabular-nums text-white">{getCant(p.id)}</span>
-                        <button onClick={() => setCant(p.id, getCant(p.id) + 1)} className="p-1 rounded bg-white/5 text-white/70 hover:text-white"><Plus className="w-3 h-3" /></button>
+                        <button onClick={() => setCant(p.id, getCant(p.id) - 1)} className="p-1 rounded bg-muted text-foreground/70 hover:text-foreground"><Minus className="w-3 h-3" /></button>
+                        <span className="w-6 text-center text-sm tabular-nums text-foreground">{getCant(p.id)}</span>
+                        <button onClick={() => setCant(p.id, getCant(p.id) + 1)} className="p-1 rounded bg-muted text-foreground/70 hover:text-foreground"><Plus className="w-3 h-3" /></button>
                       </div>
                       <button onClick={() => agregar(p)} disabled={saving}
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                        style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                        style={{ background: 'rgb(var(--success) / 0.15)', color: 'rgb(var(--success))', border: '1px solid rgb(var(--success) / 0.3)' }}>
                         <Plus className="w-3.5 h-3.5" /> Agregar
                       </button>
                     </>
@@ -311,10 +310,10 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
     const cd = b.cobro_detalle || {};
     return (
       <div className="space-y-4">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white"><ArrowLeft className="w-3.5 h-3.5" /> Volver</button>
-        <div className="rounded-xl p-4 text-center" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}>
+        <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="w-3.5 h-3.5" /> Volver</button>
+        <div className="rounded-xl p-4 text-center" style={{ background: 'rgb(var(--success) / 0.1)', border: '1px solid rgb(var(--success) / 0.3)' }}>
           <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-          <p className="text-white font-bold">Este turno ya fue cobrado</p>
+          <p className="text-foreground font-bold">Este turno ya fue cobrado</p>
           <p className="text-sm text-muted-foreground mt-1">
             Total {money(cd.total ?? totales.total)}{cd.pagado != null && <> · Pagado {money(cd.pagado)}</>}
           </p>
@@ -323,10 +322,10 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
           <div className="rounded-lg overflow-hidden text-sm" style={DARK.row}>
             {cd.pagos.map((p, i) => (
               <div key={i} className="flex items-center justify-between px-3 py-2 border-b border-border/40 last:border-0">
-                <span className="text-white/80">Jugador {i + 1}</span>
+                <span className="text-foreground/85">Jugador {i + 1}</span>
                 {p.pagado
                   ? <span className="flex items-center gap-1.5 text-green-400"><CheckCircle className="w-3.5 h-3.5" /> {METODOS.find(m => m.v === p.metodo)?.l || p.metodo}</span>
-                  : <span className="text-white/40">Sin pagar</span>}
+                  : <span className="text-muted-foreground">Sin pagar</span>}
               </div>
             ))}
           </div>
@@ -337,23 +336,23 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
 
   return (
     <div className="space-y-4">
-      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white"><ArrowLeft className="w-3.5 h-3.5" /> Volver</button>
+      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="w-3.5 h-3.5" /> Volver</button>
 
       {/* Desglose */}
       <div className="rounded-xl p-4" style={DARK.row}>
         {totales.pagado_online > 0 ? (<>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white/70">{money(totales.cancha_total)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-foreground/70">{money(totales.cancha_total)}</span></div>
           <div className="flex justify-between text-sm mt-1"><span className="text-sky-300">{b?.tipo_pago === 'seña' ? 'Seña' : 'Pagado'} online (MercadoPago)</span><span className="text-sky-300 font-semibold">− {money(totales.pagado_online)}</span></div>
-          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+          <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Saldo de cancha</span><span className="text-foreground font-semibold">{money(totales.cancha)}</span></div>
         </>) : (
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-white font-semibold">{money(totales.cancha)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Costo de cancha</span><span className="text-foreground font-semibold">{money(totales.cancha)}</span></div>
         )}
         <div className="flex justify-between text-sm mt-1">
           <span className="text-muted-foreground">Consumos {consumos.length > 0 && <span className="opacity-60">({consumos.length})</span>}</span>
-          <span className="text-white font-semibold">{money(totales.consumos)}</span>
+          <span className="text-foreground font-semibold">{money(totales.consumos)}</span>
         </div>
         <div className="flex justify-between text-lg mt-2 pt-2 border-t border-border">
-          <span className="text-white font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
+          <span className="text-foreground font-bold">Total</span><span className="text-green-400 font-black">{money(totales.total)}</span>
         </div>
         {/* Pagado (dinámico) */}
         <div className="flex justify-between text-sm mt-1.5">
@@ -366,7 +365,7 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
       <div>
         <label className="label">Método de pago</label>
         <select className="input" value={metodo} onChange={e => setMetodo(e.target.value)}>
-          {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#e5e7eb', background: '#0d1220' }}>{m.l}</option>)}
+          {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: 'rgb(var(--foreground))', background: 'rgb(var(--card))' }}>{m.l}</option>)}
         </select>
         <p className="text-xs text-muted-foreground mt-1">Se asigna a cada jugador al marcar su pago (podés cambiarlo en cada uno).</p>
       </div>
@@ -376,13 +375,13 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
         <label className="label flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Cantidad de jugadores</label>
         <div className="flex items-center gap-3 mt-1">
           <div className="flex items-center gap-2">
-            <button onClick={() => setJug(jugadores - 1)} className="p-2 rounded-lg bg-white/5 text-white/70 hover:text-white"><Minus className="w-4 h-4" /></button>
+            <button onClick={() => setJug(jugadores - 1)} className="p-2 rounded-lg bg-muted text-foreground/70 hover:text-foreground"><Minus className="w-4 h-4" /></button>
             <input type="number" min="1" max="50" value={jugadores} onChange={e => setJug(e.target.value)}
               className="input w-16 text-center" />
-            <button onClick={() => setJug(jugadores + 1)} className="p-2 rounded-lg bg-white/5 text-white/70 hover:text-white"><Plus className="w-4 h-4" /></button>
+            <button onClick={() => setJug(jugadores + 1)} className="p-2 rounded-lg bg-muted text-foreground/70 hover:text-foreground"><Plus className="w-4 h-4" /></button>
           </div>
           <div className="text-sm text-muted-foreground">
-            = <span className="text-white font-bold">{money(porJugador)}</span> por jugador
+            = <span className="text-foreground font-bold">{money(porJugador)}</span> por jugador
           </div>
         </div>
       </div>
@@ -394,10 +393,10 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
           {pagos.map((p, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg"
               style={p.pagado
-                ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)' }
-                : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                ? { background: 'rgb(var(--success) / 0.12)', border: '1px solid rgb(var(--success) / 0.3)' }
+                : { background: 'rgb(var(--foreground) / 0.03)', border: '1px solid rgb(var(--foreground) / 0.1)' }}>
               <button onClick={() => togglePago(i)} className="flex items-center gap-2 shrink-0"
-                style={{ color: p.pagado ? '#4ade80' : '#94a3b8' }}>
+                style={{ color: p.pagado ? 'rgb(var(--success))' : 'rgb(var(--muted-foreground))' }}>
                 {p.pagado ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
                 <span className="text-sm font-medium">Jug. {i + 1}</span>
               </button>
@@ -405,8 +404,8 @@ function CobrarView({ complexId, bookingId, b, consumos, totales, yaCobrado, sav
               <div className="flex-1" />
               {p.pagado && (
                 <select value={p.metodo || metodo} onChange={e => setMetodoJugador(i, e.target.value)}
-                  className="text-xs rounded-lg px-2 py-1.5 bg-white/5 text-white border border-white/10 focus:outline-none focus:border-primary">
-                  {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: '#e5e7eb', background: '#0d1220' }}>{m.l}</option>)}
+                  className="text-xs rounded-lg px-2 py-1.5 bg-muted text-foreground border border-border focus:outline-none focus:border-primary">
+                  {METODOS.map(m => <option key={m.v} value={m.v} style={{ color: 'rgb(var(--foreground))', background: 'rgb(var(--card))' }}>{m.l}</option>)}
                 </select>
               )}
             </div>

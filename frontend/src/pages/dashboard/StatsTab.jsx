@@ -143,7 +143,7 @@ export default function StatsTab({ complexId }) {
                   </div>
                   <button onClick={() => habilitar(inc)} disabled={habilitando === inc.id}
                     className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
-                    style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', borderColor: 'rgba(34,197,94,0.3)' }}>
+                    style={{ background: 'rgb(var(--success) / 0.1)', color: 'rgb(var(--primary))', borderColor: 'rgb(var(--success) / 0.3)' }}>
                     <UserCheck className="w-4 h-4" />
                     {habilitando === inc.id ? '...' : 'Habilitar'}
                   </button>

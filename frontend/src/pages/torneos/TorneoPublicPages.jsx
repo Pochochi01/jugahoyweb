@@ -215,7 +215,7 @@ export function TorneoTicketPage() {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d');
     const img = (src) => new Promise((ok) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
-    g.fillStyle = '#0a0e1a'; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgb(var(--subtle))'; g.fillRect(0, 0, W, H);
     const ev = t.imagen_evento && await img(uploadUrl(t.imagen_evento));
     if (ev) { const h = W * 9 / 16; g.drawImage(ev, 0, 0, W, h); }
     g.fillStyle = '#fff'; g.font = 'bold 36px sans-serif'; g.fillText(t.torneo.nombre, 40, 460);

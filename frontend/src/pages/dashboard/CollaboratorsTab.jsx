@@ -120,7 +120,7 @@ function CollaboratorForm({ initial, onSave, onCancel, saving, isEdit = false })
               className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm
                 ${form.permisos[key] ? 'bg-primary/5 border-primary text-primary' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
               <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${form.permisos[key] ? 'bg-primary border-primary' : 'border-gray-300'}`}>
-                {form.permisos[key] && <Check className="w-3 h-3 text-white" />}
+                {form.permisos[key] && <Check className="w-3 h-3 text-foreground" />}
               </span>
               <input type="checkbox" className="hidden" checked={form.permisos[key]}
                 onChange={e => setPerm(key, e.target.checked)} />
@@ -263,7 +263,7 @@ function CollaboratorRow({ col, complexId, onUpdated, onDeleted }) {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-red-600">¿Eliminar definitivamente?</span>
             <button onClick={handleDelete} disabled={saving}
-              className="text-xs bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600">
+              className="text-xs bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-600">
               {saving ? '...' : 'Sí, eliminar'}
             </button>
             <button onClick={() => setConfirm(false)}

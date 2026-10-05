@@ -32,17 +32,17 @@ export default function ContactPage() {
 
           <div className="text-center mb-12" data-aos="fade-up">
             <p className="text-xs font-bold tracking-[0.2em] text-primary uppercase mb-3">Estamos para ayudarte</p>
-            <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">Contacto</h1>
+            <h1 className="text-3xl sm:text-4xl font-black text-foreground mb-2">Contacto</h1>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 sm:gap-8">
             {/* Formulario */}
             <div className="card" data-aos="fade-right">
-              <h2 className="text-lg font-bold text-white mb-6">Envianos un mensaje</h2>
+              <h2 className="text-lg font-bold text-foreground mb-6">Envianos un mensaje</h2>
 
               {error && (
                 <div className="mb-4 px-4 py-3 rounded-lg text-sm text-red-400 border"
-                  style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                  style={{ background: 'rgb(var(--danger) / 0.08)', borderColor: 'rgb(var(--danger) / 0.2)' }}>
                   {error}
                 </div>
               )}

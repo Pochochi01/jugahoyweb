@@ -149,7 +149,7 @@ function WhatsAppCard({ complexId }) {
             {webhookUrl}
           </code>
           <button type="button" onClick={copiar}
-            className="shrink-0 p-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+            className="shrink-0 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             title="Copiar">
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
           </button>
@@ -188,7 +188,7 @@ function WhatsAppCard({ complexId }) {
       {err && <p className="text-sm text-red-500">{err}</p>}
 
       <button onClick={guardar} disabled={saving}
-        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-600 text-white' : 'btn-primary'}`}>
+        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${ok ? 'bg-green-700 text-white' : 'btn-primary'}`}>
         <Save className="w-4 h-4" />
         {saving ? 'Guardando...' : ok ? '¡Guardado!' : 'Guardar número'}
       </button>
@@ -243,7 +243,7 @@ function WaProviderCard({ complexId }) {
         {[['meta', 'Meta (Cloud API)'], ['baileys', 'Baileys (WhatsApp Web)']].map(([k, l]) => (
           <button key={k} type="button" onClick={() => elegir(k)}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors
-              ${provider === k ? 'bg-primary text-white border-primary' : 'border-border hover:bg-muted'}`}>
+              ${provider === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}>
             {l}
           </button>
         ))}
@@ -377,7 +377,7 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
                 return { ...f, deporte: d.value, superficie: validas.includes(f.superficie) ? f.superficie : (validas[0] || '') };
               })}
               className={`py-2 rounded-lg border text-sm font-medium transition-colors flex items-center justify-center gap-1.5
-                ${form.deporte === d.value ? 'bg-primary text-white border-primary' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
+                ${form.deporte === d.value ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
               {d.emoji} {d.label}
             </button>
           ))}
@@ -471,7 +471,7 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
           ].map(({ val, label, icon: Icon }) => (
             <button key={String(val)} type="button" onClick={() => setForm(f => ({ ...f, techada: val }))}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-colors
-                ${form.techada === val ? 'bg-primary text-white border-primary' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
+                ${form.techada === val ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
               <Icon className="w-4 h-4" /> {label}
             </button>
           ))}
@@ -489,7 +489,7 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
                 <button type="button" onClick={() => toggleDur(d.value)}
                   className={`flex items-center gap-2 flex-1 text-sm font-medium text-left transition-colors ${sel ? 'text-primary' : 'text-muted-foreground'}`}>
                   <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? 'bg-primary border-primary' : 'border-gray-300'}`}>
-                    {sel && <Check className="w-3 h-3 text-white" />}
+                    {sel && <Check className="w-3 h-3 text-foreground" />}
                   </span>
                   {d.label}
                 </button>
@@ -663,7 +663,7 @@ function FieldRow({ field, complexId, onUpdated, onDeleted }) {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-red-600">¿Eliminar definitivamente?</span>
             <button onClick={handleDelete} disabled={saving}
-              className="text-xs bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600">
+              className="text-xs bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-600">
               {saving ? '...' : 'Sí, eliminar'}
             </button>
             <button onClick={() => setConfirm(false)}
@@ -793,7 +793,7 @@ function WaTemplatesCard({ complexId }) {
 
       <div className="space-y-2">
         {rows.map(r => (
-          <div key={r.tipo} className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div key={r.tipo} className="rounded-lg p-3" style={{ background: 'rgb(var(--foreground) / 0.03)', border: '1px solid rgb(var(--foreground) / 0.08)' }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold">{WA_TIPO_LABEL[r.tipo] || r.tipo}</span>
               <label className="flex items-center gap-1.5 text-xs cursor-pointer">
@@ -979,7 +979,7 @@ export default function SettingsTab({ complexId, onUpdate, onFieldsChange, resul
 
         {/* Módulo opcional (pago) — solo administrador general */}
         {isGeneralAdmin && (
-          <div className="rounded-lg p-3.5" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}>
+          <div className="rounded-lg p-3.5" style={{ background: 'rgb(var(--info) / 0.06)', border: '1px solid rgb(var(--info) / 0.25)' }}>
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" className="mt-1 w-4 h-4 accent-primary"
                 checked={!!form.modulo_lista_recordatorios}
@@ -1038,7 +1038,7 @@ export default function SettingsTab({ complexId, onUpdate, onFieldsChange, resul
         </div>
 
         <button type="submit" disabled={saving}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${saveOk ? 'bg-green-600 text-white' : 'btn-primary'}`}>
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium transition-colors ${saveOk ? 'bg-green-700 text-white' : 'btn-primary'}`}>
           <Save className="w-4 h-4" />
           {saving ? 'Guardando...' : saveOk ? '¡Guardado!' : 'Guardar cambios'}
         </button>

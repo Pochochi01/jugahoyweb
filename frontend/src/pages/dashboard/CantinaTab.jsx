@@ -163,9 +163,9 @@ function PosView({ complexId, toast }) {
                   <div className="text-xs text-muted-foreground">{money(i.producto.precio_venta)} c/u</div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => setQty(i.producto.id, -1)} className="p-1 rounded bg-white/5 hover:bg-white/10"><Minus className="w-3 h-3" /></button>
+                  <button onClick={() => setQty(i.producto.id, -1)} className="p-1 rounded bg-muted hover:bg-muted"><Minus className="w-3 h-3" /></button>
                   <span className="w-6 text-center tabular-nums">{i.cantidad}</span>
-                  <button onClick={() => setQty(i.producto.id, +1)} className="p-1 rounded bg-white/5 hover:bg-white/10"><Plus className="w-3 h-3" /></button>
+                  <button onClick={() => setQty(i.producto.id, +1)} className="p-1 rounded bg-muted hover:bg-muted"><Plus className="w-3 h-3" /></button>
                   <button onClick={() => quitar(i.producto.id)} className="p-1 rounded text-red-400 hover:bg-red-500/10"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
@@ -425,7 +425,7 @@ function VentasView({ complexId, toast, puedeGestionar }) {
       {porMetodo.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {porMetodo.map(m => (
-            <div key={m.v} className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div key={m.v} className="flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: 'rgb(var(--foreground) / 0.03)', border: '1px solid rgb(var(--foreground) / 0.07)' }}>
               <MetodoChip metodo={m.v} />
               <span className="text-sm font-bold text-green-400">{money(m.total)}</span>
             </div>
@@ -508,9 +508,9 @@ function ReportesView({ complexId, nombre = 'Cantina' }) {
             <div className="text-xs text-muted-foreground">Ingresos turnos</div>
             {caja.turnos_por_metodo && (
               <div className="mt-2 pt-2 border-t border-border space-y-1 text-xs">
-                <div className="flex justify-between"><span className="text-muted-foreground">Efectivo</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.efectivo)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">MercadoPago</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.mercadopago)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Tarjeta</span><span className="text-white/80 tabular-nums">{money(caja.turnos_por_metodo.tarjeta)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Efectivo</span><span className="text-foreground/85 tabular-nums">{money(caja.turnos_por_metodo.efectivo)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">MercadoPago</span><span className="text-foreground/85 tabular-nums">{money(caja.turnos_por_metodo.mercadopago)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Tarjeta</span><span className="text-foreground/85 tabular-nums">{money(caja.turnos_por_metodo.tarjeta)}</span></div>
               </div>
             )}
           </div>
@@ -566,7 +566,7 @@ function Modal({ title, onClose, children }) {
       <div className="relative z-10 card w-full max-w-md max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted"><X className="w-5 h-5" /></button>
         </div>
         {children}
       </div>
@@ -616,7 +616,7 @@ export default function CantinaTab({ complexId, complex }) {
         {SUBTABS.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActive(key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-              ${active === key ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+              ${active === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
             <Icon className="w-4 h-4" /> {label}
           </button>
         ))}
@@ -632,7 +632,7 @@ export default function CantinaTab({ complexId, complex }) {
       {active === 'pedidos'   && <PedidosView complexId={complexId} clubNombre={complex?.nombre} toast={showToast} gestion={gestion} />}
 
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-xl text-sm font-medium text-white ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+        <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-xl text-sm font-medium text-foreground ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <X className="w-4 h-4" />}
           {toast.msg}
         </div>

@@ -118,7 +118,7 @@ export function ProfesorPanel() {
               <div className="flex flex-wrap gap-1">
                 {[['clases', 'Clases'], ...(tieneEscuela ? [['escuela', 'Escuela']] : []), ...(misActividades.length ? [['actividades', 'Mis escuelas y torneos']] : []), ['whatsapp', 'Mi WhatsApp']].map(([k, l]) => (
                   <button key={k} onClick={() => setModo(k)}
-                    className={`px-3 py-1.5 rounded-lg text-sm ${modo === k ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>{l}</button>
+                    className={`px-3 py-1.5 rounded-lg text-sm ${modo === k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{l}</button>
                 ))}
               </div>
             )}
@@ -204,7 +204,7 @@ function AltaClase({ slot, libres, onSave, onClose }) {
         <div className="flex gap-2">
           {[60, 90, 120].map(d => (
             <button key={d} type="button" disabled={d > 60 && !siguienteLibre} onClick={() => setDuracion(d)}
-              className={`px-3 py-1.5 rounded-lg text-sm disabled:opacity-40 ${duracion === d ? 'bg-primary text-white' : 'bg-muted'}`}>{d} min</button>
+              className={`px-3 py-1.5 rounded-lg text-sm disabled:opacity-40 ${duracion === d ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{d} min</button>
           ))}
         </div>
         <AlumnosEditor alumnos={alumnos} setAlumnos={setAlumnos} />

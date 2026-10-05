@@ -61,7 +61,7 @@ export default function EscuelaTab({ complexId }) {
         ? <EscuelaPanel key={actual.id} complexId={complexId} escuela={actual} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />
         : <Escuelas complexId={complexId} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-white ${toast.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
+        <div className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-foreground ${toast.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`}>{toast.msg}</div>
       )}
     </div>
   );
@@ -219,7 +219,7 @@ function Alumnos({ svc, categorias, avisar }) {
                     onClick={async () => { try { await svc.editarAlumno(a.id, { estado: 'activo' }); avisar('ok', `${a.nombre} quedó inscripto.`); cargar(); } catch (e) { avisar('err', errMsg(e)); } }}>
                     <CheckCircle className="w-4 h-4" /></button>
                 )}
-                <button className="p-1.5 rounded bg-green-600 text-white hover:bg-green-700" aria-label="WhatsApp" onClick={() => setWa(a)}><MessageCircle className="w-4 h-4" /></button>
+                <button className="p-1.5 rounded bg-green-700 text-white hover:bg-green-800" aria-label="WhatsApp" onClick={() => setWa(a)}><MessageCircle className="w-4 h-4" /></button>
                 <button className="p-1.5 rounded hover:bg-muted" aria-label="Copiar link del portal" title="Copiar link del portal del alumno"
                   onClick={async () => { if (await copiarTexto(a.portal_url)) avisar('ok', 'Link del portal copiado.'); }}><Link2 className="w-4 h-4" /></button>
                 <button className="p-1.5 rounded hover:bg-muted" aria-label="Editar" onClick={() => setForm(a)}><Pencil className="w-4 h-4" /></button>
@@ -356,9 +356,9 @@ function Cuotas({ svc, categorias, avisar }) {
               {p.estado === 'pendiente' ? <>
                 <button className="btn-outline text-xs !px-2 !py-1" onClick={() => cobrar(p, 'efectivo')}>Efectivo</button>
                 <button className="btn-outline text-xs !px-2 !py-1" onClick={() => cobrar(p, 'transferencia')}>Transferencia</button>
-                <button className="p-1.5 rounded bg-green-600 text-white" aria-label="Recordatorio por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'recordatorio' })}><MessageCircle className="w-4 h-4" /></button>
+                <button className="p-1.5 rounded bg-green-700 text-white" aria-label="Recordatorio por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'recordatorio' })}><MessageCircle className="w-4 h-4" /></button>
               </> : <>
-                <button className="p-1.5 rounded bg-green-600 text-white" aria-label="Comprobante por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'comprobante' })}><MessageCircle className="w-4 h-4" /></button>
+                <button className="p-1.5 rounded bg-green-700 text-white" aria-label="Comprobante por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'comprobante' })}><MessageCircle className="w-4 h-4" /></button>
                 <button className="text-xs text-red-400 hover:underline px-1" onClick={() => anular(p)}>Anular</button>
               </>}
             </div>
@@ -527,7 +527,7 @@ function Entrenadores({ svc, complexId, escuela, categorias, recargarCategorias,
               const on = p.categoriasEscuela.some(x => x.id === c.id);
               return (
                 <button key={c.id} onClick={() => toggle(p, c.id)} aria-pressed={on}
-                  className={`px-2.5 py-1 rounded-full text-xs ${on ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>{c.nombre}</button>
+                  className={`px-2.5 py-1 rounded-full text-xs ${on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>{c.nombre}</button>
               );
             })}
             {!categorias.length && <span className="text-xs text-muted-foreground">Creá categorías para asignarlas.</span>}

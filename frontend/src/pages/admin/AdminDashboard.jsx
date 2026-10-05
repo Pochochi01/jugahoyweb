@@ -40,12 +40,12 @@ function SubscriptionModal({ complex, onSave, onClose }) {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* header */}
-        <div className="bg-primary px-6 py-4 text-white flex items-start justify-between">
+        <div className="bg-primary px-6 py-4 text-primary-foreground flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold">
               {existing ? 'Editar suscripción' : 'Nueva suscripción'}
             </h2>
-            <p className="text-sm text-white/80 mt-0.5">{complex.nombre}</p>
+            <p className="text-sm text-foreground/85 mt-0.5">{complex.nombre}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20">
             <X className="w-5 h-5" />
@@ -279,7 +279,7 @@ function ComplexRow({ complex, onEdit, onToggle, onDelete, onToggleModulo, toggl
             confirm ? (
               <div className="flex items-center gap-1">
                 <button onClick={() => onDelete(complex)} disabled={deleting}
-                  className="text-xs bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600">
+                  className="text-xs bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-600">
                   {deleting ? '...' : 'Sí'}
                 </button>
                 <button onClick={() => setConfirm(false)}
@@ -454,10 +454,10 @@ export default function AdminDashboard() {
           {FILTROS.map(f => (
             <button key={f.key} onClick={() => setFiltro(f.key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-all
-                ${filtro === f.key ? 'bg-primary text-white border-primary' : 'bg-white border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
+                ${filtro === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-border text-muted-foreground hover:border-primary hover:text-primary'}`}>
               {f.label}
               <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold
-                ${filtro === f.key ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'}`}>
+                ${filtro === f.key ? 'bg-white/20 text-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {f.count}
               </span>
             </button>
@@ -519,7 +519,7 @@ export default function AdminDashboard() {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium text-white
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium text-foreground
           ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
           {toast.msg}

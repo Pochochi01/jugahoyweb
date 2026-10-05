@@ -2,85 +2,242 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   JugaHoy — tokens de diseño (ver DESIGN.md)
+   Cada color es un triplete RGB para que Tailwind pueda aplicar opacidad
+   (bg-primary/10). Tema oscuro por defecto; claro con <html data-theme="light">.
+   ═══════════════════════════════════════════════════════════════════════════ */
 @layer base {
+  :root,
+  [data-theme="dark"] {
+    color-scheme: dark;
+    /* superficies: lienzo → 2.º neutro → tarjeta → elevado */
+    --background: 7 11 20;
+    --subtle: 10 15 27;
+    --card: 13 19 33;
+    --elevated: 18 25 42;
+    --muted: 23 32 51;
+    --foreground: 230 235 243;
+    --muted-foreground: 150 162 184;
+    --border: 31 42 62;
+    --input: 14 21 37;
+    --ring: 74 222 128;
+    --shadow: 1 4 12;
+    /* marca */
+    --primary: 34 197 94;              /* relleno; texto oscuro encima (8:1) */
+    --primary-hover: 74 222 128;
+    --primary-foreground: 3 26 12;
+    --primary-soft: 34 197 94;
+    --secondary: 37 99 235;
+    --secondary-foreground: 255 255 255;
+    /* estados: aptos como texto sobre superficies oscuras */
+    --success: 74 222 128;
+    --success-foreground: 3 26 12;
+    --danger: 248 113 113;
+    --danger-foreground: 45 6 6;
+    --warning: 251 191 36;
+    --warning-foreground: 45 28 2;
+    --info: 96 165 250;
+    --info-foreground: 4 18 45;
+    --violet: 192 132 252;              /* clases de profesor */
+    --brand-juga: 67 146 56;            /* verde exacto del logo */
+    --brand-hoy: 59 130 246;            /* azul legible sobre oscuro */
+  }
+  .brand-on-dark { --brand-juga: 74 170 62; --brand-hoy: 96 155 250; --muted-foreground: 200 210 225; }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --background: 245 247 251;
+    --subtle: 237 241 247;
+    --card: 254 254 255;
+    --elevated: 254 254 255;
+    --muted: 235 239 246;
+    --foreground: 15 23 42;
+    --muted-foreground: 78 92 114;      /* 6.5:1 sobre tarjeta */
+    --border: 219 226 236;
+    --input: 254 254 255;
+    --ring: 22 163 74;
+    --shadow: 15 23 42;
+    --primary: 21 128 61;               /* verde profundo: texto blanco 5:1 y links AA */
+    --primary-hover: 22 101 52;
+    --primary-foreground: 255 255 255;
+    --primary-soft: 34 197 94;
+    --secondary: 37 99 235;
+    --secondary-foreground: 255 255 255;
+    --success: 21 128 61;
+    --success-foreground: 255 255 255;
+    --danger: 220 38 38;
+    --danger-foreground: 255 255 255;
+    --warning: 180 83 9;
+    --warning-foreground: 255 255 255;
+    --info: 37 99 235;
+    --info-foreground: 255 255 255;
+    --violet: 126 34 206;
+    --brand-juga: 54 122 45;
+    --brand-hoy: 7 37 76;               /* marino original del logo */
+  }
+
   * { @apply border-border; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    /* smooth scroll global */
-    scroll-behavior: smooth;
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
   }
-  h1, h2, h3, h4, h5, h6 { @apply font-semibold tracking-tight; }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  h1, h2, h3, h4, h5, h6 { @apply font-bold tracking-tight text-foreground; text-wrap: balance; }
+  p { text-wrap: pretty; }
 
-  /* scrollbar dark */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #060a12; }
-  ::-webkit-scrollbar-thumb { background: #1e2a3d; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #22c55e44; }
+  /* Números que se comparan (horarios, precios, contadores) alineados */
+  time, .tabular, table td, [data-numeric] { font-variant-numeric: tabular-nums; }
+
+  /* ── superficies del navegador, del color del sistema ── */
+  ::selection { background: rgb(var(--primary-soft) / 0.28); color: rgb(var(--foreground)); }
+  input, textarea, [contenteditable] { caret-color: rgb(var(--primary)); }
+  a { text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid rgb(var(--ring)); outline-offset: 2px; border-radius: 6px; }
+  :focus:not(:focus-visible) { outline: none; }
+  input[type="checkbox"], input[type="radio"] { accent-color: rgb(var(--primary)); }
+
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--border)) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 999px; border: 2px solid rgb(var(--background)); }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted-foreground) / 0.5); }
+
+  /* Al cambiar de tema no animar todo (evita el "flash" de transiciones) */
+  .theme-switching, .theme-switching * { transition: none !important; }
 }
 
 @layer components {
-
-  /* ── tipografía del wordmark (logo) ── */
+  /* ── wordmark ── */
   .font-brand { font-family: 'Poppins', system-ui, sans-serif; }
 
-  /* ── botones ── */
-  .btn-primary {
-    @apply bg-primary text-white px-6 py-2.5 rounded-lg font-semibold
-           hover:bg-primary-600 active:scale-95
-           transition-all duration-200
-           disabled:opacity-40 disabled:cursor-not-allowed;
+  /* ── botones: misma forma en toda la app; 4 variantes ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-[2.5rem] px-4 py-2 rounded-lg
+           text-sm font-semibold whitespace-nowrap select-none
+           transition-[background-color,border-color,color,box-shadow,transform] duration-160 ease-out
+           active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
-  .btn-secondary {
-    @apply bg-secondary text-white px-6 py-2.5 rounded-lg font-semibold
-           hover:opacity-90 transition-all duration-200;
-  }
-  .btn-outline {
-    @apply border border-border text-foreground px-6 py-2.5 rounded-lg font-semibold
-           hover:border-primary hover:text-primary
-           transition-all duration-200;
-  }
+  .btn-primary   { @apply btn bg-primary text-primary-foreground shadow-sm hover:bg-primary-600; }
+  .btn-secondary { @apply btn bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/90; }
+  .btn-outline   { @apply btn border border-border bg-card/40 text-foreground hover:bg-muted hover:border-foreground/20; }
+  .btn-ghost     { @apply btn text-muted-foreground hover:text-foreground hover:bg-muted; }
+  .btn-danger    { @apply btn bg-danger text-danger-foreground shadow-sm hover:bg-danger/90; }
+  .btn-lg        { @apply min-h-[3rem] px-6 text-base rounded-xl; }
+  .btn-sm        { @apply min-h-[2rem] px-3 text-xs rounded-md; }
+  /* Google: estilos oficiales claro / oscuro */
+  .btn-google    { @apply btn w-full border font-medium bg-[#ffffff] text-[#1f1f1f] border-[#dadce0] hover:bg-[#f8f9fa]; }
+  [data-theme="dark"] .btn-google, :root:not([data-theme]) .btn-google { @apply bg-[#131314] text-[#e3e3e3] border-[#8e918f] hover:bg-[#1f1f22]; }
+  .btn-icon      { @apply btn px-0 w-10 text-muted-foreground hover:text-foreground hover:bg-muted; }
 
-  /* ── card oscura ── */
+  /* ── tarjeta: solo cuando la elevación significa algo ── */
   .card {
-    @apply bg-card rounded-xl border border-border p-6
-           shadow-[0_2px_20px_rgba(0,0,0,0.4)];
+    @apply bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-card;
   }
 
-  /* ── inputs dark ── */
+  /* ── formularios: label arriba, ayuda/error abajo ── */
   .input {
-    @apply w-full bg-input border border-border rounded-lg px-3 py-2.5 text-sm
-           text-foreground placeholder-muted-foreground
-           focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
-           transition-all duration-150;
+    @apply w-full bg-input border border-border rounded-lg px-3 py-2.5 text-sm text-foreground
+           placeholder:text-muted-foreground
+           transition-[border-color,box-shadow,background-color] duration-160 ease-out
+           hover:border-foreground/25
+           focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15
+           disabled:opacity-60 disabled:cursor-not-allowed
+           aria-[invalid=true]:border-danger aria-[invalid=true]:ring-danger/15;
   }
-  .label {
-    @apply text-sm font-medium text-muted-foreground mb-1 block;
+  .label { @apply text-sm font-medium text-foreground mb-1.5 block; }
+  .hint  { @apply text-xs text-muted-foreground mt-1.5; }
+  .field-error { @apply text-xs font-medium text-danger mt-1.5; }
+
+  /* ── avisos en línea ── */
+  .alert         { @apply flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm; }
+  .alert-error   { @apply alert border-danger/30 bg-danger/10 text-danger; }
+  .alert-success { @apply alert border-success/30 bg-success/10 text-success; }
+  .alert-info    { @apply alert border-info/30 bg-info/10 text-info; }
+
+  /* ── badges semánticos ── */
+  .badge        { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap; }
+  .badge-green  { @apply badge bg-success/15 text-success; }
+  .badge-red    { @apply badge bg-danger/15 text-danger; }
+  .badge-yellow { @apply badge bg-warning/15 text-warning; }
+  .badge-blue   { @apply badge bg-info/15 text-info; }
+  .badge-neutral{ @apply badge bg-muted text-muted-foreground; }
+
+  /* ── control segmentado (vistas, filtros) ── */
+  .segmented     { @apply inline-flex items-center gap-1 rounded-xl bg-muted p-1; }
+  .segmented-item {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground
+           transition-[background-color,color,box-shadow] duration-160 ease-out hover:text-foreground
+           aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-sm
+           aria-selected:bg-card aria-selected:text-foreground aria-selected:shadow-sm;
   }
 
-  /* ── badges ── */
-  .badge-green  { @apply bg-green-500/15  text-green-400  text-xs font-medium px-2.5 py-0.5 rounded-full; }
-  .badge-red    { @apply bg-red-500/15    text-red-400    text-xs font-medium px-2.5 py-0.5 rounded-full; }
-  .badge-yellow { @apply bg-yellow-500/15 text-yellow-400 text-xs font-medium px-2.5 py-0.5 rounded-full; }
-  .badge-blue   { @apply bg-blue-500/15   text-blue-400   text-xs font-medium px-2.5 py-0.5 rounded-full; }
+  /* ── esqueleto de carga (en lugar de spinners sobre el contenido) ── */
+  .skeleton {
+    @apply rounded-lg animate-shimmer;
+    background: linear-gradient(90deg, rgb(var(--muted)) 0%, rgb(var(--muted-foreground) / 0.12) 50%, rgb(var(--muted)) 100%);
+    background-size: 200% 100%;
+  }
 
-  /* ── panel de sección ── */
+  /* ── secciones ── */
   .section-dark { @apply bg-background py-20; }
-  .section-card { @apply bg-card py-20; }
+  .section-card { @apply bg-subtle py-20; }
 }
 
 @layer utilities {
-  /* glass card effect */
+  /* Barra translúcida para encabezados fijos (efecto puntual, no decoración) */
   .glass {
-    background: rgba(13, 18, 32, 0.7);
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgb(var(--background) / 0.78);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+    backdrop-filter: saturate(140%) blur(14px);
+    border: 1px solid rgb(var(--border) / 0.7);
   }
-  /* glow effect para botones primarios */
-  .glow-green {
-    box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
-  }
-  .glow-green:hover {
-    box-shadow: 0 0 40px rgba(34, 197, 94, 0.55);
+  /* Antes era un halo de neón; ahora una sombra con desplazamiento y blur */
+  .glow-green { box-shadow: 0 8px 20px -10px rgb(var(--primary-soft) / 0.55); }
+  .glow-green:hover { box-shadow: 0 10px 24px -10px rgb(var(--primary-soft) / 0.7); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Capa de compatibilidad: colores de paleta sueltos → tokens semánticos.
+   Muchas pantallas usan text-green-400, bg-red-50, etc. Estas reglas los
+   adaptan a ambos temas sin reescribir cada archivo. En código nuevo usá
+   los tokens (text-success, bg-danger/10…) directamente.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root .text-green-300, :root .text-green-400, :root .text-green-500, :root .text-green-600, :root .text-green-700,
+:root .text-emerald-300, :root .text-emerald-400 { color: rgb(var(--success)); }
+:root .text-red-300, :root .text-red-400, :root .text-red-500, :root .text-red-600, :root .text-red-700 { color: rgb(var(--danger)); }
+:root .text-amber-300, :root .text-amber-400, :root .text-amber-500, :root .text-yellow-300, :root .text-yellow-400,
+:root .text-orange-400 { color: rgb(var(--warning)); }
+:root .text-blue-300, :root .text-blue-400, :root .text-sky-300, :root .text-sky-400, :root .text-cyan-300, :root .text-cyan-400 { color: rgb(var(--info)); }
+:root .text-slate-500, :root .text-slate-600, :root .text-gray-400, :root .text-gray-500 { color: rgb(var(--muted-foreground)); }
+:root .text-slate-700, :root .text-slate-800, :root .text-slate-900, :root .text-gray-800, :root .text-gray-900 { color: rgb(var(--foreground)); }
+:root .bg-red-50, :root .bg-red-100 { background-color: rgb(var(--danger) / 0.1); }
+:root .bg-green-50, :root .bg-green-100 { background-color: rgb(var(--success) / 0.1); }
+:root .bg-amber-50, :root .bg-yellow-50 { background-color: rgb(var(--warning) / 0.1); }
+:root .bg-blue-50 { background-color: rgb(var(--info) / 0.1); }
+:root .border-red-200, :root .border-red-300 { border-color: rgb(var(--danger) / 0.3); }
+:root .border-green-200 { border-color: rgb(var(--success) / 0.3); }
+:root .border-slate-200, :root .border-gray-200 { border-color: rgb(var(--border)); }
+:root .bg-slate-50, :root .bg-gray-50, :root .bg-slate-100, :root .bg-gray-100 { background-color: rgb(var(--muted)); }
+
+/* En tema claro, el blanco translúcido de las superficies oscuras pasa a tinta */
+[data-theme="light"] .text-white\/50, [data-theme="light"] .text-white\/60,
+[data-theme="light"] .text-white\/70 { color: rgb(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/80, [data-theme="light"] .text-white\/90 { color: rgb(var(--foreground) / 0.85); }
+[data-theme="light"] .bg-white\/5, [data-theme="light"] .bg-white\/10 { background-color: rgb(var(--muted)); }
+[data-theme="light"] .border-white\/10, [data-theme="light"] .border-white\/5 { border-color: rgb(var(--border)); }
+
+/* Movimiento reducido: sin desplazamientos ni escalas, solo cambios de estado */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

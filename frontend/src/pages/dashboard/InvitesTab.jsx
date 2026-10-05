@@ -68,7 +68,7 @@ export default function InvitesTab({ complexId }) {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-foreground ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
           {toast.msg}
         </div>
       )}
@@ -111,7 +111,7 @@ export default function InvitesTab({ complexId }) {
               </code>
               <button
                 onClick={() => handleCopy(newLink)}
-                className="shrink-0 p-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+                className="shrink-0 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
