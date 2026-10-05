@@ -23,6 +23,8 @@
 const router = require('express').Router();
 const admin = require('../controllers/escuelaController');
 const escuelas = require('../controllers/escuelasController');
+const { requireDeporteDisponible, listarDeportes } = require('../middlewares/deporteDisponible');
+const { Escuela } = require('../models');
 const mensajes = require('../controllers/escuelaMensajesController');
 const prof = require('../controllers/escuelaProfesorController');
 const portal = require('../controllers/escuelaPortalController');
@@ -65,9 +67,13 @@ p.use('/escuelas/:escuelaId/whatsapp', profesorDeEscuela, cargarEntidad('escuela
 const c = require('express').Router({ mergeParams: true });
 router.use('/club/:complexId', authenticate, requireComplexAccess, requirePermission('escuela'), requireCanchas, requireModulo('escuela'), c);
 
+c.get   ('/deportes',     listarDeportes);   // deportes con canchas habilitadas (desplegable)
 c.get   ('/escuelas',     escuelas.list);
-c.post  ('/escuelas',     escuelas.create);
-c.put   ('/escuelas/:id', escuelas.update);
+c.post  ('/escuelas',     requireDeporteDisponible({ actividad: 'escuelas' }), escuelas.create);
+c.put   ('/escuelas/:id', requireDeporteDisponible({
+  actividad: 'escuelas',
+  actual: async (req) => (await Escuela.findOne({ where: { id: req.params.id, complex_id: Number(req.params.complexId) }, attributes: ['deporte'] }))?.deporte,
+}), escuelas.update);
 c.delete('/escuelas/:id', escuelas.remove);
 
 // WhatsApp propio de la escuela (QR Baileys) → mensajes a los alumnos

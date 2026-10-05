@@ -35,6 +35,8 @@ export function torneosStaff(client, cid) {
   const b = `/torneos/club/${cid}`;
   const t = (tid) => `${b}/torneos/${tid}`;
   return {
+    // Deportes que el complejo puede usar en torneos (según sus canchas habilitadas)
+    deportes: () => client.get(`${b}/deportes`).then(r => r.deportes),
     // Teléfono propio del torneo (QR Baileys) → telefonoApi
     telefono: (tid) => telefonoTorneo(client, cid, tid),
     // Organizadores (solo admin del club)

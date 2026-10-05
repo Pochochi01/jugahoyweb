@@ -40,6 +40,10 @@ const integrations = require('../services/integrations.service');
 const notifService = require('../services/notification.service');
 const reservaPago  = require('../services/reservaPago.service');
 const actividades  = require('../services/actividadesService');
+
+// Opciones 5 y 6 del menú (escuelas, profesores y torneos) — DESHABILITADAS por ahora.
+// Para reactivarlas: CHATBOT_ACTIVIDADES=true en backend/.env y reiniciar.
+const ACTIVIDADES_ON = String(process.env.CHATBOT_ACTIVIDADES || '').toLowerCase() === 'true';
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDeporte } = require('../utils/canchas');
@@ -794,7 +798,7 @@ async function handleWebhook(req, res) {
       }
 
       // Selección numérica del menú principal (1 / 2 / 3 / 4), igual que tocar la lista.
-      if (['1', '2', '3', '4', '5', '6'].includes(text)) {
+      if (['1', '2', '3', '4', ...(ACTIVIDADES_ON ? ['5', '6'] : [])].includes(text)) {
         if (text === '5') { await _sendActividadesMenu(ctx, from); return; }
         if (text === '6') { await _sendMisActividades(ctx, from); return; }
         if (text === '1') { await _sendContactButton(ctx, from); return; }
@@ -845,12 +849,12 @@ async function handleWebhook(req, res) {
       }
 
       // "mis horarios" / "mis clases" / "mis torneos" → lo de esta persona en el club
-      if (/\bmis?\s+(horarios?|clases?|torneos?|entrenamientos?|actividades)\b/.test(text)) {
+      if (ACTIVIDADES_ON && /\bmis?\s+(horarios?|clases?|torneos?|entrenamientos?|actividades)\b/.test(text)) {
         await _sendMisActividades(ctx, from);
         return;
       }
       // "escuela de tenis", "profesores de pádel", "torneos" → catálogo del club (por deporte)
-      if (/escuela|profe|clase|torneo|entrenador|actividades/.test(text)) {
+      if (ACTIVIDADES_ON && /escuela|profe|clase|torneo|entrenador|actividades/.test(text)) {
         await _sendActividades(ctx, from, actividades.deporteDeTexto(text), _tipoActividad(text));
         return;
       }
@@ -881,6 +885,11 @@ async function handleWebhook(req, res) {
       }
       if (replyId === 'menu_misturnos') {
         await _sendMisTurnos(ctx, from);
+        return;
+      }
+      // Botones viejos de 5/6 (mensajes ya enviados) con la opción apagada → menú principal
+      if (!ACTIVIDADES_ON && (replyId === 'menu_actividades' || replyId === 'menu_mishorarios' || replyId.startsWith('act_'))) {
+        await _sendWelcome(ctx, from);
         return;
       }
       if (replyId === 'menu_actividades') {
@@ -1079,8 +1088,10 @@ async function _sendWelcome(ctx, to) {
       { id: 'menu_web',       title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
       { id: 'menu_turnos',    title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
       { id: 'menu_misturnos', title: '4. Ver mis turnos',     description: 'Consultá tus turnos agendados' },
-      { id: 'menu_actividades', title: '5. Escuelas y torneos', description: 'Escuelas, profesores y torneos' },
-      { id: 'menu_mishorarios', title: '6. Mis clases/torneos', description: 'Tus horarios de escuela y torneos' },
+      ...(ACTIVIDADES_ON ? [
+        { id: 'menu_actividades', title: '5. Escuelas y torneos', description: 'Escuelas, profesores y torneos' },
+        { id: 'menu_mishorarios', title: '6. Mis clases/torneos', description: 'Tus horarios de escuela y torneos' },
+      ] : []),
     ],
   }));
 }

@@ -8,6 +8,8 @@ export const escuelasAdmin = (cid) => {
   const b = `/escuela/club/${cid}/escuelas`;
   return {
     list:   ()        => api.get(b),
+    // Deportes con canchas habilitadas (los únicos permitidos para una escuela)
+    deportes: ()      => api.get(`/escuela/club/${cid}/deportes`).then(r => r.deportes),
     create: (d)       => api.post(b, d),
     update: (id, d)   => api.put(`${b}/${id}`, d),
     remove: (id)      => api.delete(`${b}/${id}`),

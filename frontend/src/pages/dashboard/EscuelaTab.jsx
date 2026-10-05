@@ -71,6 +71,10 @@ export default function EscuelaTab({ complexId }) {
 function Escuelas({ complexId, escuelas, recargarEscuelas, elegir, avisar }) {
   const svc = useMemo(() => escuelasAdmin(complexId), [complexId]);
   const [form, setForm] = useState(null);
+  // Solo deportes con canchas habilitadas en el complejo
+  const [deportesOk, setDeportesOk] = useState(null);
+  useEffect(() => { svc.deportes().then(ds => setDeportesOk(ds.map(d => d.value))).catch(() => setDeportesOk(null)); }, [svc]);
+  const opciones = DEPORTES.filter(([v]) => !deportesOk || deportesOk.includes(v) || v === form?.deporte);
   const set = (k, v) => setForm(x => ({ ...x, [k]: v }));
   const guardar = async (e) => {
     e.preventDefault();
@@ -88,13 +92,14 @@ function Escuelas({ complexId, escuelas, recargarEscuelas, elegir, avisar }) {
   return (
     <div className="space-y-3 max-w-3xl">
       <p className="text-xs text-muted-foreground">Cada escuela tiene su deporte, categorías, alumnos, horarios, cuotas y entrenadores. Usa solo las canchas de su deporte.</p>
+      {deportesOk && !deportesOk.length && <div className="alert-error" role="alert">El complejo no tiene canchas habilitadas: cargá o habilitá una en Configuración para abrir una escuela.</div>}
       {!escuelas.length && !form && <div className="card text-center text-sm text-muted-foreground py-6">Todavía no hay escuelas. Creá la primera (ej. "Escuela de fútbol", "Escuela de tenis").</div>}
-      {!form && <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setForm({ nombre: '', deporte: 'futbol', descripcion: '', estado: 'activa' })}><Plus className="w-4 h-4" /> Escuela</button>}
+      {!form && <button className="btn-primary text-sm flex items-center gap-1" disabled={deportesOk && !deportesOk.length} onClick={() => setForm({ nombre: '', deporte: deportesOk?.[0] || 'futbol', descripcion: '', estado: 'activa' })}><Plus className="w-4 h-4" /> Escuela</button>}
       {form && (
         <form onSubmit={guardar} className="card grid sm:grid-cols-2 gap-2">
           <input className="input" placeholder="Nombre (ej. Escuela de tenis)" value={form.nombre} onChange={e => set('nombre', e.target.value)} required minLength={3} />
           <select className="input" value={form.deporte} onChange={e => set('deporte', e.target.value)} aria-label="Deporte">
-            {DEPORTES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {opciones.map(([v, l]) => <option key={v} value={v}>{l}{deportesOk && !deportesOk.includes(v) ? ' (sin canchas habilitadas)' : ''}</option>)}
           </select>
           <textarea className="input sm:col-span-2" rows={2} placeholder="Descripción (se muestra en la web)" value={form.descripcion || ''} onChange={e => set('descripcion', e.target.value)} />
           {form.id && (

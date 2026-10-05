@@ -104,6 +104,8 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
 // ── Datos + imagen del evento ─────────────────────────────────
 function DatosSeccion({ svc, torneo, onSaved }) {
   const [subiendo, setSubiendo] = useState(false);
+  const [deportes, setDeportes] = useState(null);
+  useEffect(() => { svc.deportes().then(setDeportes).catch(() => setDeportes(null)); }, [svc]);
   const subir = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -112,7 +114,7 @@ function DatosSeccion({ svc, torneo, onSaved }) {
   };
   return (
     <div className="grid lg:grid-cols-[1fr_280px] gap-5">
-      <TorneoForm key={torneo.updatedAt} initial={torneo} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
+      <TorneoForm key={`${torneo.updatedAt}-${deportes ? 'd' : 'x'}`} initial={torneo} deportes={deportes} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
         onSave={async (d) => onSaved(await svc.update(torneo.id, d))} />
       <div className="card space-y-3 h-fit">
         <div className="font-semibold text-sm">Imagen del evento</div>

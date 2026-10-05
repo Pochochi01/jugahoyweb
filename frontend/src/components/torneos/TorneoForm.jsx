@@ -16,28 +16,49 @@ const Campo = ({ label, children }) => (
   </label>
 );
 
-/** Alta / edición de los datos de un torneo. `bloqueado` = fixture armado. */
-export default function TorneoForm({ initial, onSave, onCancel, bloqueado = false }) {
-  const [f, setF] = useState({ ...INICIAL, ...initial });
+const DEPORTE_TXT = { futbol: 'fútbol', padel: 'pádel', tenis: 'tenis', basquet: 'básquet', voley: 'vóley', squash: 'squash', otro: 'otros deportes' };
+export const mensajeSinDeporte = (d) => `El complejo no tiene canchas de ${DEPORTE_TXT[d] || d}, no puede organizar torneos de ${DEPORTE_TXT[d] || d}.`;
+
+/**
+ * Alta / edición de los datos de un torneo. `bloqueado` = fixture armado.
+ * `deportes` = deportes con canchas habilitadas en el complejo ([{ value, label }]):
+ * el desplegable solo ofrece esos. Al editar un torneo cuyo deporte ya no tiene
+ * canchas, se muestra igual (marcado) para no cambiarlo sin querer.
+ */
+export default function TorneoForm({ initial, onSave, onCancel, bloqueado = false, deportes = null }) {
+  const disponibles = deportes ? deportes.map(d => d.value) : Object.keys(DEPORTES_TORNEO);
+  const [f, setF] = useState(() => ({ ...INICIAL, deporte: disponibles[0] || INICIAL.deporte, ...initial }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const num = (k) => (e) => set(k, e.target.value === '' ? '' : Number(e.target.value));
 
+  const sinCanchas = deportes && !disponibles.includes(f.deporte);
   const submit = async (e) => {
     e.preventDefault();
+    // Misma regla que el backend: solo deportes con canchas en el complejo
+    if (sinCanchas && f.deporte !== initial?.deporte) { setError(mensajeSinDeporte(f.deporte)); return; }
     setSaving(true); setError('');
     try { await onSave(f); } catch (err) { setError(errMsg(err)); } finally { setSaving(false); }
   };
 
   return (
     <form onSubmit={submit} className="card space-y-4">
+      {deportes && deportes.length === 0 && (
+        <div className="alert-error" role="alert">El complejo no tiene canchas habilitadas: cargá o habilitá una en Configuración para organizar torneos.</div>
+      )}
+      {deportes && deportes.length > 0 && !bloqueado && (
+        <p className="hint !mt-0">Deportes disponibles según tus canchas: {deportes.map(d => DEPORTES_TORNEO[d.value] || d.value).join(', ')}.</p>
+      )}
       <div className="grid md:grid-cols-2 gap-4">
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <Campo label="Nombre del torneo"><input className="input" value={f.nombre} onChange={e => set('nombre', e.target.value)} required /></Campo>
           <Campo label="Deporte">
-            <select className="input" value={f.deporte} disabled={bloqueado} onChange={e => set('deporte', e.target.value)}>
-              {Object.entries(DEPORTES_TORNEO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <select className="input" value={f.deporte} disabled={bloqueado || (deportes && !deportes.length)}
+              onChange={e => { set('deporte', e.target.value); setError(''); }}
+              aria-invalid={sinCanchas && f.deporte !== initial?.deporte ? true : undefined}>
+              {disponibles.map(k => <option key={k} value={k}>{DEPORTES_TORNEO[k] || k}</option>)}
+              {sinCanchas && <option value={f.deporte}>{DEPORTES_TORNEO[f.deporte] || f.deporte} (sin canchas habilitadas)</option>}
             </select>
           </Campo>
         </div>

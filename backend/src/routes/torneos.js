@@ -18,6 +18,8 @@
  *   POST /organizador/login
  *
  * Staff del club (admin / colaborador con permiso 'torneos' / organizador):
+ *   GET /club/:complexId/deportes   deportes que el complejo puede usar en torneos (según sus canchas)
+ *   POST/PUT torneos validan con requireDeporteDisponible (400 DEPORTE_NO_DISPONIBLE)
  *   /club/:complexId/torneos/:torneoId/whatsapp[/conectar|/destinatarios|/enviar]   teléfono propio del torneo
  *   /club/:complexId/...  (ver abajo)
  */
@@ -37,6 +39,7 @@ const ranking     = require('../controllers/torneoRankingController');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
 const { requireCanchas } = require('../middlewares/canchas');
 const { rutasTelefono } = require('../controllers/entityPhoneController');
+const { requireDeporteDisponible, listarDeportes } = require('../middlewares/deporteDisponible');
 const { cargarEntidad } = require('../middlewares/entidadTelefono');
 
 // ── Upload de la imagen del evento ────────────────────────────
@@ -88,10 +91,11 @@ club.delete('/ranking/:id', ranking.remove);
 club.post('/tickets/validar', inscr.validarTicket);
 
 // Torneos
+club.get ('/deportes',                        listarDeportes);   // deportes con canchas habilitadas (desplegable)
 club.get ('/torneos',                         torneos.list);
-club.post('/torneos',                         torneos.create);
+club.post('/torneos',                         requireDeporteDisponible({ actividad: 'torneos' }), torneos.create);
 club.get ('/torneos/:torneoId',               loadTorneo, torneos.get);
-club.put ('/torneos/:torneoId',               loadTorneo, torneos.update);
+club.put ('/torneos/:torneoId',               loadTorneo, requireDeporteDisponible({ actividad: 'torneos', actual: req => req.torneo.deporte }), torneos.update);
 club.delete('/torneos/:torneoId',             requireClubAdmin, loadTorneo, torneos.remove);
 club.put ('/torneos/:torneoId/estado',        loadTorneo, torneos.cambiarEstado);
 // WhatsApp propio del torneo (QR Baileys) → mensajes a los inscriptos

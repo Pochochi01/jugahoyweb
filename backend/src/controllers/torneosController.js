@@ -9,6 +9,7 @@ const path = require('path');
 const { Op } = require('sequelize');
 const { Torneo, TorneoCancha, TorneoPareja, Field, Profesor } = require('../models');
 const { DEPORTES } = require('../models/Escuela');
+const { deportesDisponibles } = require('../utils/deportesComplejo');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
 
@@ -70,6 +71,7 @@ async function list(req, res) {
     });
     res.json({
       habilitado: await clubTieneDeporte(req.clubId),
+      deportes_disponibles: await deportesDisponibles(req.clubId),
       torneos: torneos.map(t => ({
         ...t.toJSON(),
         inscriptas: conteos.filter(c => c.torneo_id === t.id && ['pendiente', 'pagado'].includes(c.estado_pago)).reduce((a, c) => a + Number(c.n), 0),
@@ -85,11 +87,8 @@ async function get(req, res) {
 
 async function create(req, res) {
   try {
+    // El deporte ya fue validado contra las canchas del complejo (middleware requireDeporteDisponible)
     const data = validarTorneo(req.body);
-    data.deporte = data.deporte || 'padel';
-    if (!(await clubTieneDeporte(req.clubId, data.deporte))) {
-      return res.status(400).json({ message: `El club no tiene canchas de ${data.deporte} activas: no puede organizar ese torneo.` });
-    }
     const torneo = await Torneo.create({ ...data, id_tenant: req.clubId, estado: 'borrador' });
     res.status(201).json(torneo);
   } catch (err) { send(res, err); }
@@ -108,8 +107,8 @@ async function update(req, res) {
       }
     }
     if (data.deporte && data.deporte !== t.deporte) {
+      // (que haya canchas del nuevo deporte lo valida requireDeporteDisponible)
       if (await TorneoCancha.count({ where: { torneo_id: t.id } })) return res.status(409).json({ message: 'Quitá las canchas asignadas antes de cambiar el deporte.' });
-      if (!(await clubTieneDeporte(req.clubId, data.deporte))) return res.status(400).json({ message: `El club no tiene canchas de ${data.deporte} activas.` });
     }
     await t.update(data);
     res.json(t);

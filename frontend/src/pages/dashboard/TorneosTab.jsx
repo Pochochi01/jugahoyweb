@@ -47,13 +47,13 @@ export function ListaTorneos({ svc, onOpen }) {
   return (
     <div className="space-y-4">
       {!data.habilitado && (
-        <div className="card text-sm text-amber-400">El complejo no tiene canchas activas: agregalas en Configuración para organizar torneos.</div>
+        <div className="alert-error" role="alert">El complejo no tiene canchas habilitadas: agregalas en Configuración para organizar torneos.</div>
       )}
       {data.habilitado && !creando && (
         <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setCreando(true)}><Plus className="w-4 h-4" /> Nuevo torneo</button>
       )}
       {creando && (
-        <TorneoForm onCancel={() => setCreando(false)} onSave={async (d) => {
+        <TorneoForm deportes={data.deportes_disponibles || []} onCancel={() => setCreando(false)} onSave={async (d) => {
           const t = await svc.create(d); setCreando(false); onOpen(t.id);
         }} />
       )}

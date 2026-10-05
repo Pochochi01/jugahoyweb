@@ -9,7 +9,7 @@
  * Categorías, alumnos, horarios, cuotas y avisos se gestionan por escuela
  * (escuelaController con ?escuela_id=).
  */
-const { Escuela, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaProfesor, Field } = require('../models');
+const { Escuela, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaProfesor } = require('../models');
 const { DEPORTES } = require('../models/Escuela');
 const svc = require('../services/escuela/escuelaService');
 
@@ -39,11 +39,8 @@ function validar(b, actual = {}) {
   return d;
 }
 
-async function exigirCanchasDelDeporte(complexId, deporte) {
-  if (!(await Field.count({ where: { complex_id: complexId, deporte } }))) {
-    throw svc.httpError(400, `El complejo no tiene canchas de ${svc.DEPORTE_TXT[deporte] || deporte}: cargá una para abrir esta escuela.`);
-  }
-}
+// Que el complejo tenga canchas habilitadas del deporte lo valida el middleware
+// requireDeporteDisponible en las rutas (misma regla que los torneos).
 
 /** GET /escuelas → escuelas del complejo con totales. */
 const list = handler(async (req, res) => {
@@ -70,7 +67,6 @@ const list = handler(async (req, res) => {
 
 const create = handler(async (req, res) => {
   const d = validar(req.body || {});
-  await exigirCanchasDelDeporte(cid(req), d.deporte);
   res.status(201).json(await Escuela.create({ ...d, complex_id: cid(req) }));
 });
 
@@ -89,7 +85,6 @@ const update = handler(async (req, res) => {
     if (catIds.length && await EscuelaHorario.count({ where: { categoria_id: catIds } })) {
       throw svc.httpError(409, 'La escuela tiene horarios cargados: borralos antes de cambiar el deporte.');
     }
-    await exigirCanchasDelDeporte(cid(req), d.deporte);
   }
   await e.update(d);
   res.json(e);
