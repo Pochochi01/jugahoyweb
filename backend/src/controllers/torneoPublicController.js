@@ -18,7 +18,7 @@ const VISIBLE = { [Op.notIn]: ['borrador'] };
 
 async function torneoVisible(id) {
   const t = await Torneo.findOne({
-    where: { id, estado: VISIBLE },
+    where: { id, estado: VISIBLE, deporte: 'padel' },
     include: [{ model: Complex, as: 'club', attributes: ['id', 'nombre', 'ciudad', 'direccion'] }],
   });
   if (!t) throw svc.httpError(404, 'Torneo no encontrado');
@@ -28,9 +28,8 @@ async function torneoVisible(id) {
 /** GET /public/club/:complexId — torneos del club (y de todos si no se indica). */
 async function listar(req, res) {
   try {
-    const where = { estado: VISIBLE };
+    const where = { estado: VISIBLE, deporte: 'padel' };   // torneos exclusivos de pádel
     if (req.params.complexId) where.id_tenant = Number(req.params.complexId);
-    if (req.query.deporte) where.deporte = String(req.query.deporte);
     const torneos = await Torneo.findAll({
       where,
       include: [{ model: Complex, as: 'club', attributes: ['id', 'nombre', 'ciudad'] }],

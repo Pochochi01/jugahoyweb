@@ -18,8 +18,8 @@
  *   POST /organizador/login
  *
  * Staff del club (admin / colaborador con permiso 'torneos' / organizador):
- *   GET /club/:complexId/deportes   deportes que el complejo puede usar en torneos (según sus canchas)
- *   POST/PUT torneos validan con requireDeporteDisponible (400 DEPORTE_NO_DISPONIBLE)
+ *   Torneos EXCLUSIVOS de pádel: /club/* exige canchas de pádel (requireModulo('torneos'));
+ *   POST fija deporte='padel' y valida canchas (requireTorneoPadel); PUT no cambia el deporte.
  *   /club/:complexId/torneos/:torneoId/whatsapp[/conectar|/destinatarios|/enviar]   teléfono propio del torneo
  *   /club/:complexId/...  (ver abajo)
  */
@@ -37,9 +37,9 @@ const comunicacion = require('../controllers/torneoComunicacionController');
 const pub         = require('../controllers/torneoPublicController');
 const ranking     = require('../controllers/torneoRankingController');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
-const { requireCanchas } = require('../middlewares/canchas');
+const { requireCanchas, requireModulo } = require('../middlewares/canchas');
 const { rutasTelefono } = require('../controllers/entityPhoneController');
-const { requireDeporteDisponible, listarDeportes } = require('../middlewares/deporteDisponible');
+const { requireTorneoPadel, deporteFijoPadel } = require('../middlewares/torneoPadel');
 const { cargarEntidad } = require('../middlewares/entidadTelefono');
 
 // ── Upload de la imagen del evento ────────────────────────────
@@ -72,7 +72,8 @@ router.post('/organizador/login', orgs.login);
 
 // ── Staff del club ────────────────────────────────────────────
 const club = require('express').Router({ mergeParams: true });
-router.use('/club/:complexId', authTorneoStaff, requireCanchas, club);
+// Torneos = solo pádel: sin canchas de pádel el módulo responde 403 (MODULO_NO_HABILITADO)
+router.use('/club/:complexId', authTorneoStaff, requireCanchas, requireModulo('torneos'), club);
 
 club.get('/organizador/me', orgs.me);
 
@@ -91,11 +92,10 @@ club.delete('/ranking/:id', ranking.remove);
 club.post('/tickets/validar', inscr.validarTicket);
 
 // Torneos
-club.get ('/deportes',                        listarDeportes);   // deportes con canchas habilitadas (desplegable)
 club.get ('/torneos',                         torneos.list);
-club.post('/torneos',                         requireDeporteDisponible({ actividad: 'torneos' }), torneos.create);
+club.post('/torneos',                         requireTorneoPadel, torneos.create);
 club.get ('/torneos/:torneoId',               loadTorneo, torneos.get);
-club.put ('/torneos/:torneoId',               loadTorneo, requireDeporteDisponible({ actividad: 'torneos', actual: req => req.torneo.deporte }), torneos.update);
+club.put ('/torneos/:torneoId',               loadTorneo, deporteFijoPadel, torneos.update);
 club.delete('/torneos/:torneoId',             requireClubAdmin, loadTorneo, torneos.remove);
 club.put ('/torneos/:torneoId/estado',        loadTorneo, torneos.cambiarEstado);
 // WhatsApp propio del torneo (QR Baileys) → mensajes a los inscriptos

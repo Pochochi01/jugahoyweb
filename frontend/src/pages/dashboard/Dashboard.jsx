@@ -36,8 +36,8 @@ const TABS = [
   // "Cantina" con canchas / "Almacén" sin canchas (ver utils/modoComplejo)
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
   // modulo: visible solo si las canchas lo habilitan (utils/modoComplejo → modulosComplejo)
-  //   torneos → pádel · profesores → pádel o fútbol · escuela → fútbol habilitado
-  { key: 'torneos',       label: 'Torneos',       icon: Trophy,      permiso: 'torneos',    modulo: 'torneos' },
+  //   torneos → solo con canchas de pádel · profesores / escuela → alguna cancha habilitada
+  { key: 'torneos',       label: 'Torneos Pádel', icon: Trophy,      permiso: 'torneos',    modulo: 'torneos' },
   { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', modulo: 'profesores' },
   { key: 'escuela',       label: 'Escuelas',      icon: Goal,        permiso: 'escuela',    modulo: 'escuela' },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas', deportivo: true },

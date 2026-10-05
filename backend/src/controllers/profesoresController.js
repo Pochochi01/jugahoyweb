@@ -158,7 +158,7 @@ async function getAsignaciones(req, res) {
     if (!p) return res.status(404).json({ message: 'Profesor no encontrado' });
     const [escuelas, torneos, mias, misTorneos] = await Promise.all([
       Escuela.findAll({ where: { complex_id: req.clubId }, attributes: ['id', 'nombre', 'deporte', 'estado'], order: [['nombre', 'ASC']] }),
-      Torneo.findAll({ where: { id_tenant: req.clubId }, attributes: ['id', 'nombre', 'deporte', 'estado', 'fecha_inicio'], order: [['fecha_inicio', 'DESC']] }),
+      Torneo.findAll({ where: { id_tenant: req.clubId, deporte: 'padel' }, attributes: ['id', 'nombre', 'deporte', 'estado', 'fecha_inicio'], order: [['fecha_inicio', 'DESC']] }),
       EscuelaProfesor.findAll({ where: { profesor_id: p.id }, raw: true }),
       TorneoProfesor.findAll({ where: { profesor_id: p.id }, raw: true }),
     ]);
@@ -189,7 +189,7 @@ async function setAsignaciones(req, res) {
 
     const [escuelas, torneos] = await Promise.all([
       Escuela.findAll({ where: { id: escuelaIds, complex_id: req.clubId } }),
-      Torneo.findAll({ where: { id: torneoIds, id_tenant: req.clubId } }),
+      Torneo.findAll({ where: { id: torneoIds, id_tenant: req.clubId, deporte: 'padel' } }),
     ]);
     if (escuelas.length !== escuelaIds.length) return res.status(400).json({ message: 'Alguna escuela no pertenece a este complejo.' });
     if (torneos.length !== torneoIds.length) return res.status(400).json({ message: 'Algún torneo no pertenece a este complejo.' });

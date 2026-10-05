@@ -11,7 +11,7 @@ import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores } from './
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL,
-  errorResultado, DEPORTES_TORNEO,
+  errorResultado,
 } from '../../utils/torneos';
 
 const SECCIONES = [
@@ -104,8 +104,6 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
 // ── Datos + imagen del evento ─────────────────────────────────
 function DatosSeccion({ svc, torneo, onSaved }) {
   const [subiendo, setSubiendo] = useState(false);
-  const [deportes, setDeportes] = useState(null);
-  useEffect(() => { svc.deportes().then(setDeportes).catch(() => setDeportes(null)); }, [svc]);
   const subir = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -114,7 +112,7 @@ function DatosSeccion({ svc, torneo, onSaved }) {
   };
   return (
     <div className="grid lg:grid-cols-[1fr_280px] gap-5">
-      <TorneoForm key={`${torneo.updatedAt}-${deportes ? 'd' : 'x'}`} initial={torneo} deportes={deportes} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
+      <TorneoForm key={torneo.updatedAt} initial={torneo} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
         onSave={async (d) => onSaved(await svc.update(torneo.id, d))} />
       <div className="card space-y-3 h-fit">
         <div className="font-semibold text-sm">Imagen del evento</div>
@@ -163,7 +161,7 @@ function CanchasSeccion({ svc, torneo }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        El complejo tiene <strong className="text-foreground">{data.canchas_complejo}</strong> canchas de {(DEPORTES_TORNEO[torneo.deporte] || 'pádel').toLowerCase()}.
+        El complejo tiene <strong className="text-foreground">{data.canchas_complejo}</strong> canchas de pádel.
         Elegí las que cede al torneo y en qué horarios. Las reservas ya tomadas en esas canchas se respetan.
       </p>
       <div className="space-y-3">

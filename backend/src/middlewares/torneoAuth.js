@@ -71,7 +71,8 @@ function requireClubAdmin(req, res, next) {
 /** Carga :torneoId garantizando que pertenezca al club de la request. */
 async function loadTorneo(req, res, next) {
   try {
-    const torneo = await Torneo.findOne({ where: { id: req.params.torneoId, id_tenant: req.clubId } });
+    // Solo torneos de pádel (los torneos son exclusivos de pádel)
+    const torneo = await Torneo.findOne({ where: { id: req.params.torneoId, id_tenant: req.clubId, deporte: 'padel' } });
     if (!torneo) return res.status(404).json({ message: 'Torneo no encontrado' });
     req.torneo = torneo;
     next();

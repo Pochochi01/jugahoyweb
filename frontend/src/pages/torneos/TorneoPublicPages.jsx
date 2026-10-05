@@ -23,7 +23,7 @@ export function TorneosListPage() {
   if (!torneos) return <Loader />;
   return (
     <Wrap>
-      <h1 className="text-2xl font-bold flex items-center gap-2"><Trophy className="w-6 h-6 text-primary" /> Torneos</h1>
+      <h1 className="text-2xl font-bold flex items-center gap-2"><Trophy className="w-6 h-6 text-primary" /> Torneos de pádel</h1>
       {torneos.length === 0 && <div className="card text-center text-muted-foreground py-10">No hay torneos publicados.</div>}
       <div className="grid md:grid-cols-2 gap-3">
         {torneos.map(t => (

@@ -19,10 +19,11 @@ export const nombreComercio = (complex) => (esAlmacen(complex) ? 'Almacén' : 'C
 
 /**
  * Módulos deportivos habilitados por las canchas (mismo criterio que el backend):
- * escuelas, profesores y torneos son de cualquier deporte → basta una cancha
- * habilitada. Cada escuela/torneo usa después solo las canchas de su deporte.
+ *   escuela / profesores → al menos una cancha habilitada
+ *   torneos              → exclusivo de pádel: el complejo tiene canchas de pádel
  */
 export function modulosComplejo(complex) {
-  const alguna = (complex?.fields || []).some(f => f.activa !== false);
-  return { escuela: alguna, profesores: alguna, torneos: alguna };
+  const fields = complex?.fields || [];
+  const alguna = fields.some(f => f.activa !== false);
+  return { escuela: alguna, profesores: alguna, torneos: fields.some(f => f.deporte === 'padel') };
 }

@@ -93,8 +93,9 @@ async function profesoresPublicos(complexId, deporte = null) {
 
 /** Torneos visibles del complejo, con cupos e inscriptos. */
 async function torneosPublicos(complexId, deporte = null, { soloActivos = false } = {}) {
+  if (deporte && deporte !== 'padel') return [];   // torneos exclusivos de pádel
   const torneos = await Torneo.findAll({
-    where: { id_tenant: complexId, estado: soloActivos ? TORNEO_ACTIVO : TORNEO_VISIBLE, ...(deporte ? { deporte } : {}) },
+    where: { id_tenant: complexId, estado: soloActivos ? TORNEO_ACTIVO : TORNEO_VISIBLE, deporte: 'padel' },
     include: [{ model: Profesor, as: 'profesores', attributes: ['nombre', 'apellido'], through: { attributes: ['rol'] } }],
     order: [['fecha_inicio', 'ASC']],
   });

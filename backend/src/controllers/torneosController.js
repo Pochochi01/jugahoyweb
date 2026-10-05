@@ -9,7 +9,6 @@ const path = require('path');
 const { Op } = require('sequelize');
 const { Torneo, TorneoCancha, TorneoPareja, Field, Profesor } = require('../models');
 const { DEPORTES } = require('../models/Escuela');
-const { deportesDisponibles } = require('../utils/deportesComplejo');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
 
@@ -57,8 +56,8 @@ async function clubTieneDeporte(clubId, deporte = null) {
 // ── CRUD ──────────────────────────────────────────────────────
 async function list(req, res) {
   try {
-    const where = { id_tenant: req.clubId };
-    if (req.query.deporte) where.deporte = req.query.deporte;
+    // Torneos exclusivos de pádel: el listado nunca muestra otros deportes
+    const where = { id_tenant: req.clubId, deporte: 'padel' };
     const torneos = await Torneo.findAll({
       where,
       include: [{ model: Profesor, as: 'profesores', attributes: ['id', 'nombre', 'apellido'], through: { attributes: ['rol'] } }],
@@ -70,8 +69,7 @@ async function list(req, res) {
       group: ['torneo_id', 'estado_pago'], raw: true,
     });
     res.json({
-      habilitado: await clubTieneDeporte(req.clubId),
-      deportes_disponibles: await deportesDisponibles(req.clubId),
+      habilitado: await clubTieneDeporte(req.clubId, 'padel'),
       torneos: torneos.map(t => ({
         ...t.toJSON(),
         inscriptas: conteos.filter(c => c.torneo_id === t.id && ['pendiente', 'pagado'].includes(c.estado_pago)).reduce((a, c) => a + Number(c.n), 0),
@@ -87,8 +85,8 @@ async function get(req, res) {
 
 async function create(req, res) {
   try {
-    // El deporte ya fue validado contra las canchas del complejo (middleware requireDeporteDisponible)
-    const data = validarTorneo(req.body);
+    // Deporte fijo en pádel y canchas de pádel validadas por requireTorneoPadel
+    const data = { ...validarTorneo(req.body), deporte: 'padel' };
     const torneo = await Torneo.create({ ...data, id_tenant: req.clubId, estado: 'borrador' });
     res.status(201).json(torneo);
   } catch (err) { send(res, err); }
