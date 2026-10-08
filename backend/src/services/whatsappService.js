@@ -41,7 +41,17 @@ function isConfigured(creds) {
  * @param {object} payload — cuerpo del mensaje (sin messaging_product)
  * @param {{phoneNumberId:string, accessToken:string}} [creds] — credenciales DEL CLUB
  */
+/**
+ * Envía un mensaje del chatbot por el proveedor del club (Strategy: ver
+ * services/chat/chatService). Meta por defecto; Baileys si creds.provider='baileys'.
+ */
 async function sendMessage(payload, creds) {
+  if (creds?.provider === 'baileys') return require('./chat/chatService').adaptadorPara(creds).send(payload, creds);
+  return enviarPorMeta(payload, creds);
+}
+
+/** Envío por la Cloud API de Meta (MetaChatAdapter). */
+async function enviarPorMeta(payload, creds) {
   const body = { messaging_product: 'whatsapp', ...payload };
   const { phoneNumberId, accessToken, configured } = resolveCreds(creds);
 
@@ -438,6 +448,7 @@ function buildExtrasMessages(to) {
 }
 
 module.exports = {
+  enviarPorMeta,
   sendMessage,
   buildDaysListMessage,
   buildSchedulesListMessage,

@@ -48,6 +48,21 @@ async function conectar(clubId) {
   const sock = makeWASocket({ auth: state, printQRInTerminal: false, syncFullHistory: false });
   sesion.sock = sock;
   sock.ev.on('creds.update', saveCreds);
+  // Mensajes entrantes → chatbot del club (solo si eligió Baileys como proveedor)
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+    try {
+      const integrations = require('./integrations.service');
+      const creds = await integrations.getMetaCredentials(id);
+      if (creds.provider !== 'baileys') return;
+      const adapter = require('./chat/baileysChatAdapter');
+      const { procesarMensaje } = require('../controllers/chatbotController');
+      for (const m of messages) {
+        const msg = adapter.entrante(id, m);
+        if (msg) await procesarMensaje({ clubId: id, creds, origen: 'baileys' }, msg);
+      }
+    } catch (err) { console.error(`[Baileys] club ${id} entrante:`, err.message); }
+  });
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr) { sesion.qr = qr; sesion.estado = 'qr'; }
     if (connection === 'open') { sesion.estado = 'conectado'; sesion.qr = null; console.log(`[Baileys] club ${id} conectado`); }
@@ -99,7 +114,8 @@ async function socketListo(clubId) {
   return s.sock;
 }
 
-const jid = (tel) => `${String(tel).replace(/\D/g, '')}@s.whatsapp.net`;
+// Acepta un número o un JID completo (p. ej. …@lid de chats nuevos)
+const jid = (tel) => (String(tel).includes('@') ? String(tel) : `${String(tel).replace(/\D/g, '')}@s.whatsapp.net`);
 
 async function enviarTexto(clubId, telefono, texto) {
   const sock = await socketListo(clubId);
@@ -113,4 +129,18 @@ async function enviarImagen(clubId, telefono, imagen, caption = '') {
   return sock.sendMessage(jid(telefono), { image, caption });
 }
 
-module.exports = { isAvailable, conectar, estado, desconectar, enviarTexto, enviarImagen };
+/** Al arrancar: reabre las sesiones de los clubes que usan Baileys y tienen sesión guardada. */
+async function restaurarClubes() {
+  if (!isAvailable()) return 0;
+  const { ClubIntegration } = require('../models');
+  const filas = await ClubIntegration.findAll({ where: { wa_provider: 'baileys', activo: true }, attributes: ['club_id'] });
+  let n = 0;
+  for (const f of filas) {
+    if (fs.existsSync(path.join(AUTH_DIR, String(f.club_id), 'creds.json'))) {
+      n++; setTimeout(() => conectar(f.club_id).catch(err => console.error('[Baileys] restaurar:', err.message)), n * 1500);
+    }
+  }
+  return n;
+}
+
+module.exports = { restaurarClubes, isAvailable, conectar, estado, desconectar, enviarTexto, enviarImagen };

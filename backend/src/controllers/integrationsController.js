@@ -26,7 +26,7 @@ async function getIntegrations(req, res) {
   try {
     const clubId = Number(req.params.complexId);
     const integ  = await integrations.getIntegration(clubId);
-    const meta   = await integrations.getMetaCredentials(clubId);
+    const meta   = await integrations.getMetaCredentials(clubId, { soloMeta: true });
     const mp     = await require('../services/mercadopagoOAuth.service').estado(clubId);
 
     res.json({
@@ -125,4 +125,59 @@ async function baileysDesconectar(req, res) {
   } catch (err) { res.status(err.status || 500).json({ message: err.message }); }
 }
 
-module.exports = { getIntegrations, updateIntegrations, renewMeta, baileysEstado, baileysConectar, baileysDesconectar };
+// ── Configuración de Chatbot (administrador del complejo) ────
+/**
+ * GET /api/settings/:complexId/chatbot → proveedor elegido + estado de cada uno.
+ * Los tokens nunca se devuelven completos.
+ */
+async function getChatbot(req, res) {
+  try {
+    const clubId = Number(req.params.complexId);
+    const integ = await integrations.getIntegration(clubId);
+    const meta = await integrations.getMetaCredentials(clubId, { soloMeta: true });
+    res.json({
+      chat_provider: integ?.wa_provider || 'meta',
+      meta: {
+        configurado: meta.configured && meta.source === 'club',
+        phone_number_id: integ?.meta_phone_number_id || null,
+        access_token: mask(integ?.meta_access_token),
+        token_plataforma: !integ?.meta_access_token && Boolean(process.env.META_ACCESS_TOKEN),
+        vencido: meta.expired,
+      },
+      baileys: await baileys.estado(clubId),
+    });
+  } catch (err) { res.status(err.status || 500).json({ message: err.message }); }
+}
+
+/**
+ * PUT /api/settings/:complexId/chatbot { chat_provider, meta_phone_number_id?, meta_access_token? }
+ * Cambiar de proveedor NO borra las credenciales del otro: un club que vuelve a
+ * Meta sigue con su número y token tal cual estaban.
+ */
+async function updateChatbot(req, res) {
+  try {
+    const clubId = Number(req.params.complexId);
+    const { chat_provider, meta_phone_number_id, meta_access_token } = req.body || {};
+    if (!['meta', 'baileys'].includes(chat_provider)) return res.status(400).json({ message: 'Elegí el proveedor: Meta API o Baileys.' });
+    const integ = await integrations.getIntegration(clubId);
+    const data = { wa_provider: chat_provider };
+    if (chat_provider === 'meta') {
+      const phone = meta_phone_number_id !== undefined ? String(meta_phone_number_id || '').trim() : integ?.meta_phone_number_id;
+      if (!phone || !/^\d{5,}$/.test(phone)) return res.status(400).json({ message: 'Ingresá el Phone Number ID de Meta (numérico).' });
+      const tieneToken = (meta_access_token && String(meta_access_token).trim()) || integ?.meta_access_token || process.env.META_ACCESS_TOKEN;
+      if (!tieneToken) return res.status(400).json({ message: 'Ingresá el Access Token de Meta.' });
+      data.meta_phone_number_id = phone;
+      if (meta_access_token && String(meta_access_token).trim()) data.meta_access_token = String(meta_access_token).trim();
+    }
+    await integrations.upsertIntegration(clubId, data);
+    if (chat_provider === 'baileys') baileys.conectar(clubId).catch(() => {});   // abre la sesión (QR si no hay)
+    res.json({ ok: true, chat_provider, message: chat_provider === 'baileys'
+      ? 'Chatbot configurado con Baileys. Escaneá el QR para vincular el teléfono.'
+      : 'Chatbot configurado con la API oficial de Meta.' });
+  } catch (err) {
+    if (err.name === 'SequelizeUniqueConstraintError') return res.status(409).json({ message: 'Ese número de WhatsApp ya está asignado a otro complejo.' });
+    res.status(err.status || 500).json({ message: err.message });
+  }
+}
+
+module.exports = { getChatbot, updateChatbot, getIntegrations, updateIntegrations, renewMeta, baileysEstado, baileysConectar, baileysDesconectar };

@@ -18,6 +18,12 @@ router.get ('/:complexId/integrations',            requireComplexAccess, require
 router.put ('/:complexId/integrations',            requireComplexAccess, requireRole('general_admin'), integrationsCtrl.updateIntegrations);
 router.post('/:complexId/integrations/renew-meta', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.renewMeta);
 // Baileys (WhatsApp Web): estado + QR de vinculación, conectar, desvincular
+// Configuración de Chatbot (Meta API o Baileys): administrador del complejo y admin general
+router.get ('/:complexId/chatbot',          requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.getChatbot);
+router.put ('/:complexId/chatbot',          requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.updateChatbot);
+router.get   ('/:complexId/chatbot/baileys', requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.baileysEstado);
+router.post  ('/:complexId/chatbot/baileys', requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.baileysConectar);
+router.delete('/:complexId/chatbot/baileys', requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.baileysDesconectar);
 router.get   ('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysEstado);
 router.post  ('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysConectar);
 router.delete('/:complexId/integrations/baileys', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.baileysDesconectar);

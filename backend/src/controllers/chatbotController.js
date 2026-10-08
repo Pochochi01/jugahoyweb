@@ -769,8 +769,24 @@ async function handleWebhook(req, res) {
       return;
     }
 
-    // Contexto del tenant que se pasa a todos los helpers
-    const ctx = { clubId, creds };
+    await procesarMensaje({ clubId, creds, origen: `phone_number_id=${phoneNumberId}` }, msg);
+  } catch (err) {
+    console.error('[chatbot.webhook]', err);
+  }
+}
+
+/**
+ * Procesa UN mensaje entrante ya enrutado a su complejo, sea cual sea el
+ * proveedor (Meta Cloud API o Baileys). `msg` tiene el formato de Meta
+ * (from, type, text.body | interactive.list_reply/button_reply); el adaptador
+ * de Baileys convierte sus mensajes a ese formato. Las respuestas salen por
+ * wa.sendMessage(payload, ctx.creds), que despacha al adaptador del proveedor
+ * (services/chat/chatService.js).
+ * @param {{clubId:number, creds:object, origen:string}} ctx
+ */
+async function procesarMensaje(ctx, msg) {
+  try {
+    const { clubId } = ctx;
     const send = p => wa.sendMessage(p, ctx.creds);
 
     const from    = msg.from;   // número WhatsApp del remitente
@@ -778,7 +794,7 @@ async function handleWebhook(req, res) {
 
     // Auditoría del enrutamiento multi-tenant: qué número → qué complejo.
     const complejoNombre = (await Complex.findByPk(clubId, { attributes: ['nombre'] }).catch(() => null))?.nombre || '?';
-    console.log(`[WhatsApp] ← phone_number_id=${phoneNumberId} → complejo ${clubId} "${complejoNombre}" · de ${from} · tipo=${msgType}` +
+    console.log(`[WhatsApp] ← ${ctx.origen} → complejo ${clubId} "${complejoNombre}" · de ${from} · tipo=${msgType}` +
       (msgType === 'text' ? ` · texto="${msg.text?.body}"` : ''));
 
     // Renueva la ventana de servicio de 24 h (define texto libre vs plantilla).
@@ -1039,7 +1055,7 @@ async function handleWebhook(req, res) {
     }
 
   } catch (err) {
-    console.error('[chatbot.webhook]', err);
+    console.error('[chatbot.mensaje]', err);
   }
 }
 
@@ -1973,6 +1989,7 @@ async function _handleTextCancel(ctx, from, bookingId) {
 }
 
 module.exports = {
+  procesarMensaje,
   getDays,
   getSchedules,
   confirmBooking,

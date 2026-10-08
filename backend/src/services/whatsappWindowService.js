@@ -64,6 +64,11 @@ async function getTemplate(complexId, tipo) {
 async function enviarConVentana(complexId, telefono, { tipo, freeText, templateParams = [], creds, etiqueta = '' }) {
   const tel = soloDigitos(telefono);
   const last4 = tel.slice(-4);
+  // Baileys (WhatsApp Web) no tiene ventana de 24 h ni plantillas: texto directo
+  if (creds?.provider === 'baileys') {
+    await wa.sendMessage({ ...freeText, to: tel }, creds);
+    return { via: 'baileys' };
+  }
   const dentro = await dentroDeVentana(complexId, tel);
 
   if (dentro) {

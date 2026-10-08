@@ -69,8 +69,24 @@ function isExpired(integration) {
  * llamador decida (el webhook entrante no debe romper por un club mal configurado).
  * @returns {Promise<{phoneNumberId, accessToken, appSecret, verifyToken, configured:boolean, expired:boolean, source:'club'|'env'|'none'}>}
  */
-async function getMetaCredentials(clubId) {
+/**
+ * Credenciales de WhatsApp del club para ENVIAR. Si el club eligió Baileys como
+ * proveedor del chatbot, devuelve { provider: 'baileys', … } y wa.sendMessage
+ * usa la sesión de WhatsApp Web. Con { soloMeta: true } devuelve siempre los
+ * datos de Meta (para mostrarlos/editarlos en el panel sin perderlos).
+ */
+async function getMetaCredentials(clubId, { soloMeta = false } = {}) {
   const integ = await getIntegration(clubId);
+
+  if (!soloMeta && clubId && integ?.wa_provider === 'baileys' && integ.activo !== false) {
+    return {
+      provider: 'baileys', clubId: Number(clubId),
+      phoneNumberId: integ.meta_phone_number_id || null, accessToken: null,
+      appSecret: integ.meta_app_secret || process.env.META_APP_SECRET || null,
+      verifyToken: integ.meta_webhook_verify_token || process.env.META_WEBHOOK_VERIFY_TOKEN || null,
+      configured: true, expired: false, source: 'club', tokenSource: 'baileys',
+    };
+  }
 
   // ── Escenario A (números propios de la plataforma) ──────────────────────────
   // El NÚMERO es propio del club (su meta_phone_number_id). El access token puede

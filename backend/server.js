@@ -52,6 +52,9 @@ async function start() {
     } catch (err) {
       console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
     }
+    // Chatbot por Baileys: reabre la sesión de los clubes que eligieron ese proveedor
+    require('./src/services/baileysService').restaurarClubes()
+      .then(n => n && console.log(`[Baileys] restaurando chatbot de ${n} club(es)`)).catch(err => console.error('✗ Baileys clubes:', err.message));
     // WhatsApp propio de torneos/escuelas/profesores (Baileys): reabre las sesiones vinculadas
     require('./src/services/whatsappEntidad').iniciar().catch(err => console.error('✗ WhatsApp de entidades:', err.message));
     // MercadoPago OAuth: renovación proactiva de tokens por vencer (cada 12 h)
