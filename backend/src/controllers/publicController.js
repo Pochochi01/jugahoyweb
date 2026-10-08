@@ -524,6 +524,14 @@ async function registerComplex(req, res) {
       return res.status(400).json({ message: locCheck.reason });
     }
 
+    // El nombre del complejo es único (sin distinguir mayúsculas, tildes ni espacios)
+    const { nombreDisponible, MSG_DUPLICADO } = require('../utils/complejoNombre');
+    const libre = await nombreDisponible(nombre);
+    if (!libre.ok) {
+      await t.rollback();
+      return res.status(409).json({ code: 'NOMBRE_DUPLICADO', message: libre.existente ? MSG_DUPLICADO(libre.existente.nombre) : 'El nombre del complejo es obligatorio.' });
+    }
+
     const bcrypt  = require('bcryptjs');
     const jwt     = require('jsonwebtoken');
 

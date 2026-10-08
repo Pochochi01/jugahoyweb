@@ -1,5 +1,6 @@
 const { Complex, Field, User, Collaborator, MercadoPagoToken } = require('../models');
 const { modoDesdeCantidad, modulosDesdeCanchas } = require('../utils/modoComplejo');
+const { nombreDisponible, MSG_DUPLICADO } = require('../utils/complejoNombre');
 
 // Agrega el modo de operación (deportivo / almacén) según las canchas cargadas.
 // El frontend arma el menú con esto: sin canchas → solo "Almacén".
@@ -72,6 +73,8 @@ async function getOne(req, res) {
 
 async function create(req, res) {
   try {
+    const libre = await nombreDisponible(req.body?.nombre);
+    if (!libre.ok) return res.status(409).json({ code: 'NOMBRE_DUPLICADO', message: libre.existente ? MSG_DUPLICADO(libre.existente.nombre) : 'El nombre es obligatorio.' });
     const complex = await Complex.create({ ...req.body, owner_id: req.user.id });
     if (req.user.rol === 'player') {
       await req.user.update({ rol: 'complex_admin' });
@@ -86,6 +89,10 @@ async function update(req, res) {
   try {
     const complex = await Complex.findByPk(req.params.id);
     if (!complex) return res.status(404).json({ message: 'Complejo no encontrado' });
+    if (req.body?.nombre !== undefined) {
+      const libre = await nombreDisponible(req.body.nombre, complex.id);
+      if (!libre.ok) return res.status(409).json({ code: 'NOMBRE_DUPLICADO', message: libre.existente ? MSG_DUPLICADO(libre.existente.nombre) : 'El nombre es obligatorio.' });
+    }
     await complex.update(req.body);
     res.json(complex);
   } catch (err) {

@@ -124,6 +124,11 @@ async function updateSettings(req, res) {
       req.body.sena_porcentaje = pct;
     }
 
+    if (req.body.nombre !== undefined && req.body.nombre !== complex.nombre) {
+      const { nombreDisponible, MSG_DUPLICADO } = require('../utils/complejoNombre');
+      const libre = await nombreDisponible(req.body.nombre, complex.id);
+      if (!libre.ok) return res.status(409).json({ code: 'NOMBRE_DUPLICADO', message: libre.existente ? MSG_DUPLICADO(libre.existente.nombre) : 'El nombre es obligatorio.' });
+    }
     await complex.update(req.body);
 
     res.json(complex);

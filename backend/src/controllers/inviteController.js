@@ -14,6 +14,7 @@
  * POST /api/invites/:token/claim    — requiere auth, vincula al usuario con el complejo
  * GET  /api/invites/list/:complexId — lista invites activos de un complejo (auth requerido)
  */
+const { slugInvitacion } = require('../utils/complejoNombre');
 const crypto = require('crypto');
 const { Invite, Complex, Collaborator } = require('../models');
 
@@ -48,11 +49,16 @@ async function generateLink(req, res) {
     }
     // general_admin puede generar para cualquier complejo
 
-    // Reutilizar un link activo del complejo si ya existe (evita acumular links)
-    let invite = await Invite.findOne({ where: { complex_id, usado: false } });
+    // Link único y legible por complejo: /invite/<nombre-del-complejo>[-N].
+    // Se reutiliza el del complejo si ya existe; los links viejos (UUID) siguen
+    // siendo válidos pero ya no se entregan.
+    const complejo = await Complex.findByPk(complex_id, { attributes: ['id', 'nombre'] });
+    if (!complejo) return res.status(404).json({ message: 'Complejo no encontrado' });
+    const token = await slugInvitacion(complejo);
+    let invite = await Invite.findOne({ where: { complex_id, token, usado: false } });
     if (!invite) {
       invite = await Invite.create({
-        token      : crypto.randomUUID(),
+        token,
         complex_id,
         created_by : user.id,
         // field_id y expires_at quedan null → invite a nivel complejo, sin vencimiento

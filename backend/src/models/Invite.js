@@ -5,9 +5,9 @@ const sequelize     = require('../config/database');
 const Invite = sequelize.define('Invite', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
 
-  // Token UUID de un solo uso (viaja en la URL)
-  // Unicidad por índice `token` en BD (no usar unique inline: satura con sync)
-  token: { type: DataTypes.STRING(36), allowNull: false },
+  // Token que viaja en la URL: el slug del complejo (/invite/pinta-futbol, -2, -3…).
+  // Los links viejos con UUID siguen funcionando. Unicidad por índice `token` en BD.
+  token: { type: DataTypes.STRING(80), allowNull: false },
 
   complex_id:  { type: DataTypes.INTEGER, allowNull: false },
   // field_id ya no se usa (el invite es a nivel complejo). Se deja nullable por
