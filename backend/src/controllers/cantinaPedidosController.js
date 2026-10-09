@@ -37,7 +37,7 @@ const precios = require('../services/cantinaPreciosService');
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.code ? { code: err.code } : {}), ...(err.extra || {}) });
 const cid = (req) => Number(req.params.complexId);
-const hoy = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const hoy = () => require('../utils/time').todayAR();
 const likeAny = (q, campos) => ({ [Op.or]: campos.map(c => ({ [c]: { [Op.like]: `%${q}%` } })) });
 
 // ── Validación de contactos ───────────────────────────────────

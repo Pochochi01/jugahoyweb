@@ -27,4 +27,15 @@ function nowAR() {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${hh}:${parts.minute}` };
 }
 
-module.exports = { AR_TZ, todayAR, nowAR };
+/** 'YYYY-MM-DD' de un instante cualquiera, en Argentina (en lugar de toISOString, que es UTC). */
+function isoAR(d = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: AR_TZ }).format(d);
+}
+
+/** Suma días a un 'YYYY-MM-DD' (aritmética de calendario, sin zona horaria). */
+function sumarDias(iso, n) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+module.exports = { AR_TZ, todayAR, nowAR, isoAR, sumarDias };

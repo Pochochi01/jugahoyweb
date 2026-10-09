@@ -7,13 +7,14 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
+import { hoyAR } from '../../utils/fecha';
 
 // ── Modal de suscripción ──────────────────────────────────────────────────────
 function SubscriptionModal({ complex, onSave, onClose }) {
   const existing = complex.subscription;
   const [form, setForm] = useState({
     precio_mensual:    existing?.precio_mensual ?? '',
-    fecha_inicio:      existing?.fecha_inicio ?? new Date().toISOString().split('T')[0],
+    fecha_inicio:      existing?.fecha_inicio ?? hoyAR(),
     fecha_pago:        existing?.fecha_pago ?? '',
     fecha_vencimiento: existing?.fecha_vencimiento ?? '',
     notas:             existing?.notas ?? '',

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { isoAR } from '../../utils/fecha';
 import { statsService } from '../../services/statsService';
 import { agendaService } from '../../services/agendaService';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +12,7 @@ const money = (n) => `$${Number(n || 0).toLocaleString('es-AR')}`;
 // Rango del mes en curso (por defecto si no se ingresan fechas).
 function mesEnCurso() {
   const now = new Date();
-  const fmt = (d) => d.toISOString().split('T')[0];
+  const fmt = (d) => isoAR(d);   // fecha en hora de Argentina
   return {
     desde: fmt(new Date(now.getFullYear(), now.getMonth(), 1)),
     hasta: fmt(new Date(now.getFullYear(), now.getMonth() + 1, 0)),

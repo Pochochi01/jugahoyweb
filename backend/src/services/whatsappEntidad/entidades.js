@@ -85,7 +85,7 @@ async function destinatarios(entidad, filtro = {}) {
   if (entidad.tipo === 'profesor') {
     const desde = new Date(); desde.setDate(desde.getDate() - 60);
     const clases = await HorarioProfesor.findAll({
-      where: { profesor_id: entidad.id, estado: 'ocupado', fecha: { [Op.gte]: desde.toISOString().slice(0, 10) } },
+      where: { profesor_id: entidad.id, estado: 'ocupado', fecha: { [Op.gte]: require('../../utils/time').isoAR(desde) } },
       include: [{ model: Alumno, as: 'alumnos' }],
       order: [['fecha', 'DESC']],
     });

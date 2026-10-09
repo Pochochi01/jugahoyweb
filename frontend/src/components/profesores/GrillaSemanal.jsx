@@ -1,8 +1,9 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { hoyAR } from '../../utils/fecha';
 
 export const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-const hoy = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const hoy = () => hoyAR();
 export const sumarDias = (f, n) => {
   const d = new Date(`${f}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);

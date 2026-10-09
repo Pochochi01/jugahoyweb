@@ -11,6 +11,7 @@ import PedidosView from './cantina/PedidosView';
 import CashTab from './CashTab';
 import { esAlmacen, nombreComercio } from '../../utils/modoComplejo';
 import { Store, DollarSign as CajaIcon } from 'lucide-react';
+import { hoyAR } from '../../utils/fecha';
 
 const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 const CATEGORIAS = ['bebidas', 'comidas_rapidas', 'snacks', 'postres', 'otros'];
@@ -381,7 +382,7 @@ function StockView({ complexId, toast }) {
 function VentasView({ complexId, toast, puedeGestionar }) {
   const [ventas, setVentas] = useState([]);
   const [detalle, setDetalle] = useState(null);
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyAR();
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
   const [fMetodo, setFMetodo] = useState('');   // filtro por método
@@ -480,7 +481,8 @@ function VentasView({ complexId, toast, puedeGestionar }) {
 function ReportesView({ complexId, nombre = 'Cantina' }) {
   const [prod, setProd] = useState(null);
   const [caja, setCaja] = useState(null);
-  const mes = () => { const n = new Date(); return { desde: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10), hasta: new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().slice(0, 10) }; };
+  // Mes actual en Argentina (del 1 al último día)
+  const mes = () => { const h = hoyAR(); const [y, m] = h.split('-').map(Number); const ult = new Date(Date.UTC(y, m, 0)).getUTCDate(); return { desde: h.slice(0, 7) + '-01', hasta: h.slice(0, 7) + '-' + String(ult).padStart(2, '0') }; };
   const [rango, setRango] = useState(mes());
 
   const load = useCallback(() => {

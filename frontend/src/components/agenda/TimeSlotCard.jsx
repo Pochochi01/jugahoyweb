@@ -57,7 +57,7 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
   const isConfirmado = isOcupado && slot.booking?.estado === 'confirmado';
   // ¿Ya empezó el turno? (en vivo: no espera a recargar la agenda)
   const empezo = slot.past || (slot.booking?.hora_inicio && slot.fecha
-    && new Date(`${slot.fecha}T${slot.booking.hora_inicio}:00`) <= new Date());
+    && new Date(`${slot.fecha}T${slot.booking.hora_inicio}:00-03:00`) <= new Date());
   // Flujo: Asignado (antes de empezar) → Asistido (al empezar) ↔ Cancelado (click).
   // Una vez iniciado, "Asignado" ya no vuelve.
   const isAsistido   = isConfirmado && empezo;

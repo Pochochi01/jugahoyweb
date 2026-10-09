@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { MessageCircle, Copy, Check, X, Plus, Trash2, Pencil, CheckCircle2 } from 'lucide-react';
 import { mensajeEscuela, waLinkEscuela, copiarTexto, TIPOS_MENSAJE } from '../../utils/escuelaWhatsapp';
+import { hoyAR } from '../../utils/fecha';
 
 export const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 export const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
 export const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');
 export const errMsg = (e) => e?.message || 'Ocurrió un error';
-export const hoyISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+export const hoyISO = () => hoyAR();
 
 export const PAGO_BADGE = {
   pagado:       { label: 'Pagada',        cls: 'badge-green' },

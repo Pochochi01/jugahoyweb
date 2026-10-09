@@ -173,7 +173,7 @@ async function crearTurnoFijo(complexId, d, cat, usuarioId) {
   });
   const creados = await recurring.materializar(tpl);
   const fin = new Date(`${hoy()}T12:00:00`); fin.setDate(fin.getDate() + recurring.SEMANAS * 7);
-  const esperadas = recurring.ocurrencias(d.dia_semana, hoy(), fin.toISOString().slice(0, 10)).length;
+  const esperadas = recurring.ocurrencias(d.dia_semana, hoy(), require('../../utils/time').isoAR(fin)).length;
   return { tpl, bloqueadas: creados, salteadas: Math.max(0, esperadas - creados) };
 }
 

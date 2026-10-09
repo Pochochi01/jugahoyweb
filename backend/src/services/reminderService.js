@@ -45,8 +45,7 @@ async function enviarRecordatoriosPendientes() {
 
   // 2. Turnos confirmados sin recordatorio, para hoy o mañana
   const hoy = todayAR();
-  const mananaDt = new Date(`${hoy}T12:00:00`); mananaDt.setDate(mananaDt.getDate() + 1);
-  const manana = mananaDt.toISOString().slice(0, 10);
+  const manana = require('../utils/time').sumarDias(hoy, 1);
 
   const candidatos = await Booking.findAll({
     where: {

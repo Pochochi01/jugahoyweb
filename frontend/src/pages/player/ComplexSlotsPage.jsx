@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import BookingModal from '../../components/agenda/BookingModal';
 import SportIcon, { SportTile, SportChip, labelDeporte } from '../../components/SportIcon';
 import { waLink } from '../../utils/whatsapp';
+import { hoyAR, sumarDias } from '../../utils/fecha';
 
 /** "lunes 5 de octubre" → "Lunes 5 de octubre" (solo la primera letra en mayúscula). */
 function fechaLarga(iso) {
@@ -26,11 +27,9 @@ function proximosDias(desde, n = 7) {
   });
 }
 
-function today() { return new Date().toISOString().split('T')[0]; }
-function shiftDate(d, n) {
-  const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n);
-  return dt.toISOString().split('T')[0];
-}
+// Hoy en Argentina (no salta al día siguiente a las 21 hs, ver utils/fecha)
+function today() { return hoyAR(); }
+function shiftDate(d, n) { return sumarDias(d, n); }
 
 export default function ComplexSlotsPage() {
   const { id } = useParams();

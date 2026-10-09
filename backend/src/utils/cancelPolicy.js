@@ -28,7 +28,7 @@ function inicioDe(booking) {
   const fecha = typeof booking.fecha === 'string'
     ? booking.fecha
     : new Date(booking.fecha).toISOString().slice(0, 10);
-  const inicio = new Date(`${fecha}T${booking.hora_inicio}:00`);
+  const inicio = new Date(`${fecha}T${booking.hora_inicio}:00-03:00`);   // hora de Argentina
   const h = parseInt(String(booking.hora_inicio).split(':')[0], 10);
   if (h < 8) inicio.setDate(inicio.getDate() + 1);
   return inicio;

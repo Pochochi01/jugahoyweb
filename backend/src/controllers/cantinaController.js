@@ -386,7 +386,7 @@ async function getResumenCaja(req, res) {
 async function getDashboard(req, res) {
   try {
     const { complexId } = req.params;
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = require('../utils/time').todayAR();
     const [ventasHoy, alertasCount, activos] = await Promise.all([
       CantinaVenta.findOne({
         where: { complex_id: complexId, estado: 'completada', fecha: { [Op.gte]: new Date(hoy + 'T00:00:00'), [Op.lte]: new Date(hoy + 'T23:59:59') } },

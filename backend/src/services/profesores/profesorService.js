@@ -27,7 +27,7 @@ const MAX_DIAS = 31;
 function httpError(status, message) { const e = new Error(message); e.status = status; return e; }
 
 // ── Fechas ────────────────────────────────────────────────────
-const hoyISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const hoyISO = () => require('../../utils/time').todayAR();
 function rangoDias(desde, dias) {
   const n = Math.min(Math.max(Number(dias) || 7, 1), MAX_DIAS);
   const d = new Date(`${desde || hoyISO()}T12:00:00Z`);

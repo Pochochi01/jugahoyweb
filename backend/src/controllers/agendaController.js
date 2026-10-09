@@ -139,7 +139,7 @@ function addMinutes(hora, min) {
 function isPast(fecha, hora, horaApertura = '08:00') {
   const startH = parseInt(horaApertura.split(':')[0]);
   const [h]    = hora.split(':').map(Number);
-  const dt     = new Date(`${fecha}T${hora}:00`);
+  const dt     = new Date(`${fecha}T${hora}:00-03:00`);   // hora de Argentina (GMT-3, sin horario de verano)
   if (h < startH) dt.setDate(dt.getDate() + 1);
   return dt < new Date();
 }

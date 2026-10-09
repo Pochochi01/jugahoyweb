@@ -219,7 +219,7 @@ async function deleteField(req, res) {
       where: {
         field_id: field.id,
         estado: 'confirmado',
-        fecha: { [Op.gte]: new Date().toISOString().split('T')[0] },
+        fecha: { [Op.gte]: require('../utils/time').todayAR() },
       },
     });
     if (upcoming > 0) {

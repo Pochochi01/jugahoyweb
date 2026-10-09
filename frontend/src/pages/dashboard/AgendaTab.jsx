@@ -10,8 +10,10 @@ import TimeSlotList from '../../components/agenda/TimeSlotList';
 import BookingModal from '../../components/agenda/BookingModal';
 import LinkPagoModal from '../../components/agenda/LinkPagoModal';
 import TurnoModal from '../../components/agenda/TurnoModal';
+import { hoyAR, sumarDias } from '../../utils/fecha';
 
-function today() { return new Date().toISOString().split('T')[0]; }
+// Hoy en Argentina (no salta al día siguiente a las 21 hs, ver utils/fecha)
+function today() { return hoyAR(); }
 /** "lunes 5 de octubre de 2026" → "Lunes 5 de octubre" (+ año si no es el actual). */
 function formatDateDisplay(d) {
   const dt = new Date(d + 'T12:00:00');
@@ -21,10 +23,7 @@ function formatDateDisplay(d) {
   }).replace(',', '');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function shiftDate(d, n) {
-  const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n);
-  return dt.toISOString().split('T')[0];
-}
+function shiftDate(d, n) { return sumarDias(d, n); }
 
 // Advertencia de cancelación según cuánto falte para el inicio del turno.
 function avisoCancelacion(fecha, hora) {
