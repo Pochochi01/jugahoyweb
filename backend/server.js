@@ -52,6 +52,9 @@ async function start() {
     } catch (err) {
       console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
     }
+    // Confirmación de asistencia por WhatsApp (hora configurable por complejo)
+    try { require('./src/services/recordatorioService').iniciar(60); }
+    catch (err) { console.error('✗ Confirmación de asistencia:', err.message); }
     // Chatbot por Baileys: reabre la sesión de los clubes que eligieron ese proveedor
     require('./src/services/baileysService').restaurarClubes()
       .then(n => n && console.log(`[Baileys] restaurando chatbot de ${n} club(es)`)).catch(err => console.error('✗ Baileys clubes:', err.message));

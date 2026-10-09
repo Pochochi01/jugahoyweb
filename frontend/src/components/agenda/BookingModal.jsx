@@ -27,7 +27,7 @@ function addMinutes(hora, min) {
  *   Las de MercadoPago aparecen solas si el complejo está conectado por OAuth;
  *   los montos los calcula el servidor (seña de la cancha o % del complejo).
  */
-export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, cargarOpcionesPago, playerData = {} }) {
+export default function BookingModal({ slot, field, allSlots, onConfirm, onClose, playerMode = false, cargarOpcionesPago, playerData = {}, soloPagoOnline = false }) {
   // Duraciones que permite la cancha (default: todas)
   const fieldDuraciones = field?.duraciones_permitidas?.length
     ? field.duraciones_permitidas
@@ -74,8 +74,11 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
         .then(r => {
           setPagos(r);
           setTipoPago(prev => {
-            const sigue = r.opciones.find(o => o.tipo === prev && o.disponible);
-            return eligioPago && sigue ? prev : r.predeterminada;
+            const sigue = r.opciones.find(o => o.tipo === prev && o.disponible && !(soloPagoOnline && o.tipo === 'complejo'));
+            if (eligioPago && sigue) return prev;
+            // Incumplido: solo seña/total con Mercado Pago
+            if (soloPagoOnline) return r.opciones.find(o => o.tipo === 'seña' && o.disponible)?.tipo || r.opciones.find(o => o.tipo === 'total' && o.disponible)?.tipo || 'seña';
+            return r.predeterminada;
           });
         })
         .catch(() => setPagos(null));
@@ -252,8 +255,13 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
           <div>
             <span className="label">{playerMode ? '¿Cómo querés pagar?' : 'Modalidad de pago'}</span>
             <div className="space-y-2">
-              {/* Pagar en el complejo (offline) — siempre disponible */}
-              <button type="button" onClick={() => elegir('complejo')}
+              {soloPagoOnline && (
+                <p className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2" role="note">
+                  Por reiteradas inasistencias, este turno solo se puede reservar pagando con Mercado Pago (seña o total).
+                </p>
+              )}
+              {/* Pagar en el complejo (offline) — no disponible para incumplidos */}
+              {!soloPagoOnline && <button type="button" onClick={() => elegir('complejo')}
                 aria-pressed={tipoPago === 'complejo'}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-[background-color,border-color] duration-160 ease-out
                   ${tipoPago === 'complejo' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card hover:border-foreground/30'}`}>
@@ -263,7 +271,7 @@ export default function BookingModal({ slot, field, allSlots, onConfirm, onClose
                   <div className="text-xs text-muted-foreground">{playerMode ? 'Reservás ahora y pagás en el lugar.' : 'Queda pendiente de cobro en el lugar.'}</div>
                 </div>
                 {tipoPago === 'complejo' && <CheckCircle className="w-5 h-5 text-primary shrink-0" />}
-              </button>
+              </button>}
 
               {/* Seña / total con MercadoPago (solo si el complejo está conectado) */}
               {opcionesMP.map(o => (

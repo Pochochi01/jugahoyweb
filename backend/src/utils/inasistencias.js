@@ -186,7 +186,79 @@ async function habilitarManual(complexId, id) {
   return entry;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  LISTA GLOBAL (compartida entre todos los complejos activos)
+//  La tabla blacklist registra en qué complejo se originó cada entrada
+//  (complex_id = origen), pero el BLOQUEO vale en todos los complejos.
+// ═══════════════════════════════════════════════════════════════════════════
+const MSG_PAGO_ONLINE = 'Por reiteradas inasistencias, en este complejo solo podés reservar pagando online con Mercado Pago (seña o total), o pedirlo directamente a la cancha.';
+
+/** Complejos donde la persona tiene una entrada en la lista (para reevaluarlos). */
+async function complejosConEntrada({ userId, key }) {
+  const or = blacklistMatch({ userId, key });
+  if (!or.length) return [];
+  const filas = await Blacklist.findAll({ where: { [Op.or]: or }, attributes: ['complex_id'], raw: true });
+  return [...new Set(filas.map(f => f.complex_id))];
+}
+
+/**
+ * ¿Está la persona en la lista global? Reevalúa (alta/salida automática) cada
+ * complejo donde tiene historia + el complejo de destino.
+ * @returns {{ blocked:boolean, origenes:number[] }}
+ */
+async function evaluarBloqueoGlobal(complexIdDestino, { userId, telefono } = {}) {
+  const key = telKey(telefono);
+  if (!userId && !key) return { blocked: false, origenes: [] };
+  const ids = new Set([Number(complexIdDestino), ...(await complejosConEntrada({ userId, key }))].filter(Boolean));
+  const origenes = [];
+  for (const id of ids) {
+    const r = await evaluarBloqueoInasistencias(id, { userId, telefono });
+    if (r.blocked) origenes.push(id);
+  }
+  return { blocked: origenes.length > 0, origenes };
+}
+
+/**
+ * Regla de acceso a turnos para el complejo de destino:
+ *   - no incumplido → libre
+ *   - incumplido y el complejo cobra con Mercado Pago → puede reservar SOLO pagando online
+ *   - incumplido sin Mercado Pago → bloqueado: comunicarse con la cancha
+ * @returns {{ blocked:boolean, soloPagoOnline:boolean, incumplido:boolean, mensaje:string, whatsapp:string|null }}
+ */
+async function accesoReserva(complexId, ident = {}) {
+  const g = await evaluarBloqueoGlobal(complexId, ident);
+  const complex = await Complex.findByPk(complexId, { attributes: ['whatsapp_contacto', 'telefono'] });
+  const whatsapp = complex?.whatsapp_contacto ? String(complex.whatsapp_contacto).replace(/\D/g, '') : null;
+  if (!g.blocked) return { blocked: false, soloPagoOnline: false, incumplido: false, mensaje: null, whatsapp };
+  const mp = await require('../services/mercadopagoOAuth.service').puedeCobrar(complexId).catch(() => false);
+  return mp
+    ? { blocked: false, soloPagoOnline: true, incumplido: true, mensaje: MSG_PAGO_ONLINE, whatsapp }
+    : { blocked: true, soloPagoOnline: false, incumplido: true, mensaje: MSG_BLOQUEO, whatsapp };
+}
+
+/** Lista global de incumplidos activos (opcional: solo los originados en un complejo). */
+async function listarGlobal({ complexId } = {}) {
+  return Blacklist.findAll({
+    where: { activo: true, ...(complexId ? { complex_id: Number(complexId) } : {}) },
+    include: [{ model: Complex, as: 'complejo', attributes: ['id', 'nombre'] }],
+    order: [['updatedAt', 'DESC']],
+  });
+}
+
+/**
+ * Habilitación manual GLOBAL de una persona: desactiva todas sus entradas
+ * activas (en cualquier complejo). Solo administradores.
+ */
+async function habilitarGlobal(id) {
+  const entry = await Blacklist.findByPk(id);
+  if (!entry) return null;
+  const or = blacklistMatch({ userId: entry.user_id, key: entry.tel_key });
+  await Blacklist.update({ activo: false, habilitado_manual: true, motivo_salida: 'manual' }, { where: { activo: true, [Op.or]: or } });
+  return entry.reload();
+}
+
 module.exports = {
+  evaluarBloqueoGlobal, accesoReserva, listarGlobal, habilitarGlobal, MSG_PAGO_ONLINE,
   evaluarBloqueoInasistencias, registrarInasistencia, reevaluarTrasCorreccion,
   listarIncumplidos, habilitarManual, telKey, MSG_BLOQUEO,
 };

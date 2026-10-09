@@ -1,6 +1,7 @@
 import { Clock, User, Phone, CreditCard, XCircle, CheckCircle, Lock, AlertCircle, MessageCircle, DollarSign, GraduationCap, Trophy } from 'lucide-react';
 import NeonBorderCell from './NeonBorderCell';
 import { waLink } from '../../utils/whatsapp';
+import { EstadoConfirmacionBadge } from '../ConfirmacionAsistencia';
 
 const METODO_LABELS = {
   efectivo: 'Efectivo', transferencia: 'Transferencia',
@@ -151,6 +152,8 @@ export default function TimeSlotCard({ slot, onSelect, onManage, onCancel, onNoS
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {/* Confirmación por WhatsApp: pendiente / confirmado */}
+              {slot.booking.estado_confirmacion && <span title="Confirmación de asistencia por WhatsApp"><EstadoConfirmacionBadge estado={slot.booking.estado_confirmacion} /></span>}
               {isNoAsistido ? (
                 <>
                   <button type="button" disabled={!onCorrectNoShow}

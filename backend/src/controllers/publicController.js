@@ -6,7 +6,7 @@ const waitlist = require('../services/waitlistService');
 const { todayAR } = require('../utils/time');
 const reservaPago = require('../services/reservaPago.service');
 const { evaluarCancelacion, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
-const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
+const { accesoReserva } = require('../utils/inasistencias');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 // Fecha "hoy" en Argentina (GMT-3), no en UTC.
@@ -228,18 +228,18 @@ async function playerReserve(req, res) {
     const clientName  = (nombre_cliente?.trim()  || `${req.user.nombre} ${req.user.apellido}`).trim();
     const clientPhone = telefono_cliente?.trim()  || req.user.telefono || '';
 
-    // Bloqueo por reiteradas inasistencias (2 en un mes / 3 en 2+ meses).
-    const bloqueo = await evaluarBloqueoInasistencias(complexId, { userId: req.user.id, telefono: clientPhone });
-    if (bloqueo.blocked) {
+    // Lista GLOBAL de incumplidos (inasistencias en cualquier complejo):
+    //  - complejo con Mercado Pago → solo puede reservar pagando online (seña o total)
+    //  - sin Mercado Pago → bloqueado: debe pedir el turno a la cancha
+    const acceso = await accesoReserva(complexId, { userId: req.user.id, telefono: clientPhone });
+    const contacto = field.whatsapp_contacto ? String(field.whatsapp_contacto).replace(/\D/g, '') : acceso.whatsapp;
+    if (acceso.blocked) {
       await t.rollback();
-      const contacto = field.whatsapp_contacto
-        || (await Complex.findByPk(complexId, { attributes: ['whatsapp_contacto'] }))?.whatsapp_contacto
-        || null;
-      return res.status(403).json({
-        message: bloqueo.mensaje,
-        blocked_inasistencias: true,
-        whatsapp: contacto ? String(contacto).replace(/\D/g, '') : null,
-      });
+      return res.status(403).json({ message: acceso.mensaje, blocked_inasistencias: true, whatsapp: contacto });
+    }
+    if (acceso.soloPagoOnline && !['seña', 'total'].includes(req.body?.tipo_pago)) {
+      await t.rollback();
+      return res.status(403).json({ message: acceso.mensaje, blocked_inasistencias: true, solo_pago_online: true, whatsapp: contacto, code: 'PAGO_ONLINE_REQUERIDO' });
     }
 
     const slotsNecesarios = Math.ceil(duracion / 60);
@@ -358,15 +358,8 @@ async function playerReserve(req, res) {
 async function checkInasistencias(req, res) {
   try {
     const { complexId } = req.params;
-    const bloqueo = await evaluarBloqueoInasistencias(complexId, {
-      userId: req.user.id, telefono: req.user.telefono,
-    });
-    let whatsapp = null;
-    if (bloqueo.blocked) {
-      const complex = await Complex.findByPk(complexId, { attributes: ['whatsapp_contacto'] });
-      whatsapp = complex?.whatsapp_contacto ? String(complex.whatsapp_contacto).replace(/\D/g, '') : null;
-    }
-    res.json({ blocked: bloqueo.blocked, message: bloqueo.mensaje, whatsapp });
+    const a = await accesoReserva(complexId, { userId: req.user.id, telefono: req.user.telefono });
+    res.json({ blocked: a.blocked, solo_pago_online: a.soloPagoOnline, incumplido: a.incumplido, message: a.mensaje, whatsapp: a.whatsapp });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

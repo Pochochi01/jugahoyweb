@@ -82,6 +82,8 @@ app.use('/api/auth', googleAuthRoutes);   // GET /api/auth/google, /api/auth/goo
 app.use('/api/auth', phoneAuthRoutes);    // POST /api/auth/phone/send, /api/auth/phone/verify
 app.use('/api/complexes',     complexRoutes);
 app.use('/api/agenda',        agendaRoutes);
+app.use('/api/incumplidos', require('./routes/incumplidos'));   // lista global de inasistencias
+app.use('/api/turnos', require('./routes/turnos'));   // confirmación de asistencia por WhatsApp
 app.use('/api/operations',    operationsRoutes);
 app.use('/api/pos',           posRoutes);
 app.use('/api/settings',      settingsRoutes);

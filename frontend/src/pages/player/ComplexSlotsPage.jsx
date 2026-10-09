@@ -54,7 +54,8 @@ export default function ComplexSlotsPage() {
   const [isFav,    setIsFav]    = useState(false);
   const [favBusy,  setFavBusy]  = useState(false);
   const [toast,    setToast]    = useState(null);
-  const [bloqueo,  setBloqueo]  = useState(null);   // { message, whatsapp } por reiteradas inasistencias
+  const [bloqueo,  setBloqueo]  = useState(null);   // { message, whatsapp, pendiente? } por reiteradas inasistencias
+  const [soloPagoOnline, setSoloPagoOnline] = useState(false);   // incumplido en complejo con Mercado Pago
 
   // ── Lista de espera ──
   const [wlHabilitado, setWlHabilitado] = useState(false);
@@ -141,6 +142,13 @@ export default function ComplexSlotsPage() {
         setBloqueo({ message: b.message, whatsapp: b.whatsapp });
         return;
       }
+      if (b?.solo_pago_online) {
+        // Incumplido + complejo con MP: elegir "pagar con MP" o "contactar a la cancha"
+        setHoraModal(null);
+        setSoloPagoOnline(true);
+        setBloqueo({ message: b.message, whatsapp: b.whatsapp, pendiente: { slot, field } });
+        return;
+      }
     } catch { /* si falla el chequeo, seguimos: el backend igual valida al reservar */ }
     setHoraModal(null); // cerrar el modal de selección de cancha si estaba abierto
     setSelected({ slot: { ...slot, field_id: field.id, fecha: date }, field });
@@ -153,6 +161,7 @@ export default function ComplexSlotsPage() {
     } catch (err) {
       // Bloqueo por reiteradas inasistencias → mostrar mensaje + contacto WhatsApp
       if (err?.blocked_inasistencias) {
+        if (err.solo_pago_online) setSoloPagoOnline(true);
         setSelected(null);
         setBloqueo({ message: err.message, whatsapp: err.whatsapp });
         return;
@@ -549,6 +558,7 @@ export default function ComplexSlotsPage() {
           playerMode
           cargarOpcionesPago={(duracion) => publicService.opcionesPago(id, { field_id: selected.field.id, duracion })}
           playerData={{ nombre: `${user?.nombre} ${user?.apellido}`, telefono: telFromLink || user?.telefono }}
+          soloPagoOnline={soloPagoOnline}
         />
       )}
 
@@ -571,12 +581,21 @@ export default function ComplexSlotsPage() {
             <div className="w-14 h-14 rounded-2xl bg-danger/12 flex items-center justify-center mx-auto mb-3">
               <XCircle className="w-7 h-7 text-danger" aria-hidden="true" />
             </div>
-            <h3 id="bloqueo-titulo" className="font-bold text-lg mb-2">No podés reservar por ahora</h3>
+            <h3 id="bloqueo-titulo" className="font-bold text-lg mb-2">{bloqueo.pendiente ? 'Reserva con pago online' : 'No podés reservar por ahora'}</h3>
             <p className="text-sm text-muted-foreground mb-5">{bloqueo.message}</p>
+            {bloqueo.pendiente && (
+              <button className="btn-primary w-full mb-2" onClick={() => {
+                const { slot, field } = bloqueo.pendiente;
+                setBloqueo(null);
+                setSelected({ slot: { ...slot, field_id: field.id, fecha: date }, field });
+              }}>
+                Reservar pagando con Mercado Pago
+              </button>
+            )}
             {waLink(bloqueo.whatsapp) && (
               <a href={waLink(bloqueo.whatsapp)} target="_blank" rel="noopener noreferrer"
-                className="btn-primary w-full mb-2">
-                Comunicarme por WhatsApp
+                className={`${bloqueo.pendiente ? 'btn-outline' : 'btn-primary'} w-full mb-2`}>
+                Contactar a la cancha
               </a>
             )}
             <button onClick={() => setBloqueo(null)} className="btn-ghost w-full">

@@ -48,7 +48,7 @@ const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDeporte } = require('../utils/canchas');
 const { evaluarCancelacion, avisoAlReservar, yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
-const { evaluarBloqueoInasistencias } = require('../utils/inasistencias');
+const { accesoReserva } = require('../utils/inasistencias');
 const waitlist     = require('../services/waitlistService');
 const waWindow     = require('../services/whatsappWindowService');
 
@@ -800,6 +800,12 @@ async function procesarMensaje(ctx, msg) {
     // Renueva la ventana de servicio de 24 h (define texto libre vs plantilla).
     waWindow.registrarInbound(clubId, from).catch(() => {});
 
+    // ¿Responde a un pedido de confirmación de asistencia? (cualquier mensaje confirma;
+    // "no"/"cancelar" cancela). "cancelar #N" sigue yendo al flujo de cancelación.
+    const textoResp = msgType === 'text' ? (msg.text?.body || '') : '';
+    if (!/^\s*cancelar\s+#\d+/i.test(textoResp)
+      && await require('../services/recordatorioService').procesarRespuesta(ctx, from, textoResp)) return;
+
     // ── Mensaje de texto ───────────────────────────────────────
     if (msgType === 'text') {
       const raw  = msg.text?.body || '';
@@ -1314,12 +1320,17 @@ async function _sendDaysMenu(ctx, to) {
   const send = p => wa.sendMessage(p, ctx.creds);
 
   // Bloqueo por inasistencias: se avisa al INICIO del flujo (no al confirmar).
-  const bloqueo = await evaluarBloqueoInasistencias(ctx.clubId, { telefono: to });
-  if (bloqueo.blocked) {
-    await send({ to, type: 'text', text: { body: `⛔ ${bloqueo.mensaje}` } });
-    const complex = await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] });
-    if (complex?.whatsapp_contacto) await send(wa.buildContactCanchaMessage(to, complex.whatsapp_contacto));
+  // Lista global de incumplidos: sin Mercado Pago → contactar a la cancha;
+  // con Mercado Pago → puede seguir, pero el turno se paga online.
+  const acceso = await accesoReserva(ctx.clubId, { telefono: to });
+  if (acceso.blocked) {
+    await send({ to, type: 'text', text: { body: `⛔ ${acceso.mensaje}` } });
+    if (acceso.whatsapp) await send(wa.buildContactCanchaMessage(to, acceso.whatsapp));
     return;
+  }
+  if (acceso.soloPagoOnline) {
+    await send({ to, type: 'text', text: { body: `⚠️ ${acceso.mensaje}\n\nPodés seguir: al confirmar te enviamos el link de pago.` } });
+    if (acceso.whatsapp) await send(wa.buildContactCanchaMessage(to, acceso.whatsapp));
   }
 
   await send(wa.buildDaysListMessage(to, getNext8Days()));
@@ -1631,13 +1642,13 @@ async function _handleConfirm(ctx, from, slotRaw) {
     }
 
     // Bloqueo por reiteradas inasistencias (2 en un mes / 3 en 2+ meses).
-    const bloqueo = await evaluarBloqueoInasistencias(ctx.clubId, { telefono: from });
-    if (bloqueo.blocked) {
+    const acceso = await accesoReserva(ctx.clubId, { telefono: from });
+    ctx.soloPagoOnline = acceso.soloPagoOnline;
+    if (acceso.blocked) {
       await t.rollback();
       pendingName.delete(from);
-      await send({ to: from, type: 'text', text: { body: `⛔ ${bloqueo.mensaje}` } });
-      const contacto = field.whatsapp_contacto
-        || (await Complex.findByPk(ctx.clubId, { attributes: ['whatsapp_contacto'] }))?.whatsapp_contacto;
+      await send({ to: from, type: 'text', text: { body: `⛔ ${acceso.mensaje}` } });
+      const contacto = field.whatsapp_contacto || acceso.whatsapp;
       if (contacto) await send(wa.buildContactCanchaMessage(from, contacto));
       return;
     }
@@ -1692,7 +1703,8 @@ async function _handleConfirm(ctx, from, slotRaw) {
       metodo_pago:      'efectivo',
       tipo_pago:        'complejo',   // si elige pagar con MercadoPago se actualiza (ver _handlePago)
       monto,
-      estado:           'confirmado',
+      // Incumplido (lista global) en complejo con Mercado Pago: queda pendiente hasta que pague online
+      estado:           ctx.soloPagoOnline ? 'pendiente_pago' : 'confirmado',
       notas:            'Reserva por WhatsApp',
       user_id:          cuenta?.id || null,
       created_by:       null,
@@ -1818,9 +1830,9 @@ const PAGO_BTN = { complejo: 'complejo', 'seña': 'sena', total: 'total' };
 async function _ofrecerPago(ctx, from, booking, field) {
   const { mp_conectado, predeterminada, opciones } = await reservaPago.opcionesPago(ctx.clubId, field, Number(booking.monto));
   if (!mp_conectado) return;
-  const disponibles = opciones.filter(o => o.disponible)
+  const disponibles = opciones.filter(o => o.disponible && !(ctx.soloPagoOnline && o.tipo === 'complejo'))
     .sort((a, b) => (a.tipo === predeterminada ? -1 : b.tipo === predeterminada ? 1 : 0));
-  if (disponibles.length < 2) return;   // solo "en el complejo": no hay nada que elegir
+  if (disponibles.length < (ctx.soloPagoOnline ? 1 : 2)) return;   // solo "en el complejo": no hay nada que elegir
   const titulo = { complejo: '🏟️ En el complejo', 'seña': `💳 Seña ${fmtPesos(disponibles.find(o => o.tipo === 'seña')?.monto)}`, total: `💳 Total ${fmtPesos(Number(booking.monto))}` };
   await wa.sendMessage({
     recipient_type: 'individual', to: from, type: 'interactive',
@@ -1842,6 +1854,10 @@ async function _ofrecerPago(ctx, from, booking, field) {
 /** Respuesta al botón de pago: "en el complejo" o link de MercadoPago (seña / total). */
 async function _handlePago(ctx, from, bookingId, tipo) {
   const send = p => wa.sendMessage(p, ctx.creds);
+  if (tipo === 'complejo' && (await accesoReserva(ctx.clubId, { telefono: from })).soloPagoOnline) {
+    await send({ to: from, type: 'text', text: { body: '⚠️ Por reiteradas inasistencias este turno se paga online. Elegí seña o total con Mercado Pago.' } });
+    return;
+  }
   const booking = await Booking.findByPk(bookingId, { include: [{ model: Field, as: 'field', attributes: ['complex_id', 'nombre', 'identificador'] }] });
   const tel = (t) => String(t || '').replace(/\D/g, '').slice(-10);
   // Solo el titular (mismo WhatsApp) y solo reservas de ESTE complejo

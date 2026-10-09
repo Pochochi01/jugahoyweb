@@ -23,6 +23,7 @@ const Favorite        = require('./Favorite');
 const PushSubscription = require('./PushSubscription');
 const ClubIntegration  = require('./ClubIntegration');
 const Blacklist        = require('./Blacklist');
+const ConfiguracionChatbot = require('./ConfiguracionChatbot');
 const CantinaProducto       = require('./CantinaProducto');
 const CantinaVenta          = require('./CantinaVenta');
 const CantinaDetalleVenta   = require('./CantinaDetalleVenta');
@@ -263,6 +264,9 @@ Escuela.belongsToMany(Profesor, { through: EscuelaProfesor, foreignKey: 'escuela
 Profesor.belongsToMany(Escuela, { through: EscuelaProfesor, foreignKey: 'profesor_id', otherKey: 'escuela_id', as: 'escuelas' });
 Torneo.belongsToMany(Profesor,  { through: TorneoProfesor, foreignKey: 'torneo_id', otherKey: 'profesor_id', as: 'profesores' });
 TorneoProfesor.belongsTo(Torneo,   { foreignKey: 'torneo_id', as: 'torneo' });
+Blacklist.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complejo' });   // complejo donde se originó la entrada
+Complex.hasOne(ConfiguracionChatbot, { foreignKey: 'complex_id', as: 'configChatbot' });
+ConfiguracionChatbot.belongsTo(Complex, { foreignKey: 'complex_id', as: 'complejo' });
 EntityPhone.hasMany(EntityPhoneMensaje, { foreignKey: 'entity_phone_id', as: 'mensajes', onDelete: 'CASCADE' });
 // Entidad borrada → se cierra y elimina su teléfono vinculado (require diferido: evita ciclo)
 for (const [modelo, tipo] of [[Torneo, 'torneo'], [Escuela, 'escuela'], [Profesor, 'profesor']]) {
@@ -301,6 +305,8 @@ module.exports = {
   ClubIntegration,
   // Lista de incumplidos (inasistencias)
   Blacklist,
+  // Configuración del chatbot (confirmación de asistencia)
+  ConfiguracionChatbot,
   // Cantina
   CantinaProducto, CantinaVenta, CantinaDetalleVenta, CantinaMovimiento,
   CantinaProveedor, CantinaCliente, CantinaPedidoProveedor, CantinaPedidoCliente, CantinaItemPedido,

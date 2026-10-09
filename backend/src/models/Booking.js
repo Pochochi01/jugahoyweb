@@ -57,6 +57,13 @@ const Booking = sequelize.define('Booking', {
 
   // Recordatorio automático (2 h antes) ya enviado — evita duplicados.
   recordatorio_enviado: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+
+  // ── Confirmación de asistencia por WhatsApp (services/recordatorioService.js) ──
+  // null = no se pidió · pendiente = esperando respuesta · confirmado · cancelado (sin respuesta en plazo)
+  estado_confirmacion:     { type: DataTypes.ENUM('pendiente', 'confirmado', 'cancelado'), allowNull: true, defaultValue: null },
+  confirmacion_enviada_at: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+  confirmacion_limite:     { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+  confirmacion_tel:        { type: DataTypes.STRING(30), allowNull: true, defaultValue: null },   // número al que se pidió
 }, { tableName: 'bookings' });
 
 module.exports = Booking;

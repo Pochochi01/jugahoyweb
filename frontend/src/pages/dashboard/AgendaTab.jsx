@@ -10,6 +10,7 @@ import TimeSlotList from '../../components/agenda/TimeSlotList';
 import BookingModal from '../../components/agenda/BookingModal';
 import LinkPagoModal from '../../components/agenda/LinkPagoModal';
 import TurnoModal from '../../components/agenda/TurnoModal';
+import ConfirmacionAsistencia from '../../components/ConfirmacionAsistencia';
 import { hoyAR, sumarDias } from '../../utils/fecha';
 
 // Hoy en Argentina (no salta al día siguiente a las 21 hs, ver utils/fecha)
@@ -401,6 +402,9 @@ export default function AgendaTab({ complexId }) {
 
       {/* ── Pendientes ── */}
       <PendingPanel complexId={complexId} onUpdated={loadSlots} />
+
+      {/* ── Confirmaciones de asistencia por WhatsApp (cancelados sin confirmar) ── */}
+      <ConfirmacionAsistencia complexId={complexId} />
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between">

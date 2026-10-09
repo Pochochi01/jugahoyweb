@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isoAR } from '../../utils/fecha';
+import IncumplidosGlobal from '../../components/IncumplidosGlobal';
 import { statsService } from '../../services/statsService';
 import { agendaService } from '../../services/agendaService';
 import { useAuth } from '../../context/AuthContext';
@@ -120,43 +121,8 @@ export default function StatsTab({ complexId }) {
         </div>
       )}
 
-      {/* Lista de incumplidos — solo administradores */}
-      {isComplexAdmin && (
-        <div className="mt-8">
-          <h3 className="font-bold flex items-center gap-2 mb-3">
-            <Ban className="w-5 h-5 text-red-600" /> Lista de incumplidos
-            {incumplidos.length > 0 && <span className="badge-red text-xs">{incumplidos.length}</span>}
-          </h3>
-          {incumplidos.length === 0 ? (
-            <div className="card text-sm text-muted-foreground py-6 text-center">
-              No hay jugadores bloqueados por inasistencias.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {incumplidos.map(inc => (
-                <div key={inc.id} className="card py-3 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm">{inc.nombre || 'Sin nombre'}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {inc.telefono || inc.tel_key}
-                      {inc.user_id && <> · cuenta #{inc.user_id}</>}
-                    </div>
-                  </div>
-                  <button onClick={() => habilitar(inc)} disabled={habilitando === inc.id}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
-                    style={{ background: 'rgb(var(--success) / 0.1)', color: 'rgb(var(--primary))', borderColor: 'rgb(var(--success) / 0.3)' }}>
-                    <UserCheck className="w-4 h-4" />
-                    {habilitando === inc.id ? '...' : 'Habilitar'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            Los jugadores salen de la lista al habilitarlos manualmente, o automáticamente tras 30 días sin faltas y 2 turnos asistidos.
-          </p>
-        </div>
-      )}
+      {/* Lista GLOBAL de incumplidos — solo administradores */}
+      {isComplexAdmin && <div className="mt-8"><IncumplidosGlobal /></div>}
 
       {/* Modal: lista de turnos no asistidos */}
       {showNoShows && (
