@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { isoAR } from '../../utils/fecha';
 import IncumplidosGlobal from '../../components/IncumplidosGlobal';
+import InteligenciaAgenda from '../../components/stats/InteligenciaAgenda';
 import { statsService } from '../../services/statsService';
 import { agendaService } from '../../services/agendaService';
 import { useAuth } from '../../context/AuthContext';
@@ -120,6 +121,9 @@ export default function StatsTab({ complexId }) {
           ))}
         </div>
       )}
+
+      {/* Inteligencia de Agenda: sección nueva y separada (filtros propios) */}
+      <InteligenciaAgenda complexId={complexId} />
 
       {/* Lista GLOBAL de incumplidos — solo administradores */}
       {isComplexAdmin && <div className="mt-8"><IncumplidosGlobal /></div>}
