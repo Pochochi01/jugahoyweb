@@ -68,7 +68,7 @@ async function updateIntegrations(req, res) {
     if (wa_provider !== undefined && !['meta', 'baileys'].includes(wa_provider)) {
       return res.status(400).json({ message: 'wa_provider debe ser "meta" o "baileys".' });
     }
-    if (wa_provider === 'baileys' && !require('../config/whatsappModo').baileysHabilitado()) {
+    if (wa_provider === 'baileys' && !require('../config/whatsappModo').baileysChatbotHabilitado()) {
       return res.status(410).json({ message: require('../config/whatsappModo').MENSAJE_MODO_MANUAL, code: 'WHATSAPP_MODO_MANUAL' });
     }
 
@@ -108,7 +108,8 @@ async function renewMeta(req, res) {
 // ── Baileys (WhatsApp Web) ───────────────────────────────────
 const baileys = require('../services/baileysService');
 
-const { baileysHabilitado, CODIGO_MODO_MANUAL, MENSAJE_MODO_MANUAL } = require('../config/whatsappModo');
+// Baileys del CHATBOT del complejo (los teléfonos de entidades usan otro interruptor)
+const { baileysChatbotHabilitado: baileysHabilitado, CODIGO_MODO_MANUAL, MENSAJE_MODO_MANUAL } = require('../config/whatsappModo');
 /** Corta los endpoints de Baileys en modo manual (410). */
 const sinBaileys = (res) => res.status(410).json({ message: MENSAJE_MODO_MANUAL, code: CODIGO_MODO_MANUAL, modo: 'manual' });
 

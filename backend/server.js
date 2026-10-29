@@ -57,12 +57,17 @@ async function start() {
     catch (err) { console.error('✗ Confirmación de asistencia:', err.message); }
     // Baileys (WhatsApp Web): deshabilitado salvo WHATSAPP_BAILEYS=1 (config/whatsappModo.js).
     // En modo manual no se reabren sesiones ni se programan reconexiones.
-    if (require('./src/config/whatsappModo').baileysHabilitado()) {
+    const waModo = require('./src/config/whatsappModo');
+    // Chatbot del complejo por Baileys (QR en Configuración → Chatbot)
+    if (waModo.baileysChatbotHabilitado()) {
       require('./src/services/baileysService').restaurarClubes()
         .then(n => n && console.log(`[Baileys] restaurando chatbot de ${n} club(es)`)).catch(err => console.error('✗ Baileys clubes:', err.message));
+    }
+    // Teléfonos propios de escuelas/torneos/profesores: solo con WHATSAPP_BAILEYS=1
+    if (waModo.baileysHabilitado()) {
       require('./src/services/whatsappEntidad').iniciar().catch(err => console.error('✗ WhatsApp de entidades:', err.message));
     } else {
-      console.log('✓ WhatsApp en MODO MANUAL: Baileys deshabilitado (sin sesiones, QR ni envíos automáticos).');
+      console.log('✓ Escuelas, torneos y profesores en MODO MANUAL (WhatsApp del dispositivo).');
     }
     // MercadoPago OAuth: renovación proactiva de tokens por vencer (cada 12 h)
     try {

@@ -140,6 +140,10 @@ async function credencialesPara(clubId, modulo, opts = {}) {
     creds = creds || await integrations.getMetaCredentials(clubId);
     if (!creds?.configured) { log('número no conectado'); return bloqueadas(creds, modulo, 'sin_numero'); }
     if (creds.expired) { log('sesión inválida (token vencido)'); return bloqueadas(creds, modulo, 'sesion_invalida'); }
+    if (creds.provider === 'baileys') {
+      const est = await require('./baileysService').estado(clubId).catch(() => null);
+      if (est?.estado !== 'conectado') { log(`sesión de WhatsApp Web no conectada (${est?.estado || 'desconocido'})`); return bloqueadas(creds, modulo, 'sesion_invalida'); }
+    }
 
     if (!(await autorizado(clubId, modulo))) { log('módulo no autorizado para este número'); return bloqueadas(creds, modulo, 'modulo_no_autorizado'); }
     return { ...creds, modulo };

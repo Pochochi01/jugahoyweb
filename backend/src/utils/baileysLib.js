@@ -7,9 +7,12 @@
 let mod = null;
 let pendiente = null;
 
-const { baileysHabilitado, errorModoManual } = require('../config/whatsappModo');
+const { baileysChatbotHabilitado, errorModoManual } = require('../config/whatsappModo');
+// La librería se permite si hay algún uso habilitado (chatbot del complejo o entidades);
+// cada uso valida su propio interruptor (entidades: baileysHabilitado()).
+const baileysHabilitado = baileysChatbotHabilitado;
 
-/** true solo si está instalado Y habilitado (WHATSAPP_BAILEYS=1). */
+/** true solo si está instalado Y habilitado. */
 function instalado() {
   if (!baileysHabilitado()) return false;
   try { require.resolve('@whiskeysockets/baileys'); return true; } catch { return false; }

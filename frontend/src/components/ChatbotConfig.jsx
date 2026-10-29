@@ -120,7 +120,7 @@ export default function ChatbotConfig({ complexId }) {
         </div>
       )}
       {prov === 'baileys' && cfg.chat_provider !== 'baileys' && (
-        <p className="hint">Guardá para activar Baileys; después aparece el QR para vincular el teléfono. La configuración de Meta no se borra.</p>
+        <p className="hint">Al activar Baileys se genera el QR para vincular el teléfono del complejo. La configuración de Meta no se borra.</p>
       )}
       {prov === 'meta' && cfg.chat_provider !== 'meta' && (
         <p className="hint">Al guardar, el chatbot vuelve a la API de Meta con estos datos.</p>
@@ -130,7 +130,7 @@ export default function ChatbotConfig({ complexId }) {
       {msg.ok && <p className="text-sm text-success" role="status">{msg.ok}</p>}
       {(cambio || prov === 'meta') && (
         <button className="btn-primary" disabled={ocupado} onClick={guardar}>
-          {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar configuración
+          {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : prov === 'baileys' ? <QrCode className="w-4 h-4" /> : <Save className="w-4 h-4" />} {prov === 'baileys' ? 'Activar Baileys y generar QR' : 'Guardar configuración'}
         </button>
       )}
     </div>
