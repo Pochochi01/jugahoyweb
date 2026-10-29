@@ -68,6 +68,9 @@ async function updateIntegrations(req, res) {
     if (wa_provider !== undefined && !['meta', 'baileys'].includes(wa_provider)) {
       return res.status(400).json({ message: 'wa_provider debe ser "meta" o "baileys".' });
     }
+    if (wa_provider === 'baileys' && !require('../config/whatsappModo').baileysHabilitado()) {
+      return res.status(410).json({ message: require('../config/whatsappModo').MENSAJE_MODO_MANUAL, code: 'WHATSAPP_MODO_MANUAL' });
+    }
 
     // Validaciones básicas de formato (evita guardar basura silenciosamente)
     if (meta_phone_number_id !== undefined && meta_phone_number_id !== null
@@ -105,13 +108,19 @@ async function renewMeta(req, res) {
 // ── Baileys (WhatsApp Web) ───────────────────────────────────
 const baileys = require('../services/baileysService');
 
+const { baileysHabilitado, CODIGO_MODO_MANUAL, MENSAJE_MODO_MANUAL } = require('../config/whatsappModo');
+/** Corta los endpoints de Baileys en modo manual (410). */
+const sinBaileys = (res) => res.status(410).json({ message: MENSAJE_MODO_MANUAL, code: CODIGO_MODO_MANUAL, modo: 'manual' });
+
 async function baileysEstado(req, res) {
+  if (!baileysHabilitado()) return res.json({ disponible: false, modo: 'manual', estado: 'deshabilitado', message: MENSAJE_MODO_MANUAL });
   try { res.json(await baileys.estado(req.params.complexId)); }
   catch (err) { res.status(err.status || 500).json({ message: err.message }); }
 }
 
 /** Inicia la sesión; el QR aparece en GET …/baileys a los pocos segundos. */
 async function baileysConectar(req, res) {
+  if (!baileysHabilitado()) return sinBaileys(res);
   try {
     await baileys.conectar(req.params.complexId);
     res.json(await baileys.estado(req.params.complexId));
@@ -136,7 +145,9 @@ async function getChatbot(req, res) {
     const integ = await integrations.getIntegration(clubId);
     const meta = await integrations.getMetaCredentials(clubId, { soloMeta: true });
     res.json({
-      chat_provider: integ?.wa_provider || 'meta',
+      // Con Baileys deshabilitado el chatbot responde siempre por Meta
+      chat_provider: baileysHabilitado() ? (integ?.wa_provider || 'meta') : 'meta',
+      baileys_disponible: baileysHabilitado(),
       meta: {
         configurado: meta.configured && meta.source === 'club',
         phone_number_id: integ?.meta_phone_number_id || null,
@@ -159,6 +170,7 @@ async function updateChatbot(req, res) {
     const clubId = Number(req.params.complexId);
     const { chat_provider, meta_phone_number_id, meta_access_token } = req.body || {};
     if (!['meta', 'baileys'].includes(chat_provider)) return res.status(400).json({ message: 'Elegí el proveedor: Meta API o Baileys.' });
+    if (chat_provider === 'baileys' && !baileysHabilitado()) return sinBaileys(res);
     const integ = await integrations.getIntegration(clubId);
     const data = { wa_provider: chat_provider };
     if (chat_provider === 'meta') {

@@ -30,16 +30,17 @@ const EntityPhone = sequelize.define('EntityPhone', {
 // Registro de cada mensaje enviado desde un teléfono de entidad (auditoría).
 const EntityPhoneMensaje = sequelize.define('EntityPhoneMensaje', {
   id:                  { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  entity_phone_id:     { type: DataTypes.INTEGER, allowNull: false },
+  entity_phone_id:     { type: DataTypes.INTEGER, allowNull: true },    // null = generado en modo manual
   tenant_id:           { type: DataTypes.INTEGER, allowNull: false },
   entity_type:         { type: DataTypes.ENUM(...TIPOS), allowNull: false },
   entity_id:           { type: DataTypes.INTEGER, allowNull: false },
   envio_id:            { type: DataTypes.STRING(36), allowNull: false },
-  desde_numero:        { type: DataTypes.STRING(20), allowNull: false },
-  destino:             { type: DataTypes.STRING(20), allowNull: false },
+  desde_numero:        { type: DataTypes.STRING(20), allowNull: true },
+  destino:             { type: DataTypes.STRING(20), allowNull: true },     // null = texto de difusión (grupo / lista)
   destinatario_nombre: { type: DataTypes.STRING(150) },
   mensaje:             { type: DataTypes.TEXT, allowNull: false },
-  estado:              { type: DataTypes.ENUM('pendiente', 'enviado', 'error'), defaultValue: 'pendiente' },
+  // generado = texto preparado para compartir manualmente desde el dispositivo (sin Baileys)
+  estado:              { type: DataTypes.ENUM('pendiente', 'enviado', 'error', 'generado'), defaultValue: 'pendiente' },
   error:               { type: DataTypes.STRING(255) },
   enviado_por:         { type: DataTypes.STRING(150) },
 }, { tableName: 'entity_phone_mensajes' });

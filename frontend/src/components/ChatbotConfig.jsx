@@ -53,6 +53,8 @@ export default function ChatbotConfig({ complexId }) {
   if (!cfg) return <div className="card text-sm text-muted-foreground">{msg.error || 'Cargando configuración del chatbot…'}</div>;
   const bs = cfg.baileys || {};
   const cambio = prov !== cfg.chat_provider;
+  // Baileys deshabilitado en el servidor (modo manual): solo la API oficial de Meta
+  const opciones = OPCIONES.filter(o => o.value !== 'baileys' || cfg.baileys_disponible !== false);
 
   return (
     <div className="card space-y-4">
@@ -62,8 +64,8 @@ export default function ChatbotConfig({ complexId }) {
         <span className="badge-neutral">Activo: {cfg.chat_provider === 'baileys' ? 'Baileys' : 'Meta API'}</span>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Proveedor del chatbot">
-        {OPCIONES.map(({ value, label, Icon, hint }) => (
+      <div className={`grid gap-2 ${opciones.length > 1 ? 'sm:grid-cols-2' : ''}`} role="radiogroup" aria-label="Proveedor del chatbot">
+        {opciones.map(({ value, label, Icon, hint }) => (
           <button key={value} type="button" role="radio" aria-checked={prov === value} onClick={() => setProv(value)}
             className={`text-left rounded-xl border px-3 py-3 transition-[border-color,background-color] duration-160 ease-out
               ${prov === value ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card hover:border-foreground/25'}`}>

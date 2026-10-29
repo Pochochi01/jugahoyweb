@@ -56,13 +56,16 @@ export const escuelaAdmin = (cid, escuelaId) => {
 
     pagos:          (params)   => api.get(`${b}/pagos`, { params }),
     crearPago:      (d)        => api.post(`${b}/pagos`, d),
-    generarCuotas:  (periodo)  => api.post(`${b}/pagos/generar`, { periodo }),
+    filtrosCuotas:  ()         => api.get(`${b}/pagos/filtros`),
+    // { periodo, categoria_id?, turno?, nivel?, curso?, estado_alumno?, todas_las_escuelas?, simular? }
+    generarCuotas:  (d)        => api.post(`${b}/pagos/generar`, typeof d === 'string' ? { periodo: d } : d),
     pagar:          (id, metodo_pago) => api.post(`${b}/pagos/${id}/pagar`, { metodo_pago }),
     anular:         (id)       => api.post(`${b}/pagos/${id}/anular`),
     borrarPago:     (id)       => api.delete(`${b}/pagos/${id}`),
 
-    // Mensajes a los padres (borrador → envío masivo por el WhatsApp de la escuela)
+    // Mensajes a los padres (borrador → texto generado para compartir manualmente)
     plantillasMensaje: ()        => api.get(`${b}/mensajes/plantillas`),
+    guardarPlantilla:  (tipo, contenido) => api.put(`${b}/mensajes/plantillas/${tipo}`, { contenido }),
     mensajes:          ()        => api.get(`${b}/mensajes`),
     crearMensaje:      (d)       => api.post(`${b}/mensajes`, d),
     editarMensaje:     (id, d)   => api.put(`${b}/mensajes/${id}`, d),

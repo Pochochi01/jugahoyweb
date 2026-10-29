@@ -107,13 +107,15 @@ c.delete('/horarios/:id', admin.deleteHorario);
 
 c.get   ('/pagos',             admin.listPagos);
 c.post  ('/pagos',             admin.createPago);
+c.get   ('/pagos/filtros',     admin.filtrosCuotas);
 c.post  ('/pagos/generar',     admin.generarCuotas);
 c.post  ('/pagos/:id/pagar',   admin.pagarCuota);
 c.post  ('/pagos/:id/anular',  admin.anularPago);
 c.delete('/pagos/:id',         admin.deletePago);
 
-// Mensajes a los padres (borrador editable → envío masivo por el WhatsApp de la escuela)
+// Mensajes a los padres (borrador editable → texto generado para compartir manualmente)
 c.get   ('/mensajes/plantillas',          mensajes.plantillas);
+c.put   ('/mensajes/plantillas/:tipo',    mensajes.guardarPlantilla);
 c.get   ('/mensajes',                     mensajes.listar);
 c.post  ('/mensajes',                     mensajes.crear);
 c.put   ('/mensajes/:id',                 mensajes.editar);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageCircle, Copy, Check, X, Plus, Trash2, Pencil, CheckCircle2 } from 'lucide-react';
 import { mensajeEscuela, waLinkEscuela, copiarTexto, TIPOS_MENSAJE } from '../../utils/escuelaWhatsapp';
+import CompartirMensaje from '../CompartirMensaje';
 import { hoyAR } from '../../utils/fecha';
 
 export const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -53,7 +54,7 @@ export function WhatsAppAlumno({ alumno, cargarContexto, tipoInicial = 'automati
 
   const tel = alumno.responsable_whatsapp;
   const copiar = async () => { if (await copiarTexto(texto)) { setCopiado(true); setTimeout(() => setCopiado(false), 2000); } };
-  const abrir = async () => { await copiarTexto(texto); window.open(waLinkEscuela(tel, texto), '_blank', 'noopener'); };
+  const abrir = async () => { await copiarTexto(texto); window.location.href = waLinkEscuela(tel, texto); };
 
   return (
     <Panel titulo={`WhatsApp · ${alumno.nombre}`} onClose={onClose}>
@@ -99,9 +100,22 @@ export function EnvioMasivo({ titulo, alumnos, cargarContexto, tipo, aviso, text
   const [copiado, setCopiado] = useState(false);
   const abrir = async (a) => {
     const ctx = await cargarContexto(a.id);
-    window.open(waLinkEscuela(a.responsable_whatsapp, mensajeEscuela(ctx, tipo, aviso)), '_blank', 'noopener');
     setEnviados(s => new Set(s).add(a.id));
+    window.location.href = waLinkEscuela(a.responsable_whatsapp, mensajeEscuela(ctx, tipo, aviso));
   };
+  // Actividad (normal / suspendida): mensaje GENERAL para grupos y listas de difusión.
+  // No se arma un mensaje por alumno: no lleva nombres ni datos personales.
+  if (tipo === 'actividad') {
+    const texto = aviso?.texto_difusion || textoGrupo || '';
+    return (
+      <Panel titulo={titulo} onClose={onClose}>
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">Mensaje general para el grupo o la lista de difusión de {alumnos.length} familia(s).</p>
+          <CompartirMensaje texto={texto} titulo={titulo} />
+        </div>
+      </Panel>
+    );
+  }
   return (
     <Panel titulo={titulo} onClose={onClose}>
       <div className="space-y-3">

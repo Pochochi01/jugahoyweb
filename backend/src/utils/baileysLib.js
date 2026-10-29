@@ -7,11 +7,19 @@
 let mod = null;
 let pendiente = null;
 
+const { baileysHabilitado, errorModoManual } = require('../config/whatsappModo');
+
+/** true solo si está instalado Y habilitado (WHATSAPP_BAILEYS=1). */
 function instalado() {
+  if (!baileysHabilitado()) return false;
   try { require.resolve('@whiskeysockets/baileys'); return true; } catch { return false; }
 }
 
 async function cargar() {
+  if (!baileysHabilitado()) {
+    console.warn('[Baileys] intento de carga bloqueado: modo manual');
+    throw errorModoManual();
+  }
   if (mod) return mod;
   if (!pendiente) {
     pendiente = import('@whiskeysockets/baileys')

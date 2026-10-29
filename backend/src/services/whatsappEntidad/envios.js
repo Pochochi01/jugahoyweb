@@ -28,6 +28,34 @@ function armarTexto(entidad, mensaje, nombre) {
 }
 
 /**
+ * MODO MANUAL: arma el texto para compartir desde el dispositivo y lo registra en el
+ * historial (estado 'generado'). Valida los destinatarios igual que el envío real.
+ * El texto es general ({nombre} se quita): sirve para un grupo o lista de difusión.
+ * @returns {{modo:'manual', envio_id, texto, total, destinatarios:[{numero,nombre}]}}
+ */
+async function generarManual({ entidad, permitidos, numeros, mensaje, enviadoPor }) {
+  const texto = String(mensaje || '').trim();
+  if (texto.length < 2) throw Object.assign(new Error('Escribí el mensaje.'), { status: 400 });
+  if (texto.length > 2000) throw Object.assign(new Error('El mensaje no puede superar los 2000 caracteres.'), { status: 400 });
+  let destinos = permitidos;
+  if (Array.isArray(numeros) && numeros.length) {
+    const pedidos = [...new Set(numeros.map(n => String(n).replace(/\D/g, '')))];
+    const ajenos = pedidos.filter(n => !permitidos.some(p => p.numero === n));
+    if (ajenos.length) throw Object.assign(new Error(`${ajenos.length} número(s) no son inscriptos/alumnos de esta entidad.`), { status: 403, code: 'DESTINATARIO_NO_PERMITIDO', ajenos });
+    destinos = permitidos.filter(p => pedidos.includes(p.numero));
+  }
+  const general = armarTexto(entidad, texto.replace(/\s*\{nombre\}\s*/gi, ' ').replace(/ {2,}/g, ' ').trim(), '');
+  const envioId = crypto.randomUUID();
+  await EntityPhoneMensaje.create({
+    entity_phone_id: null, tenant_id: entidad.tenant_id, entity_type: entidad.tipo, entity_id: entidad.id,
+    envio_id: envioId, desde_numero: null, destino: null, destinatario_nombre: `Difusión · ${destinos.length} destinatario(s)`,
+    mensaje: general, estado: 'generado', enviado_por: enviadoPor || null,
+  });
+  console.log(`[wa-entidad] ${entidad.tipo} #${entidad.id}: mensaje GENERADO en modo manual (${destinos.length} destinatario(s))`);
+  return { modo: 'manual', envio_id: envioId, texto: general, total: destinos.length, destinatarios: destinos.map(d => ({ numero: d.numero, nombre: d.nombre })) };
+}
+
+/**
  * Valida destinatarios contra la lista blanca y arranca el envío en segundo plano.
  * @param {object} p
  * @param {EntityPhone} p.fila           teléfono de la entidad (validado por el middleware)
@@ -98,8 +126,17 @@ async function procesar(filaId, entidad, envioId) {
 
 /** Últimos envíos de la entidad, agrupados (para el panel). */
 async function historial(fila, limite = 10) {
+  return historialDe({ entity_phone_id: fila.id }, limite);
+}
+
+/** Historial de una entidad sin teléfono (modo manual): por tipo + id + tenant. */
+async function historialEntidad(entidad, limite = 10) {
+  return historialDe({ tenant_id: entidad.tenant_id, entity_type: entidad.tipo, entity_id: entidad.id }, limite);
+}
+
+async function historialDe(where, limite) {
   const filas = await EntityPhoneMensaje.findAll({
-    where: { entity_phone_id: fila.id },
+    where,
     attributes: ['envio_id', 'mensaje', 'estado', 'enviado_por', 'desde_numero', 'created_at'],
     order: [['id', 'DESC']], limit: 2000, raw: true,
   });
@@ -107,13 +144,14 @@ async function historial(fila, limite = 10) {
   for (const f of filas) {
     if (!envios.has(f.envio_id)) {
       if (envios.size >= limite) continue;
-      envios.set(f.envio_id, { envio_id: f.envio_id, mensaje: f.mensaje, enviado_por: f.enviado_por, desde: f.desde_numero, fecha: f.created_at, total: 0, enviados: 0, errores: 0, pendientes: 0 });
+      envios.set(f.envio_id, { envio_id: f.envio_id, mensaje: f.mensaje, enviado_por: f.enviado_por, desde: f.desde_numero, fecha: f.created_at, total: 0, enviados: 0, errores: 0, pendientes: 0, generados: 0 });
     }
     const e = envios.get(f.envio_id);
     e.total++;
-    if (f.estado === 'enviado') e.enviados++; else if (f.estado === 'error') e.errores++; else e.pendientes++;
+    if (f.estado === 'enviado') e.enviados++; else if (f.estado === 'error') e.errores++;
+    else if (f.estado === 'generado') e.generados++; else e.pendientes++;
   }
   return [...envios.values()];
 }
 
-module.exports = { iniciarEnvio, encolar, historial, armarTexto, enCurso };
+module.exports = { iniciarEnvio, generarManual, encolar, historial, historialEntidad, armarTexto, enCurso };

@@ -232,6 +232,8 @@ function WaProviderCard({ complexId }) {
     cargarBaileys();
   };
 
+  // Baileys deshabilitado en el servidor: los avisos salen por Meta y no hay nada que elegir
+  if (baileys?.modo === 'manual') return null;
   return (
     <div className="card space-y-4">
       <div className="flex items-center gap-2">

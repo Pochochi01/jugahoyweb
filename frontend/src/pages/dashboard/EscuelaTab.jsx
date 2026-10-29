@@ -146,7 +146,7 @@ function EscuelaPanel({ complexId, escuela, escuelas, recargarEscuelas, elegir, 
     ['avisos', 'Avisos', Megaphone], ['categorias', 'Categorías', Layers], ['entrenadores', 'Entrenadores', UserCog],
     ['mensajes', 'Mensajes a padres', Send], ['whatsapp', 'WhatsApp', Smartphone], ['config', 'Configuración', Settings], ['escuelas', 'Escuelas', School],
   ];
-  const ctx = { svc, complexId, escuela, categorias, canchas: canchas.filter(c => c.activa !== false), recargarCategorias, recargarEscuelas, avisar };
+  const ctx = { svc, complexId, escuela, escuelas, elegir, categorias, canchas: canchas.filter(c => c.activa !== false), recargarCategorias, recargarEscuelas, avisar };
 
   return (
     <div className="space-y-4">
@@ -164,7 +164,7 @@ function EscuelaPanel({ complexId, escuela, escuelas, recargarEscuelas, elegir, 
       {vista === 'avisos'       && <Avisos {...ctx} />}
       {vista === 'categorias'   && <Categorias {...ctx} />}
       {vista === 'entrenadores' && <Entrenadores {...ctx} />}
-      {vista === 'mensajes'     && <MensajesPadres svc={svc} categorias={categorias} irA={setVista} />}
+      {vista === 'mensajes'     && <MensajesPadres svc={svc} categorias={categorias} />}
       {vista === 'whatsapp'     && <TelefonoEntidad svc={telefonoWa} quienes="alumnos (responsables)" categorias={categorias} />}
       {vista === 'config'       && <Config {...ctx} />}
       {vista === 'escuelas'     && <Escuelas complexId={complexId} escuelas={escuelas} recargarEscuelas={recargarEscuelas} elegir={elegir} avisar={avisar} />}
@@ -240,7 +240,7 @@ function Alumnos({ svc, categorias, avisar }) {
 }
 
 function AlumnoForm({ inicial, categorias, onSave, onCancel }) {
-  const [f, setF] = useState({ nombre: '', dni: '', fecha_nacimiento: '', genero: 'masculino', categoria_id: '', responsable_nombre: '', responsable_whatsapp: '', responsable_email: '', estado: 'activo', ...inicial });
+  const [f, setF] = useState({ nombre: '', dni: '', fecha_nacimiento: '', genero: 'masculino', categoria_id: '', responsable_nombre: '', responsable_whatsapp: '', responsable_email: '', estado: 'activo', turno: '', nivel: '', curso: '', ...inicial });
   const [error, setError] = useState('');
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const edad = edadDe(f.fecha_nacimiento);
@@ -249,8 +249,8 @@ function AlumnoForm({ inicial, categorias, onSave, onCancel }) {
   useEffect(() => { if (!f.id && sugeridas.length === 1) set('categoria_id', sugeridas[0].id); }, [f.fecha_nacimiento]);   // eslint-disable-line react-hooks/exhaustive-deps
   const submit = async (e) => {
     e.preventDefault(); setError('');
-    const { nombre, dni, fecha_nacimiento, genero, categoria_id, responsable_nombre, responsable_whatsapp, responsable_email, estado } = f;
-    try { await onSave({ nombre, dni, fecha_nacimiento, genero, categoria_id, responsable_nombre, responsable_whatsapp, responsable_email, estado }); } catch (err) { setError(errMsg(err)); }
+    const { nombre, dni, fecha_nacimiento, genero, categoria_id, responsable_nombre, responsable_whatsapp, responsable_email, estado, turno, nivel, curso } = f;
+    try { await onSave({ nombre, dni, fecha_nacimiento, genero, categoria_id, responsable_nombre, responsable_whatsapp, responsable_email, estado, turno: turno || null, nivel: nivel || null, curso: curso || null }); } catch (err) { setError(errMsg(err)); }
   };
   return (
     <form onSubmit={submit} className="card grid sm:grid-cols-2 gap-2">
@@ -274,6 +274,17 @@ function AlumnoForm({ inicial, categorias, onSave, onCancel }) {
           ))}
         </select>
       </label>
+      {/* Agrupación opcional: filtra listados y la generación masiva de cuotas */}
+      <div className="sm:col-span-2 grid grid-cols-3 gap-2">
+        <label className="text-xs text-muted-foreground">Turno
+          <select className="input" value={f.turno || ''} onChange={e => set('turno', e.target.value)}>
+            <option value="">—</option><option value="manana">Mañana</option><option value="tarde">Tarde</option><option value="noche">Noche</option>
+          </select></label>
+        <label className="text-xs text-muted-foreground">Nivel
+          <input className="input" maxLength={60} placeholder="Opcional" value={f.nivel || ''} onChange={e => set('nivel', e.target.value)} /></label>
+        <label className="text-xs text-muted-foreground">Curso
+          <input className="input" maxLength={60} placeholder="Opcional" value={f.curso || ''} onChange={e => set('curso', e.target.value)} /></label>
+      </div>
       <input className="input" placeholder="Padre / madre / responsable" value={f.responsable_nombre} onChange={e => set('responsable_nombre', e.target.value)} required />
       <input className="input" inputMode="tel" placeholder="WhatsApp del responsable (5493811234567)" value={f.responsable_whatsapp} onChange={e => set('responsable_whatsapp', e.target.value)} required />
       <input className="input" type="email" placeholder="Email del responsable (opcional)" value={f.responsable_email || ''} onChange={e => set('responsable_email', e.target.value)} />
@@ -292,22 +303,56 @@ function AlumnoForm({ inicial, categorias, onSave, onCancel }) {
 }
 
 // ── Cuotas ────────────────────────────────────────────────────
-function Cuotas({ svc, categorias, avisar }) {
+const FILTROS_VACIOS = { categoria_id: '', turno: '', nivel: '', curso: '', estado_alumno: 'activo', estado: '' };
+const TURNO_LABEL = { manana: 'Mañana', tarde: 'Tarde', noche: 'Noche' };
+
+/**
+ * Cuotas de UNA escuela con filtros avanzados (categoría, escuela, turno, nivel, curso y
+ * estado). Los mismos filtros se aplican al listado y a "Generar cuotas" (que primero
+ * muestra cuántas se van a crear). "Todas las escuelas" solo aplica a la generación.
+ */
+function Cuotas({ svc, escuela, escuelas = [], elegir, categorias, avisar }) {
   const [periodo, setPeriodo] = useState(hoyISO().slice(0, 7));
-  const [cat, setCat] = useState('');
+  const [f, setF] = useState(FILTROS_VACIOS);
+  const [todasEscuelas, setTodasEscuelas] = useState(false);
+  const [opciones, setOpciones] = useState(null);
+  const [previa, setPrevia] = useState(null);   // resultado de la simulación
+  const [generando, setGenerando] = useState(false);
   const [data, setData] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
   const [wa, setWa] = useState(null);           // { alumno, tipo }
   const [masivo, setMasivo] = useState(null);   // { titulo, alumnos, tipo }
+  const setFiltro = (k, v) => { setF(x => ({ ...x, [k]: v })); setPrevia(null); };
+  const cat = f.categoria_id;
+  const filtrosAlumno = { turno: f.turno || undefined, nivel: f.nivel || undefined, curso: f.curso || undefined };
+  const activos = Object.entries(f).filter(([k, v]) => v && !(k === 'estado_alumno' && v === 'activo')).length + (todasEscuelas ? 1 : 0);
 
+  useEffect(() => { svc.filtrosCuotas().then(setOpciones).catch(() => setOpciones(null)); }, [svc]);
   const cargar = useCallback(() => {
-    svc.pagos({ periodo, categoria_id: cat || undefined }).then(setData).catch(() => setData({ pagos: [], cobrado: 0, pendiente: 0 }));
-    svc.alumnos({ periodo, categoria_id: cat || undefined, estado: 'activo' }).then(setAlumnos).catch(() => setAlumnos([]));
-  }, [svc, periodo, cat]);
+    svc.pagos({ periodo, categoria_id: cat || undefined, estado: f.estado || undefined, ...filtrosAlumno }).then(setData).catch(() => setData({ pagos: [], cobrado: 0, pendiente: 0 }));
+    svc.alumnos({ periodo, categoria_id: cat || undefined, estado: 'activo', ...filtrosAlumno }).then(setAlumnos).catch(() => setAlumnos([]));
+  }, [svc, periodo, cat, f.estado, f.turno, f.nivel, f.curso]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { cargar(); }, [cargar]);
 
+  const cuerpoGenerar = (simular) => ({
+    periodo, simular,
+    ...(todasEscuelas ? { todas_las_escuelas: true } : { categoria_id: cat || undefined }),
+    ...filtrosAlumno,
+    estado_alumno: f.estado_alumno || 'activo',
+  });
+  /** Paso 1: cuenta cuántas cuotas se van a crear con estos filtros (no crea nada). */
   const generar = async () => {
-    try { const r = await svc.generarCuotas(periodo); avisar('ok', `${r.creadas} cuotas nuevas de ${periodoLabel(periodo)}.`); cargar(); } catch (e) { avisar('err', errMsg(e)); }
+    setGenerando(true);
+    try { setPrevia(await svc.generarCuotas(cuerpoGenerar(true))); } catch (e) { avisar('err', errMsg(e)); } finally { setGenerando(false); }
+  };
+  /** Paso 2: confirma y crea. */
+  const confirmarGenerar = async () => {
+    setGenerando(true);
+    try {
+      const r = await svc.generarCuotas(cuerpoGenerar(false));
+      avisar('ok', `${r.creadas} cuota(s) nuevas de ${periodoLabel(periodo)}${r.existentes ? ` · ${r.existentes} ya existían` : ''}.`);
+      setPrevia(null); cargar();
+    } catch (e) { avisar('err', errMsg(e)); } finally { setGenerando(false); }
   };
   const cobrar = async (p, metodo) => {
     try {
@@ -326,13 +371,67 @@ function Cuotas({ svc, categorias, avisar }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-center">
-        <input type="month" className="input !w-auto text-sm" value={periodo} onChange={e => setPeriodo(e.target.value)} aria-label="Período" />
-        <select className="input !w-auto text-sm" value={cat} onChange={e => setCat(e.target.value)}>
-          <option value="">Todas las categorías</option>
-          {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
-        <button className="btn-primary text-sm" onClick={generar}>Generar cuotas de {periodoLabel(periodo)}</button>
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="month" className="input !w-auto text-sm" value={periodo} onChange={e => { setPeriodo(e.target.value); setPrevia(null); }} aria-label="Período" />
+          <span className="text-sm font-medium mr-auto">Filtros{activos > 0 && <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{activos}</span>}</span>
+          {activos > 0 && <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setF(FILTROS_VACIOS); setTodasEscuelas(false); setPrevia(null); }}>Limpiar filtros</button>}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          <label className="text-xs text-muted-foreground">Escuela
+            <select className="input text-sm" value={todasEscuelas ? 'todas' : escuela.id}
+              onChange={e => { setPrevia(null); if (e.target.value === 'todas') { setTodasEscuelas(true); setFiltro('categoria_id', ''); } else { setTodasEscuelas(false); if (Number(e.target.value) !== escuela.id) elegir?.(Number(e.target.value)); } }}>
+              {escuelas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+              {escuelas.length > 1 && <option value="todas">Todas (solo para generar)</option>}
+            </select></label>
+          <label className="text-xs text-muted-foreground">Categoría
+            <select className="input text-sm" value={cat} disabled={todasEscuelas} onChange={e => setFiltro('categoria_id', e.target.value)}>
+              <option value="">Todas</option>
+              {(opciones?.categorias || categorias).map(c => <option key={c.id} value={c.id}>{c.nombre}{c.activa === false ? ' (inactiva)' : ''}</option>)}
+            </select></label>
+          <label className="text-xs text-muted-foreground">Turno
+            <select className="input text-sm" value={f.turno} onChange={e => setFiltro('turno', e.target.value)}>
+              <option value="">Todos</option>
+              {Object.entries(TURNO_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select></label>
+          <label className="text-xs text-muted-foreground">Nivel
+            <select className="input text-sm" value={f.nivel} onChange={e => setFiltro('nivel', e.target.value)}>
+              <option value="">Todos</option>
+              {(opciones?.niveles || []).map(n => <option key={n} value={n}>{n}</option>)}
+            </select></label>
+          <label className="text-xs text-muted-foreground">Curso
+            <select className="input text-sm" value={f.curso} onChange={e => setFiltro('curso', e.target.value)}>
+              <option value="">Todos</option>
+              {(opciones?.cursos || []).map(n => <option key={n} value={n}>{n}</option>)}
+            </select></label>
+          <label className="text-xs text-muted-foreground">Estado
+            <select className="input text-sm" value={f.estado} onChange={e => setFiltro('estado', e.target.value)} title="Estado de la cuota en el listado">
+              <option value="">Cuotas: todas</option>
+              <option value="pendiente">Cuotas pendientes</option>
+              <option value="pagado">Cuotas pagadas</option>
+            </select></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <input type="checkbox" checked={f.estado_alumno === 'activo,pendiente'} onChange={e => setFiltro('estado_alumno', e.target.checked ? 'activo,pendiente' : 'activo')} />
+            Incluir preinscriptos al generar
+          </label>
+          <button className="btn-primary text-sm ml-auto" disabled={generando} onClick={generar}>Generar cuotas de {periodoLabel(periodo)}</button>
+        </div>
+        {previa && (
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 space-y-2" role="status">
+            <p className="text-sm">
+              {previa.creadas > 0
+                ? <>Se van a crear <strong>{previa.creadas}</strong> cuota(s) de {periodoLabel(periodo)}{todasEscuelas ? ' en todas las escuelas' : ` en ${escuela.nombre}`}.</>
+                : <>No hay cuotas nuevas para crear con estos filtros.</>}
+              <span className="text-muted-foreground"> {previa.alumnos} alumno(s) alcanzados{previa.existentes ? ` · ${previa.existentes} ya tenían la cuota` : ''}{previa.sin_cuota ? ` · ${previa.sin_cuota} en categorías sin cuota` : ''}.</span>
+            </p>
+            <div className="flex gap-2">
+              {previa.creadas > 0 && <button className="btn-primary btn-sm" disabled={generando} onClick={confirmarGenerar}>Confirmar y generar</button>}
+              <button className="btn-ghost btn-sm" onClick={() => setPrevia(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
       </div>
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -349,12 +448,12 @@ function Cuotas({ svc, categorias, avisar }) {
         </div>
       )}
       <div className="space-y-1.5">
-        {data?.pagos.length === 0 && <div className="card text-center text-sm text-muted-foreground py-8">No hay cuotas de este período: generalas con el botón de arriba.</div>}
+        {data?.pagos.length === 0 && <div className="card text-center text-sm text-muted-foreground py-8">{activos > 0 ? 'No hay cuotas con estos filtros.' : 'No hay cuotas de este período: generalas con el botón de arriba.'}</div>}
         {data?.pagos.map(p => (
           <div key={p.id} className="card py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{p.alumno.nombre}</div>
-              <div className="text-xs text-muted-foreground">{p.alumno.categoria?.nombre} · {money(p.monto)}{p.comprobante && ` · ${p.comprobante} (${p.fecha_pago})`}</div>
+              <div className="text-xs text-muted-foreground">{p.alumno.categoria?.nombre}{p.alumno.turno && ` · ${TURNO_LABEL[p.alumno.turno]}`}{p.alumno.nivel && ` · ${p.alumno.nivel}`}{p.alumno.curso && ` · ${p.alumno.curso}`} · {money(p.monto)}{p.comprobante && ` · ${p.comprobante} (${p.fecha_pago})`}</div>
             </div>
             <span className={PAGO_BADGE[p.estado].cls}>{PAGO_BADGE[p.estado].label}</span>
             <div className="flex gap-1 flex-wrap">
@@ -402,12 +501,9 @@ function Avisos({ svc, categorias, avisar }) {
 
   const enviar = async (av) => {
     const alumnos = await svc.alumnos({ categoria_id: av.categoria_id || undefined, estado: 'activo' });
-    const cuando = av.fecha === hoyISO() ? 'hoy' : `el ${new Date(`${av.fecha}T12:00:00`).toLocaleDateString('es-AR')}`;
     const quien = av.categoria?.nombre || 'todas las categorías';
-    const textoGrupo = av.estado === 'suspendida'
-      ? `⚠️ Se suspende el entrenamiento de ${quien} ${cuando}.${av.mensaje ? ` ${av.mensaje}` : ''}`
-      : `✅ ${cuando[0].toUpperCase() + cuando.slice(1)} la actividad de ${quien} es normal.${av.mensaje ? ` ${av.mensaje}` : ''}`;
-    setMasivo({ titulo: `Aviso a padres · ${quien}`, alumnos, aviso: av, textoGrupo });
+    // texto_difusion: texto general con la plantilla de la escuela (lo arma el servidor)
+    setMasivo({ titulo: `Aviso a padres · ${quien}`, alumnos, aviso: av, textoGrupo: av.texto_difusion });
   };
 
   return (

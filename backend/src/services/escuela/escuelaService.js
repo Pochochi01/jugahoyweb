@@ -107,6 +107,10 @@ async function validarAlumno(complexId, b, actual = null, escuelaId = null) {
   d.responsable_email = String(v('responsable_email') || '').trim() || null;
   d.estado = v('estado') || 'activo';
   if (!['activo', 'inactivo', 'pendiente'].includes(d.estado)) throw httpError(400, 'Estado inválido.');
+  d.turno = v('turno') || null;
+  if (d.turno && !TURNOS.includes(d.turno)) throw httpError(400, 'Turno inválido (mañana, tarde o noche).');
+  d.nivel = String(v('nivel') || '').trim().slice(0, 60) || null;
+  d.curso = String(v('curso') || '').trim().slice(0, 60) || null;
 
   d.categoria_id = Number(v('categoria_id'));
   const cat = await EscuelaCategoria.findOne({ where: { id: d.categoria_id, complex_id: complexId, ...(escuelaId ? { escuela_id: escuelaId } : {}) } });
@@ -204,23 +208,78 @@ const validarPeriodo = (p) => {
   return p;
 };
 
-/** Crea la cuota PENDIENTE del período para cada alumno activo (idempotente). */
-async function generarCuotas(complexId, periodo, categoriaIds = null) {
-  validarPeriodo(periodo);
-  const alumnos = await EscuelaAlumno.findAll({
-    where: { complex_id: complexId, estado: 'activo', ...(categoriaIds ? { categoria_id: categoriaIds } : {}) },
-    include: [{ model: EscuelaCategoria, as: 'categoria' }],
-  });
-  let creadas = 0;
-  for (const a of alumnos) {
-    if (!(num(a.categoria.cuota_mensual) > 0)) continue;
-    const [, creada] = await EscuelaPago.findOrCreate({
-      where: { alumno_id: a.id, periodo },
-      defaults: { alumno_id: a.id, periodo, monto: a.categoria.cuota_mensual, estado: 'pendiente' },
-    });
-    if (creada) creadas++;
+const TURNOS = ['manana', 'tarde', 'noche'];
+const ESTADOS_ALUMNO = ['activo', 'inactivo', 'pendiente'];
+const ESTADOS_CUOTA = ['pendiente', 'pagado'];
+
+/**
+ * Filtros del alumno (turno, nivel, curso, estado) validados → fragmento de `where`.
+ * Lo comparten los listados y la generación masiva de cuotas (una sola regla).
+ * @param {object} q                 query/body
+ * @param {object} [o]
+ * @param {string[]} [o.estados]     estados de alumno admitidos para el filtro
+ * @param {string}  [o.estadoKey]    nombre del parámetro del estado de alumno
+ */
+function filtrosAlumno(q = {}, { estados = ESTADOS_ALUMNO, estadoKey = 'estado' } = {}) {
+  const w = {};
+  if (q.turno) {
+    if (!TURNOS.includes(q.turno)) throw httpError(400, 'Turno inválido (manana, tarde o noche).');
+    w.turno = q.turno;
   }
-  return { periodo, alumnos: alumnos.length, creadas };
+  for (const k of ['nivel', 'curso']) {
+    const v = String(q[k] ?? '').trim();
+    if (v) w[k] = v.slice(0, 60);
+  }
+  const est = q[estadoKey];
+  if (est) {
+    const lista = (Array.isArray(est) ? est : String(est).split(',')).map(s => s.trim()).filter(Boolean);
+    const malos = lista.filter(e => !estados.includes(e));
+    if (malos.length) throw httpError(400, `Estado de alumno inválido: ${malos.join(', ')} (válidos: ${estados.join(', ')}).`);
+    w.estado = lista.length === 1 ? lista[0] : lista;
+  }
+  return w;
+}
+
+/**
+ * Genera la cuota PENDIENTE del período para los alumnos que cumplen los filtros.
+ * Idempotente (índice único alumno+período) y atómica: o se crean todas o ninguna.
+ *  - Solo categorías ACTIVAS con cuota > 0.
+ *  - Estado del alumno: 'activo' por defecto ('pendiente' = preinscripto, opcional).
+ *
+ * @param {number}   complexId
+ * @param {string}   periodo           YYYY-MM
+ * @param {number[]} categoriaIds      categorías alcanzadas (escuela/s ya resuelta/s)
+ * @param {object}   filtros           { turno, nivel, curso, estado_alumno }
+ * @param {object}   [o]
+ * @param {boolean}  [o.simular]       true = solo cuenta, no crea nada (vista previa)
+ * @returns {{periodo, alumnos, creadas, existentes, sin_cuota, simulado, filtros}}
+ */
+async function generarCuotas(complexId, periodo, categoriaIds = null, filtros = {}, { simular = false } = {}) {
+  validarPeriodo(periodo);
+  const fa = filtrosAlumno(filtros, { estados: ['activo', 'pendiente'], estadoKey: 'estado_alumno' });
+  const alumnos = await EscuelaAlumno.findAll({
+    where: { complex_id: complexId, estado: 'activo', ...fa, ...(categoriaIds ? { categoria_id: categoriaIds } : {}) },
+    include: [{ model: EscuelaCategoria, as: 'categoria', where: { activa: true }, required: true }],
+    attributes: ['id', 'categoria_id'],
+  });
+  const conCuota = alumnos.filter(a => num(a.categoria.cuota_mensual) > 0);
+  const ya = new Set(conCuota.length ? (await EscuelaPago.findAll({
+    where: { periodo, alumno_id: conCuota.map(a => a.id) }, attributes: ['alumno_id'], raw: true,
+  })).map(p => p.alumno_id) : []);
+  const nuevas = conCuota.filter(a => !ya.has(a.id));
+  const resumen = {
+    periodo, alumnos: alumnos.length, creadas: nuevas.length, existentes: ya.size,
+    sin_cuota: alumnos.length - conCuota.length, simulado: simular, filtros: fa,
+  };
+  if (simular || !nuevas.length) return resumen;
+
+  await sequelize.transaction(async (t) => {
+    await EscuelaPago.bulkCreate(nuevas.map(a => ({
+      alumno_id: a.id, periodo, monto: a.categoria.cuota_mensual, estado: 'pendiente',
+    })), { transaction: t, ignoreDuplicates: true });   // otra generación en paralelo no duplica
+  });
+  console.log(`[escuela] cuotas ${periodo} · complejo ${complexId} · creadas ${nuevas.length} · ya existían ${ya.size} · filtros ${JSON.stringify(fa)}`);
+  return resumen;
 }
 
 /** Marca la cuota como pagada, emite comprobante y registra el ingreso en caja (si está abierta). */
@@ -319,5 +378,6 @@ module.exports = {
   config, ensenaDeporte, escuelaDeCategoria, validarCategoria, validarAlumno, nuevoToken, portalUrl,
   crearHorario, actualizarHorario, borrarHorario,
   validarPeriodo, generarCuotas, registrarPago, anularPago, estadoPago,
+  filtrosAlumno, TURNOS, ESTADOS_ALUMNO, ESTADOS_CUOTA,
   avisoDelDia, contextoAlumno,
 };

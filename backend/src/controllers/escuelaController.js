@@ -10,10 +10,11 @@
  */
 const { Op } = require('sequelize');
 const {
-  Field, Profesor, Escuela, EscuelaProfesor, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso,
+  sequelize, Field, Profesor, Escuela, EscuelaProfesor, EscuelaCategoria, EscuelaAlumno, EscuelaHorario, EscuelaPago, EscuelaAviso,
   EscuelaProfesorCategoria,
 } = require('../models');
 const svc = require('../services/escuela/escuelaService');
+const msvc = require('../services/escuela/mensajesService');
 
 const send = (res, err) => {
   if (err.name === 'SequelizeUniqueConstraintError') return res.status(409).json({ message: 'Ya existe un registro con esos datos (nombre o DNI repetido).' });
@@ -107,7 +108,7 @@ const deleteCategoria = handler(async (req, res) => {
 const listAlumnos = handler(async (req, res) => {
   const where = { complex_id: cid(req), categoria_id: req.catIds };
   if (req.query.categoria_id) where.categoria_id = categoriaDeLaEscuela(req, req.query.categoria_id);
-  if (req.query.estado) where.estado = req.query.estado;
+  Object.assign(where, svc.filtrosAlumno(req.query));   // estado, turno, nivel, curso (validados)
   const q = String(req.query.q || '').trim();
   if (q) {
     const dig = q.replace(/\D/g, '');
@@ -228,20 +229,56 @@ const deleteHorario = handler(async (req, res) => { await svc.borrarHorario(cid(
 const listPagos = handler(async (req, res) => {
   const where = {};
   if (req.query.periodo) where.periodo = svc.validarPeriodo(req.query.periodo);
-  if (req.query.estado) where.estado = req.query.estado;
-  const alumnoWhere = { complex_id: cid(req), categoria_id: req.catIds };
+  if (req.query.estado) {
+    if (!svc.ESTADOS_CUOTA.includes(req.query.estado)) throw svc.httpError(400, 'Estado de cuota inválido (pendiente o pagado).');
+    where.estado = req.query.estado;
+  }
+  const alumnoWhere = { complex_id: cid(req), categoria_id: req.catIds, ...svc.filtrosAlumno(req.query, { estadoKey: 'estado_alumno' }) };
   if (req.query.categoria_id) alumnoWhere.categoria_id = categoriaDeLaEscuela(req, req.query.categoria_id);
   if (req.query.alumno_id) alumnoWhere.id = Number(req.query.alumno_id);
   const pagos = await EscuelaPago.findAll({
     where,
-    include: [{ model: EscuelaAlumno, as: 'alumno', where: alumnoWhere, attributes: ['id', 'nombre', 'responsable_nombre', 'responsable_whatsapp', 'categoria_id'],
+    include: [{ model: EscuelaAlumno, as: 'alumno', where: alumnoWhere, attributes: ['id', 'nombre', 'responsable_nombre', 'responsable_whatsapp', 'categoria_id', 'turno', 'nivel', 'curso', 'estado'],
       include: [{ model: EscuelaCategoria, as: 'categoria', attributes: ['id', 'nombre'] }] }],
     order: [['periodo', 'DESC'], [{ model: EscuelaAlumno, as: 'alumno' }, 'nombre', 'ASC']],
   });
   const total = (estado) => pagos.filter(p => p.estado === estado).reduce((a, p) => a + svc.num(p.monto), 0);
   res.json({ pagos, cobrado: total('pagado'), pendiente: total('pendiente') });
 });
-const generarCuotas = handler(async (req, res) => res.json(await svc.generarCuotas(cid(req), req.body?.periodo || svc.periodoActual(), req.catIds)));
+/**
+ * POST /pagos/generar { periodo, categoria_id?, turno?, nivel?, curso?, estado_alumno?, todas_las_escuelas?, simular? }
+ * Escuela: la del ?escuela_id (por defecto) o todas las del complejo (todas_las_escuelas=true).
+ * simular=true devuelve el conteo sin crear nada (vista previa del botón "Generar").
+ */
+const generarCuotas = handler(async (req, res) => {
+  const b = req.body || {};
+  let catIds = req.catIds;
+  if (b.todas_las_escuelas === true || b.todas_las_escuelas === 'true') {
+    if (b.categoria_id) throw svc.httpError(400, 'Con "todas las escuelas" no se puede filtrar por una categoría: elegí una escuela.');
+    catIds = (await EscuelaCategoria.findAll({ where: { complex_id: cid(req) }, include: [{ model: Escuela, as: 'escuela', where: { estado: 'activa' }, required: true, attributes: [] }], attributes: ['id'], raw: true })).map(c => c.id);
+  } else if (b.categoria_id) {
+    catIds = [categoriaDeLaEscuela(req, b.categoria_id)];
+  }
+  res.json(await svc.generarCuotas(cid(req), b.periodo || svc.periodoActual(), catIds, b, { simular: b.simular === true || b.simular === 'true' }));
+});
+
+/** GET /pagos/filtros → valores disponibles para los desplegables de cuotas. */
+const filtrosCuotas = handler(async (req, res) => {
+  const base = { complex_id: cid(req), categoria_id: req.catIds };
+  const distintos = async (col) => (await EscuelaAlumno.findAll({ where: { ...base, [col]: { [Op.ne]: null } }, attributes: [[sequelize.fn('DISTINCT', sequelize.col(col)), col]], raw: true }))
+    .map(r => r[col]).filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'es'));
+  const [escuelas, categorias, niveles, cursos] = await Promise.all([
+    Escuela.findAll({ where: { complex_id: cid(req) }, attributes: ['id', 'nombre', 'estado'], order: [['nombre', 'ASC']] }),
+    EscuelaCategoria.findAll({ where: { id: req.catIds }, attributes: ['id', 'nombre', 'activa', 'cuota_mensual'], order: [['nombre', 'ASC']] }),
+    distintos('nivel'), distintos('curso'),
+  ]);
+  res.json({
+    escuelas, categorias, niveles, cursos,
+    turnos: [{ valor: 'manana', label: 'Mañana' }, { valor: 'tarde', label: 'Tarde' }, { valor: 'noche', label: 'Noche' }],
+    estados_alumno: [{ valor: 'activo', label: 'Activos' }, { valor: 'pendiente', label: 'Preinscriptos' }],
+    estados_cuota: [{ valor: 'pendiente', label: 'Pendiente' }, { valor: 'pagado', label: 'Pagada' }],
+  });
+});
 /** POST /pagos { alumno_id, periodo, monto? } — cuota puntual (alta a mitad de mes, etc.). */
 const createPago = handler(async (req, res) => {
   const a = await EscuelaAlumno.findOne({ where: { id: req.body?.alumno_id, complex_id: cid(req), categoria_id: req.catIds }, include: [{ model: EscuelaCategoria, as: 'categoria' }] });
@@ -268,11 +305,12 @@ const deletePago = handler(async (req, res) => {
 // ── Avisos (actividad normal / suspendida) ────────────────────
 const listAvisos = handler(async (req, res) => {
   const desde = req.query.desde || svc.hoy();
-  res.json(await EscuelaAviso.findAll({
+  const avisos = await EscuelaAviso.findAll({
     where: { complex_id: cid(req), escuela_id: eid(req), fecha: { [Op.gte]: desde } },
     include: [{ model: EscuelaCategoria, as: 'categoria', attributes: ['id', 'nombre'] }],
     order: [['fecha', 'ASC'], ['id', 'DESC']],
-  }));
+  });
+  res.json(await msvc.conTextoDifusion(avisos, req.escuela));   // + texto general para grupos
 });
 function datosAviso(b) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.fecha || '')) throw svc.httpError(400, 'Fecha inválida.');
@@ -282,7 +320,9 @@ function datosAviso(b) {
 const createAviso = handler(async (req, res) => {
   const d = datosAviso(req.body || {});
   if (d.categoria_id) categoriaDeLaEscuela(req, d.categoria_id);
-  res.status(201).json(await EscuelaAviso.create({ ...d, complex_id: cid(req), escuela_id: eid(req), autor: req.user ? `${req.user.nombre} ${req.user.apellido || ''}`.trim() : null }));
+  const av = await EscuelaAviso.create({ ...d, complex_id: cid(req), escuela_id: eid(req), autor: req.user ? `${req.user.nombre} ${req.user.apellido || ''}`.trim() : null });
+  const [conTexto] = await msvc.conTextoDifusion([av], req.escuela);
+  res.status(201).json(conTexto);
 });
 const deleteAviso = handler(async (req, res) => {
   const n = await EscuelaAviso.destroy({ where: { id: req.params.id, complex_id: cid(req), escuela_id: eid(req) } });
@@ -297,6 +337,6 @@ module.exports = {
   listAlumnos, createAlumno, updateAlumno, deleteAlumno, nuevoLinkPortal, contextoAlumno,
   listEntrenadores, asignarCategorias,
   listHorarios, createHorario, updateHorario, deleteHorario,
-  listPagos, generarCuotas, createPago, pagarCuota, anularPago, deletePago,
+  listPagos, generarCuotas, filtrosCuotas, createPago, pagarCuota, anularPago, deletePago,
   listAvisos, createAviso, deleteAviso, datosAviso,
 };

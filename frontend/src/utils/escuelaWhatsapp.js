@@ -1,8 +1,11 @@
+import { hoyAR } from './fecha';
+import { whatsappSendUrl } from './compartir';
 /**
  * utils/escuelaWhatsapp.js — mensajes de la Escuela de Fútbol para WhatsApp.
  *
- * Se envían desde el dispositivo en uso (wa.me), con el número oficial de la
- * escuela abierto en ese WhatsApp. El texto se arma solo con los datos del
+ * Se comparten desde el dispositivo en uso (whatsapp://send, copiar o compartir):
+ * el sistema no envía nada. Los de ACTIVIDAD son generales (difusión), sin datos
+ * del alumno; los de cuota son personales. El texto se arma solo con los datos del
  * alumno, su categoría y el estado de la cuota (ver `contexto` del backend):
  *
  *   actividad      → "hoy hay entrenamiento" / "hoy se suspende"
@@ -45,11 +48,9 @@ export function mensajeEscuela(ctx, tipo = 'automatico', aviso = null) {
 
   switch (t) {
     case 'actividad': {
+      // Mensaje de DIFUSIÓN: igual para todas las familias (sin nombre del alumno ni del responsable)
       const av = aviso || ctx.aviso_hoy || { estado: 'normal' };
-      const cuando = av.fecha ? `el ${fecha(av.fecha)}` : 'hoy';
-      return av.estado === 'suspendida'
-        ? `⚠️ ${hola} Te avisamos que ${cuando} *se suspende* el entrenamiento de ${quien}.${av.mensaje ? `\n📝 ${av.mensaje}` : ''}\n\nTe avisamos cuando se retome.${pie(ctx)}`
-        : `✅ ${hola} ${cuando[0].toUpperCase() + cuando.slice(1)} la actividad de ${quien} es *normal*.${av.mensaje ? `\n📝 ${av.mensaje}` : ''}\n\nHorarios:\n${horariosTxt(ctx)}${pie(ctx)}`;
+      return av.texto_difusion || textoActividad(av, { escuela: ctx.escuela?.nombre, categoria: ctx.categoria?.nombre });
     }
     case 'comprobante': {
       const p = ctx.pago;
@@ -69,6 +70,18 @@ export function mensajeEscuela(ctx, tipo = 'automatico', aviso = null) {
   }
 }
 
-/** Link wa.me al responsable con el mensaje cargado (se abre en el dispositivo en uso). */
-export const waLinkEscuela = (telefono, texto) =>
-  `https://wa.me/${String(telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(texto)}`;
+/**
+ * Texto general de una actividad normal / suspendida (respaldo cuando el aviso no trae
+ * `texto_difusion` del servidor, que usa la plantilla configurada de la escuela).
+ */
+export function textoActividad(av, { escuela, categoria } = {}) {
+  const cuando = !av.fecha || av.fecha === hoyAR() ? 'hoy' : `el ${fecha(av.fecha)}`;
+  const cabecera = [escuela && `*${escuela}*`, categoria || 'Todas las categorías'].filter(Boolean).join(' — ');
+  const detalle = av.mensaje ? `\n\n${av.mensaje}` : '';
+  return av.estado === 'suspendida'
+    ? `⛔ ${cabecera}\n\nInformamos que la actividad prevista para ${cuando} ha sido suspendida. Ante cualquier novedad se comunicará oportunamente.${detalle}`
+    : `✅ ${cabecera}\n\nInformamos que la actividad programada para ${cuando} se realizará normalmente en el horario establecido.${detalle}`;
+}
+
+/** Abre WhatsApp EN ESTE DISPOSITIVO (whatsapp://send) con el chat del responsable y el mensaje cargado. */
+export const waLinkEscuela = (telefono, texto) => whatsappSendUrl(texto, telefono);

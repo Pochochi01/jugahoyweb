@@ -25,12 +25,14 @@ const digitos = (t) => String(t || '').replace(/\D/g, '');
 
 /** Teléfono propio del torneo, solo si está vinculado y con sesión viva. */
 async function telefonoDelTorneo(clubId, torneoId) {
+  if (!require('../../config/whatsappModo').baileysHabilitado()) return null;   // modo manual
   const { EntityPhone } = require('../../models');
   const fila = await EntityPhone.findOne({ where: { tenant_id: clubId, entity_type: 'torneo', entity_id: torneoId } });
   return fila && waEntidad.sesiones.sesionValida(fila) ? fila : null;
 }
 
 async function proveedor(clubId) {
+  if (!require('../../config/whatsappModo').baileysHabilitado()) return 'meta';   // Baileys deshabilitado
   const integ = await integrations.getIntegration(clubId);
   return integ?.wa_provider || 'meta';
 }

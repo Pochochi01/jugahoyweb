@@ -6,6 +6,7 @@ import { escuelaProfesor } from '../../services/escuelaService';
 import {
   WhatsAppAlumno, EnvioMasivo, HorariosEditor, AvisoForm, PAGO_BADGE, hoyISO,
 } from '../../components/escuela/EscuelaShared';
+import { textoActividad } from '../../utils/escuelaWhatsapp';
 
 /**
  * Escuelas — pantalla del ENTRENADOR (dentro del panel de profesor).
@@ -70,10 +71,10 @@ export default function EscuelaEntrenador({ complexId }) {
                 const av = await svc.crearAviso(d);
                 setNuevoAviso(false); cargar();
                 const cat = r.categorias.find(c => c.id === av.categoria_id);
-                const cuando = av.fecha === hoyISO() ? 'hoy' : `el ${new Date(`${av.fecha}T12:00:00`).toLocaleDateString('es-AR')}`;
+                // Texto general (plantilla de la escuela) armado por el servidor; respaldo local si no viene
                 setMasivo({
                   titulo: `Aviso a padres · ${cat.nombre}`, alumnos: cat.alumnos, aviso: av,
-                  textoGrupo: av.estado === 'suspendida' ? `⚠️ Se suspende el entrenamiento de ${cat.nombre} ${cuando}.${av.mensaje ? ` ${av.mensaje}` : ''}` : `✅ La actividad de ${cat.nombre} ${cuando} es normal.${av.mensaje ? ` ${av.mensaje}` : ''}`,
+                  textoGrupo: av.texto_difusion || textoActividad(av, { categoria: cat.nombre }),
                 });
               }} />
           )}

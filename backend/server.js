@@ -55,11 +55,15 @@ async function start() {
     // Confirmación de asistencia por WhatsApp (hora configurable por complejo)
     try { require('./src/services/recordatorioService').iniciar(60); }
     catch (err) { console.error('✗ Confirmación de asistencia:', err.message); }
-    // Chatbot por Baileys: reabre la sesión de los clubes que eligieron ese proveedor
-    require('./src/services/baileysService').restaurarClubes()
-      .then(n => n && console.log(`[Baileys] restaurando chatbot de ${n} club(es)`)).catch(err => console.error('✗ Baileys clubes:', err.message));
-    // WhatsApp propio de torneos/escuelas/profesores (Baileys): reabre las sesiones vinculadas
-    require('./src/services/whatsappEntidad').iniciar().catch(err => console.error('✗ WhatsApp de entidades:', err.message));
+    // Baileys (WhatsApp Web): deshabilitado salvo WHATSAPP_BAILEYS=1 (config/whatsappModo.js).
+    // En modo manual no se reabren sesiones ni se programan reconexiones.
+    if (require('./src/config/whatsappModo').baileysHabilitado()) {
+      require('./src/services/baileysService').restaurarClubes()
+        .then(n => n && console.log(`[Baileys] restaurando chatbot de ${n} club(es)`)).catch(err => console.error('✗ Baileys clubes:', err.message));
+      require('./src/services/whatsappEntidad').iniciar().catch(err => console.error('✗ WhatsApp de entidades:', err.message));
+    } else {
+      console.log('✓ WhatsApp en MODO MANUAL: Baileys deshabilitado (sin sesiones, QR ni envíos automáticos).');
+    }
     // MercadoPago OAuth: renovación proactiva de tokens por vencer (cada 12 h)
     try {
       require('./src/services/mercadopagoOAuth.service').iniciarRenovacionAutomatica(12);

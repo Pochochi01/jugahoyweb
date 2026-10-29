@@ -11,6 +11,11 @@
  *   GET    /whatsapp/destinatarios   inscriptos/alumnos permitidos (?categoria_id para escuelas)
  *   GET    /whatsapp/red             diagnóstico de salida del servidor a web.whatsapp.com
  *   POST   /whatsapp/enviar          { mensaje, numeros?: [], categoria_id? } → 202 (sale en segundo plano)
+ *
+ * MODO MANUAL (por defecto, Baileys deshabilitado — config/whatsappModo.js):
+ *   GET     → { modo:'manual', entidad, envios } (sin estado de sesión)
+ *   POST /conectar, DELETE /, GET /red → 410 WHATSAPP_MODO_MANUAL (no hay QR ni sesiones)
+ *   POST /enviar → genera el texto para compartir desde el dispositivo (200, no envía nada)
  */
 const router = require('express').Router;
 const { EntityPhone } = require('../models');
@@ -20,6 +25,9 @@ const { destinatarios } = require('../services/whatsappEntidad/entidades');
 const baileysLib = require('../utils/baileysLib');
 const red = require('../services/whatsappEntidad/red');
 const { telefonoDeEntidad, requiereTelefonoVinculado, actor } = require('../middlewares/entidadTelefono');
+const { baileysHabilitado, CODIGO_MODO_MANUAL, MENSAJE_MODO_MANUAL } = require('../config/whatsappModo');
+const manual = () => !baileysHabilitado();
+const sinSesiones = (_req, res) => res.status(410).json({ message: MENSAJE_MODO_MANUAL, code: CODIGO_MODO_MANUAL, modo: 'manual' });
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.code ? { code: err.code } : {}), ...(err.ajenos ? { ajenos: err.ajenos } : {}) });
 const h = (fn) => async (req, res) => { try { await fn(req, res); } catch (err) { send(res, err); } };
@@ -27,6 +35,9 @@ const dormir = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function respuestaEstado(req) {
   const fila = req.entityPhone;
+  if (manual()) {
+    return { modo: 'manual', entidad: { tipo: req.entidad.tipo, id: req.entidad.id, nombre: req.entidad.nombre }, envios: await envios.historialEntidad(req.entidad) };
+  }
   return {
     entidad: { tipo: req.entidad.tipo, id: req.entidad.id, nombre: req.entidad.nombre },
     ...(await sesiones.estado(fila)),
@@ -79,6 +90,10 @@ const listarDestinatarios = h(async (req, res) => {
 const enviar = h(async (req, res) => {
   const b = req.body || {};
   const permitidos = await destinatarios(req.entidad, { categoria_id: b.categoria_id });
+  if (manual()) {
+    const r = await envios.generarManual({ entidad: req.entidad, permitidos, numeros: b.numeros, mensaje: b.mensaje, enviadoPor: actor(req) });
+    return res.json({ ...r, message: 'Mensaje generado: compartilo desde tu WhatsApp (grupo, lista de difusión o contacto).' });
+  }
   const r = await envios.iniciarEnvio({
     fila: req.entityPhone, entidad: req.entidad, permitidos, numeros: b.numeros, mensaje: b.mensaje, enviadoPor: actor(req),
   });
@@ -95,12 +110,14 @@ function rutasTelefono({ acciones = ['estado', 'conectar', 'desconectar', 'desti
   r.use(telefonoDeEntidad);
   const si = (a) => acciones.includes(a);
   const no = (_req, res) => res.status(403).json({ message: 'No tenés permiso para esta acción sobre el teléfono.' });
+  // En modo manual: sin QR, sesiones ni diagnóstico; "enviar" solo genera el texto (sin teléfono vinculado)
+  const conSesion = (fn) => (req, res, next) => (manual() ? sinSesiones(req, res, next) : fn(req, res, next));
   r.get('/', si('estado') ? estado : no);
-  r.post('/conectar', si('conectar') ? conectar : no);
-  r.delete('/', si('desconectar') ? desconectar : no);
-  r.get('/red', si('estado') || si('conectar') ? diagnosticoRed : no);
+  r.post('/conectar', si('conectar') ? conSesion(conectar) : no);
+  r.delete('/', si('desconectar') ? conSesion(desconectar) : no);
+  r.get('/red', si('estado') || si('conectar') ? conSesion(diagnosticoRed) : no);
   r.get('/destinatarios', si('destinatarios') ? listarDestinatarios : no);
-  r.post('/enviar', si('enviar') ? [requiereTelefonoVinculado, enviar] : no);
+  r.post('/enviar', si('enviar') ? [(req, res, next) => (manual() ? next() : requiereTelefonoVinculado(req, res, next)), enviar] : no);
   return r;
 }
 

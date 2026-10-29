@@ -20,6 +20,8 @@ const Escuela = sequelize.define('Escuela', {
   estado:           { type: DataTypes.ENUM('activa', 'inactiva'), defaultValue: 'activa' },
   whatsapp_oficial: { type: DataTypes.STRING(30) },
   dia_vencimiento:  { type: DataTypes.TINYINT, defaultValue: 10 },
+  // Plantillas propias de la escuela por tipo de mensaje (null/ausente = la del sistema)
+  plantillas_mensajes: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
 }, { tableName: 'escuelas' });
 
 // Profesor asignado a una escuela (además de las categorías que entrena).
@@ -65,6 +67,10 @@ const EscuelaAlumno = sequelize.define('EscuelaAlumno', {
   responsable_email:    { type: DataTypes.STRING(150) },
   // pendiente = pre‑inscripción desde la web (no ocupa cupo hasta que el club la confirma)
   estado:               { type: DataTypes.ENUM('activo', 'inactivo', 'pendiente'), defaultValue: 'activo' },
+  // Agrupación opcional para filtrar listados y la generación masiva de cuotas
+  turno:                { type: DataTypes.ENUM('manana', 'tarde', 'noche'), allowNull: true, defaultValue: null },
+  nivel:                { type: DataTypes.STRING(60), allowNull: true, defaultValue: null },
+  curso:                { type: DataTypes.STRING(60), allowNull: true, defaultValue: null },
   // Token del portal del alumno/padre (link sin contraseña que va en los mensajes)
   token_portal:         { type: DataTypes.STRING(64), allowNull: false, unique: true },
 }, { tableName: 'escuela_alumnos' });

@@ -78,7 +78,8 @@ function isExpired(integration) {
 async function getMetaCredentials(clubId, { soloMeta = false } = {}) {
   const integ = await getIntegration(clubId);
 
-  if (!soloMeta && clubId && integ?.wa_provider === 'baileys' && integ.activo !== false) {
+  if (!soloMeta && clubId && integ?.wa_provider === 'baileys' && integ.activo !== false
+    && require('../config/whatsappModo').baileysHabilitado()) {
     return {
       provider: 'baileys', clubId: Number(clubId),
       phoneNumberId: integ.meta_phone_number_id || null, accessToken: null,

@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Smartphone, QrCode, Unlink, Send, RefreshCw, CheckCircle2, AlertTriangle, Wifi, Loader2 } from 'lucide-react';
+import { Smartphone, QrCode, Unlink, Send, RefreshCw, CheckCircle2, AlertTriangle, Wifi, Loader2, FileText } from 'lucide-react';
+import CompartirMensaje from './CompartirMensaje';
 
 const errMsg = (e) => e?.message || 'Ocurrió un error';
 const fechaHora = (f) => (f ? new Date(f).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
 /**
- * WhatsApp propio de una entidad (torneo / escuela / profesor) vinculado por QR (Baileys).
- * Muestra el estado, el QR para vincular, la lista de destinatarios permitidos
- * (inscriptos o alumnos) y el formulario de envío con el historial.
+ * Mensajes de una entidad (torneo / escuela / profesor) a sus inscriptos o alumnos.
+ *
+ * MODO MANUAL (por defecto, el servidor responde estado.modo === 'manual'): sin QR ni
+ * sesiones. Se escribe el mensaje, el servidor lo GENERA (y lo guarda en el historial)
+ * y se comparte desde este dispositivo: copiar, whatsapp://send o la hoja nativa.
+ *
+ * Con Baileys habilitado en el servidor (WHATSAPP_BAILEYS=1) mantiene el flujo anterior:
+ * teléfono vinculado por QR y envío desde ese número.
  *
  * @param {object}   props.svc       telefonoApi(...) de services/telefonoEntidadService
  * @param {string[]} [props.acciones] 'conectar' | 'desconectar' | 'enviar' (por defecto todas)
@@ -23,6 +29,7 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
   const [msg, setMsg] = useState({});
   const [ocupado, setOcupado] = useState(false);
   const [diag, setDiag] = useState(null);         // diagnóstico de red del servidor
+  const [generado, setGenerado] = useState(null);  // modo manual: { texto, destinatarios }
   const puede = (a) => acciones.includes(a);
 
   const cargar = useCallback(() => svc.estado().then(setSt).catch(e => setMsg({ error: errMsg(e) })), [svc]);
@@ -69,6 +76,89 @@ export default function TelefonoEntidad({ svc, acciones = ['conectar', 'desconec
   const vista = useMemo(() => (mensaje ? `📣 *${st?.entidad?.nombre || ''}*\n\n${mensaje.replace(/\{nombre\}/gi, (dest?.[0]?.nombre || 'Juan').split(' ')[0])}` : ''), [mensaje, st, dest]);
 
   if (!st) return <div className="card text-sm text-muted-foreground">{msg.error || 'Cargando…'}</div>;
+
+  // ── MODO MANUAL: generar el texto y compartirlo desde este dispositivo ──
+  if (st.modo === 'manual') {
+    const generar = async () => {
+      if (!sel.size) return setMsg({ error: 'Elegí al menos un destinatario.' });
+      setOcupado(true); setMsg({}); setGenerado(null);
+      try {
+        const todos = dest && sel.size === dest.length;
+        const r = await svc.enviar({ mensaje, categoria_id: categoria || undefined, numeros: todos ? undefined : [...sel] });
+        setGenerado(r); cargar();
+      } catch (e) { setMsg({ error: errMsg(e) }); } finally { setOcupado(false); }
+    };
+    return (
+      <div className="space-y-3 max-w-3xl">
+        <div className="card space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Smartphone className="w-5 h-5 text-primary" aria-hidden="true" />
+            <h3 className="font-semibold mr-auto">Mensajes de {st.entidad?.nombre}</h3>
+            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">Envío manual</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Escribí el mensaje y generalo: lo compartís desde tu WhatsApp a un grupo, una lista de difusión o a cada {quienes.replace(/s$/, '')}. El sistema no envía nada por su cuenta.
+          </p>
+          {puede('enviar') && <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium mr-auto">{quienes.charAt(0).toUpperCase() + quienes.slice(1)} {dest && <span className="text-xs text-muted-foreground font-normal">({sel.size}/{dest.length})</span>}</span>
+              {categorias.length > 0 && (
+                <select className="input !w-auto text-sm" value={categoria} onChange={e => setCategoria(e.target.value)} aria-label="Categoría">
+                  <option value="">Todas las categorías</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              )}
+              {dest?.length > 0 && (
+                <button className="text-xs text-primary hover:underline" onClick={() => setSel(sel.size === dest.length ? new Set() : new Set(dest.map(d => d.numero)))}>
+                  {sel.size === dest.length ? 'Ninguno' : 'Todos'}
+                </button>
+              )}
+            </div>
+            {dest?.length > 0 && (
+              <div className="max-h-48 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+                {dest.map(d => (
+                  <label key={d.numero} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/40">
+                    <input type="checkbox" checked={sel.has(d.numero)} onChange={() => toggle(d.numero)} />
+                    <span className="font-medium truncate">{d.nombre}</span>
+                    <span className="text-xs text-muted-foreground truncate">{d.detalle}</span>
+                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">+{d.numero}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {dest && dest.length === 0 && <p className="text-sm text-muted-foreground">No hay {quienes} con WhatsApp cargado.</p>}
+            <textarea className="input" rows={4} maxLength={2000} placeholder="Escribí el mensaje general (sin datos personales: sirve para grupos y listas de difusión)." value={mensaje} onChange={e => setMensaje(e.target.value)} />
+            <button className="btn-primary text-sm flex items-center gap-1.5" disabled={ocupado || !mensaje.trim() || !sel.size} onClick={generar}>
+              {ocupado ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <FileText className="w-4 h-4" aria-hidden="true" />} Generar mensaje
+            </button>
+          </>}
+          {msg.error && <p className="text-sm text-danger" role="alert">{msg.error}</p>}
+          {generado && (
+            <div className="border-t border-border pt-3">
+              <p className="text-sm font-medium mb-2">Listo para enviar a {generado.total} {quienes}</p>
+              <CompartirMensaje key={generado.envio_id} texto={generado.texto} titulo={st.entidad?.nombre} destinatarios={generado.destinatarios} />
+            </div>
+          )}
+        </div>
+
+        {st.envios?.length > 0 && (
+          <div className="card">
+            <h3 className="font-semibold text-sm mb-2">Mensajes generados</h3>
+            <div className="space-y-1.5">
+              {st.envios.map(e => (
+                <div key={e.envio_id} className="text-xs flex flex-wrap gap-x-3 gap-y-0.5 border-b border-border/50 pb-1.5 last:border-0">
+                  <span className="text-muted-foreground">{fechaHora(e.fecha)}</span>
+                  <span className="truncate max-w-[45ch]">{e.mensaje}</span>
+                  {e.enviado_por && <span className="ml-auto text-muted-foreground">{e.enviado_por}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const conectado = st.estado === 'conectado';
 
   return (

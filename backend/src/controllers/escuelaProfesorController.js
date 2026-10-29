@@ -91,7 +91,10 @@ const createAviso = handler(async (req, res) => {
   if (!d.categoria_id) throw svc.httpError(400, 'Elegí la categoría del aviso.');
   await exigirCategoria(req, d.categoria_id);
   const cat = await EscuelaCategoria.findByPk(d.categoria_id, { attributes: ['escuela_id'] });
-  res.status(201).json(await EscuelaAviso.create({ ...d, complex_id: req.clubId, escuela_id: cat?.escuela_id ?? null, autor: `Prof. ${req.profesor.nombre} ${req.profesor.apellido}` }));
+  const av = await EscuelaAviso.create({ ...d, complex_id: req.clubId, escuela_id: cat?.escuela_id ?? null, autor: `Prof. ${req.profesor.nombre} ${req.profesor.apellido}` });
+  const escuela = cat?.escuela_id ? await require('../models').Escuela.findByPk(cat.escuela_id) : null;
+  // Texto general (sin datos de alumnos) con la plantilla de la escuela, para el grupo de padres
+  res.status(201).json(escuela ? (await require('../services/escuela/mensajesService').conTextoDifusion([av], escuela))[0] : av);
 });
 
 /** GET /alumnos/:id/contexto → datos para los mensajes de WhatsApp (solo alumnos de sus categorías). */
