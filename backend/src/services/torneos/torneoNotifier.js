@@ -14,8 +14,14 @@
  *
  * Nunca lanza: un fallo de WhatsApp no debe romper la inscripción, el pago
  * ni la carga de resultados. Devuelve { ok, via | error } por destinatario.
+ *
+ * CANAL MANUAL: si el módulo "torneos" es de canal manual (whatsapp_modulos.canal),
+ * NO se envía nada (ni número del club, ni chatbot, ni Meta, ni Baileys, ni teléfono
+ * propio del torneo): la comunicación se hace desde el WhatsApp del dispositivo con
+ * destinosPareja() + whatsapp://send en el panel.
  */
 const integrations = require('../integrations.service');
+const waModulos = require('../whatsappModulos.service');
 const waWindow     = require('../whatsappWindowService');
 const baileys      = require('../baileysService');
 const waEntidad    = require('../whatsappEntidad');
@@ -44,6 +50,7 @@ async function proveedor(clubId) {
 async function enviar(clubId, telefono, texto, { imagen, torneoId } = {}) {
   const tel = digitos(telefono);
   if (!tel) return { ok: false, error: 'sin teléfono' };
+  if (await waModulos.esManual('torneos')) return { ok: false, manual: true, error: 'Torneos se comunica solo desde el WhatsApp del dispositivo.' };
   try {
     if (torneoId) {
       const propio = await telefonoDelTorneo(clubId, torneoId);
@@ -58,7 +65,9 @@ async function enviar(clubId, telefono, texto, { imagen, torneoId } = {}) {
       else await baileys.enviarTexto(clubId, tel, texto);
       return { ok: true, via: 'baileys' };
     }
-    const creds = await integrations.getMetaCredentials(clubId);
+    // Módulo "torneos" del número del club (desactivado por defecto)
+    const creds = await waModulos.credencialesPara(clubId, 'torneos');
+    if (creds.bloqueado) return { ok: false, bloqueado: true, error: 'WhatsApp no habilitado para Torneos en este club.' };
     // Los parámetros de plantilla de Meta no admiten saltos de línea
     const plano = texto.replace(/\*/g, '').replace(/\s*\n+\s*/g, ' · ').slice(0, 1000);
     const r = await waWindow.enviarConVentana(clubId, tel, {
@@ -73,6 +82,12 @@ async function enviar(clubId, telefono, texto, { imagen, torneoId } = {}) {
     console.error(`[torneos][wa] club ${clubId} → ****${tel.slice(-4)}:`, err.message);
     return { ok: false, error: err.message };
   }
+}
+
+/** Destinatarios para envío MANUAL (WhatsApp del dispositivo): un item por jugador con teléfono. */
+function destinosPareja(pareja, texto) {
+  return (pareja?.jugadores || []).filter(j => digitos(j.whatsapp))
+    .map(j => ({ numero: digitos(j.whatsapp), nombre: `${j.nombre} (${nombrePareja(pareja)})`, texto }));
 }
 
 /** Envía el mismo texto a los dos jugadores de una pareja. */
@@ -137,4 +152,4 @@ const mensajes = {
   },
 };
 
-module.exports = { enviar, aPareja, proveedor, mensajes, nombrePareja, RONDA_LABEL };
+module.exports = { destinosPareja, esManual: () => waModulos.esManual('torneos'), enviar, aPareja, proveedor, mensajes, nombrePareja, RONDA_LABEL };

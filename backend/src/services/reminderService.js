@@ -13,6 +13,7 @@ const { Op } = require('sequelize');
 const { Booking, Field, Complex } = require('../models');
 const wa = require('./whatsappService');
 const integrations = require('./integrations.service');
+const waModulos = require('./whatsappModulos.service');
 const waWindow = require('./whatsappWindowService');
 const { todayAR } = require('../utils/time');
 
@@ -75,9 +76,10 @@ async function enviarRecordatoriosPendientes() {
     if (!tel || !complexId) { await b.update({ recordatorio_enviado: true }); continue; }
 
     if (!credsCache.has(complexId)) {
-      credsCache.set(complexId, await integrations.getMetaCredentials(complexId).catch(() => null));
+      credsCache.set(complexId, await waModulos.credencialesPara(complexId, 'recordatorios'));
     }
     const creds = credsCache.get(complexId);
+    if (creds.bloqueado) continue;   // módulo no autorizado: no se envía ni se marca (se reintenta si lo habilitan)
 
     const canchaLbl = field ? field.nombre : 'la cancha';
     const deporteLbl = depLabel(field?.deporte);

@@ -766,14 +766,19 @@ async function notificarProximos(torneo, { parejaIds } = {}) {
   });
   const avisadas = new Set();
   let enviados = 0;
+  const manual = await notifier.esManual();
+  const destinatarios = [];   // modo manual: un mensaje por jugador para el WhatsApp del dispositivo
   for (const p of partidos) {
     for (const par of [p.pareja1, p.pareja2]) {
       if (avisadas.has(par.id) || (parejaIds && !parejaIds.includes(par.id))) continue;
       avisadas.add(par.id);
-      const r = await notifier.aPareja(torneo.id_tenant, par, notifier.mensajes.proximoPartido(torneo, p, canchaLabel(p.field)));
+      const texto = notifier.mensajes.proximoPartido(torneo, p, canchaLabel(p.field));
+      if (manual) { destinatarios.push(...notifier.destinosPareja(par, texto)); continue; }
+      const r = await notifier.aPareja(torneo.id_tenant, par, texto);
       enviados += r.filter(x => x.ok).length;
     }
   }
+  if (manual) return { modo: 'manual', parejas: avisadas.size, destinatarios };
   return { parejas: avisadas.size, mensajes: enviados };
 }
 

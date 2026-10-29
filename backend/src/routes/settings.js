@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/settingsController');
 const integrationsCtrl = require('../controllers/integrationsController');
+const waModulosCtrl = require('../controllers/whatsappModulosController');
 const { authenticate } = require('../middlewares/auth');
 const { requireComplexAccess, requirePermission, requireRole } = require('../middlewares/roles');
 const { resolveTenant } = require('../middlewares/tenant');
@@ -19,6 +20,9 @@ router.put ('/:complexId/integrations',            requireComplexAccess, require
 router.post('/:complexId/integrations/renew-meta', requireComplexAccess, requireRole('general_admin'), integrationsCtrl.renewMeta);
 // Baileys (WhatsApp Web): estado + QR de vinculación, conectar, desvincular
 // Configuración de Chatbot (Meta API o Baileys): administrador del complejo y admin general
+// Módulos autorizados del número de WhatsApp del club (agenda, reservas, torneos, …)
+router.get ('/:complexId/whatsapp-modulos', requireComplexAccess, requireRole('general_admin', 'complex_admin'), waModulosCtrl.listar);
+router.put ('/:complexId/whatsapp-modulos', requireComplexAccess, requireRole('general_admin', 'complex_admin'), waModulosCtrl.guardar);
 router.get ('/:complexId/chatbot',          requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.getChatbot);
 router.put ('/:complexId/chatbot',          requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.updateChatbot);
 router.get   ('/:complexId/chatbot/baileys', requireComplexAccess, requireRole('general_admin', 'complex_admin'), integrationsCtrl.baileysEstado);

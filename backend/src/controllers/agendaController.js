@@ -104,6 +104,7 @@ const waitlist = require('../services/waitlistService');
 const notifService = require('./../services/notification.service');
 const wa = require('../services/whatsappService');
 const integrations = require('../services/integrations.service');
+const waModulos = require('../services/whatsappModulos.service');
 const { todayAR } = require('../utils/time');
 const { yaComenzo, MSG_YA_COMENZO } = require('../utils/cancelPolicy');
 const { registrarInasistencia, reevaluarTrasCorreccion, listarIncumplidos, habilitarManual } = require('../utils/inasistencias');
@@ -424,9 +425,11 @@ async function cancelBooking(req, res) {
     // MULTI-TENANT: se envía con las credenciales del club dueño de la reserva.
     const telAviso = booking.telefono_cliente || (booking.user_id ? (await User.findByPk(booking.user_id, { attributes: ['telefono'] }))?.telefono : null);
     let avisoWhatsApp = false;
-    if (telAviso) {
+    // Módulo "agenda" del número del club; bloqueado = no se avisa (y se informa al panel)
+    const credsAviso = telAviso ? await waModulos.credencialesPara(complexId, 'agenda') : null;
+    if (telAviso && !credsAviso.bloqueado) {
       avisoWhatsApp = true;
-      integrations.getMetaCredentials(complexId)
+      Promise.resolve(credsAviso)
         .then(creds => wa.sendCancellationNotice(String(telAviso).replace(/\D/g, ''), {
           fecha:  booking.fecha,
           hora:   booking.hora_inicio,
@@ -436,7 +439,7 @@ async function cancelBooking(req, res) {
         .catch(err => console.error('[WhatsApp] aviso cancelación:', err.message));
     }
 
-    res.json({ message: avisoWhatsApp ? 'Reserva cancelada. Avisamos al cliente por WhatsApp.' : 'Reserva cancelada (sin teléfono para avisar).', booking, aviso_whatsapp: avisoWhatsApp });
+    res.json({ message: avisoWhatsApp ? 'Reserva cancelada. Avisamos al cliente por WhatsApp.' : telAviso ? 'Reserva cancelada (WhatsApp no habilitado para la agenda: no se avisó al cliente).' : 'Reserva cancelada (sin teléfono para avisar).', booking, aviso_whatsapp: avisoWhatsApp });
   } catch (err) {
     await t.rollback();
     res.status(500).json({ message: err.message });

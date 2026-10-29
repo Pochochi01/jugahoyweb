@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { settingsService } from '../../services/settingsService';
 import MercadoPagoConexion from '../../components/MercadoPagoConexion';
 import ChatbotConfig from '../../components/ChatbotConfig';
+import WhatsappModulos from '../../components/WhatsappModulos';
 import ConfirmacionAsistencia from '../../components/ConfirmacionAsistencia';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -1051,6 +1052,7 @@ export default function SettingsTab({ complexId, onUpdate, onFieldsChange, resul
       {/* MercadoPago (OAuth): lo conecta el administrador del complejo o el general */}
       {isComplexAdmin && <MercadoPagoConexion complexId={complexId} resultado={resultadoMp} />}
       {isComplexAdmin && <ChatbotConfig complexId={complexId} />}
+      {isComplexAdmin && <WhatsappModulos complexId={complexId} />}
       {isComplexAdmin && <ConfirmacionAsistencia complexId={complexId} modo="config" />}
 
       {/* WhatsApp — SOLO el administrador general */}

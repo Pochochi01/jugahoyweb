@@ -46,6 +46,12 @@ function isConfigured(creds) {
  * services/chat/chatService). Meta por defecto; Baileys si creds.provider='baileys'.
  */
 async function sendMessage(payload, creds) {
+  // Credenciales bloqueadas por permisos de módulo (services/whatsappModulos.service.js):
+  // no se envía, no se cae al .env y no se lanza (el flujo que llama sigue normal).
+  if (creds?.bloqueado) {
+    console.warn(`[WhatsApp] ✗ NO enviado a ${payload?.to ? '****' + String(payload.to).slice(-4) : '?'} · módulo "${creds.modulo}" · ${creds.motivo}`);
+    return { ok: false, bloqueado: true, motivo: creds.motivo };
+  }
   if (creds?.provider === 'baileys') return require('./chat/chatService').adaptadorPara(creds).send(payload, creds);
   return enviarPorMeta(payload, creds);
 }

@@ -16,6 +16,7 @@
 const { User, Token } = require('../models');
 const wa = require('./whatsappService');
 const integrations = require('./integrations.service');
+const waModulos = require('./whatsappModulos.service');
 
 const OTP_TTL_MIN       = parseInt(process.env.OTP_TTL_MIN || '5', 10);   // vigencia del código
 const MAX_ATTEMPTS      = parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10);
@@ -85,7 +86,11 @@ async function sendPhoneOtp(user) {
   const otp = await Token.createOTP(user.id, OTP_TTL_MIN); // invalida anteriores + intentos=0
 
   // Credenciales del club del usuario (o plataforma como fallback en dev)
-  const creds = await integrations.getMetaCredentials(clubIdOf(user));
+  // Número del club solo si tiene el módulo "reservas"; si no, el número de la plataforma
+  // (la verificación del teléfono no puede quedar bloqueada por un permiso del club).
+  const clubId = clubIdOf(user);
+  let creds = clubId ? await waModulos.credencialesPara(clubId, 'reservas') : null;
+  if (!creds || creds.bloqueado) creds = await integrations.getMetaCredentials(null);
 
   // Plantilla de autenticación en producción (obligatoria fuera de la ventana
   // de 24 h) o texto libre en desarrollo. Ver shouldUseTemplate().

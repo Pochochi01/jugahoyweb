@@ -8,6 +8,7 @@ const { TorneoPareja, TorneoJugador } = require('../models');
 const svc = require('../services/torneos/torneoService');
 const notifier = require('../services/torneos/torneoNotifier');
 const integrations = require('../services/integrations.service');
+const waModulos = require('../services/whatsappModulos.service');
 const baileys = require('../services/baileysService');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
@@ -15,11 +16,14 @@ const send = (res, err) => res.status(err.status || 500).json({ message: err.mes
 /** Estado del canal (sin credenciales). */
 async function canal(req, res) {
   try {
+    // Canal manual: solo WhatsApp del dispositivo (sin número del club)
+    if (await notifier.esManual()) return res.json({ modo: 'manual', proveedor: null, conectado: false, modulo_autorizado: false });
     const proveedor = await notifier.proveedor(req.clubId);
     let conectado;
     if (proveedor === 'baileys') conectado = (await baileys.estado(req.clubId)).estado === 'conectado';
     else conectado = (await integrations.getMetaCredentials(req.clubId)).configured;
-    res.json({ proveedor, conectado });
+    const modulo_autorizado = await waModulos.autorizado(req.clubId, 'torneos');
+    res.json({ proveedor, conectado: conectado && modulo_autorizado, modulo_autorizado });
   } catch (err) { send(res, err); }
 }
 
@@ -42,6 +46,12 @@ async function difundir(req, res) {
 
     const parejas = await TorneoPareja.findAll({ where, include: [{ model: TorneoJugador, as: 'jugadores' }] });
     const texto = `🎾 *${req.torneo.nombre}*\n\n${mensaje}`;
+    if (await notifier.esManual()) {
+      // Modo manual: se devuelve el texto y los destinatarios para abrir el WhatsApp del dispositivo
+      const destinatarios = parejas.flatMap(p => notifier.destinosPareja(p, texto));
+      console.log(`[torneos][wa] torneo ${req.torneo.id}: mensaje generado (manual) para ${parejas.length} parejas / ${destinatarios.length} jugadores`);
+      return res.json({ modo: 'manual', parejas: parejas.length, texto, destinatarios });
+    }
     const resultados = (await Promise.all(parejas.map(p => notifier.aPareja(req.clubId, p, texto)))).flat();
     res.json({
       parejas: parejas.length,

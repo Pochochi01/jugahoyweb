@@ -28,6 +28,7 @@ const {
 const wa = require('./whatsappService');
 const waWindow = require('./whatsappWindowService');
 const integrations = require('./integrations.service');
+const waModulos = require('./whatsappModulos.service');
 const { inicioDe, yaComenzo } = require('../utils/cancelPolicy');
 const { todayAR, sumarDias } = require('../utils/time');
 
@@ -130,7 +131,10 @@ async function enviarPendientes(now = new Date()) {
     const cfg = { hora_recordatorio: c.hora_recordatorio, horas_confirmacion: c.horas_confirmacion || 3 };
     const lista = await candidatos(c.complex_id, cfg, now);
     if (!lista.length) continue;
-    const creds = await integrations.getMetaCredentials(c.complex_id).catch(() => null);
+    // Módulo "recordatorios": si no está autorizado NO se pide confirmación (y por lo tanto
+    // tampoco se cancela ningún turno por falta de respuesta).
+    const creds = await waModulos.credencialesPara(c.complex_id, 'recordatorios');
+    if (creds.bloqueado) continue;
     for (const b of lista) {
       try { if (await enviarRecordatorio(b, c.complex_id, cfg, creds, now)) enviados++; }
       catch (err) { console.error('[confirmación] envío turno', b.id, '→', err.message); }   // reintenta en el próximo tick
@@ -184,7 +188,7 @@ async function cancelar(bookingId, origen = 'sin_respuesta') {
     const body = origen === 'cliente'
       ? `👌 Listo, cancelamos tu turno:\n\n${detalle(b, field)}\n\nEscribí *reservar* para elegir otro horario.`
       : `❌ *Turno cancelado*\n\nNo recibimos la confirmación de asistencia a tiempo, así que el turno fue cancelado:\n\n${detalle(b, field)}\n\nEscribí *reservar* para elegir otro horario.`;
-    integrations.getMetaCredentials(field.complex_id)
+    waModulos.credencialesPara(field.complex_id, 'recordatorios')
       .then(creds => wa.sendMessage({ to: tel, type: 'text', text: { body } }, creds))
       .catch(err => console.error('[confirmación] aviso cancelación:', err.message));
   }

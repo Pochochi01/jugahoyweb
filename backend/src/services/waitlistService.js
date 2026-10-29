@@ -11,6 +11,7 @@ const { Op } = require('sequelize');
 const { Waitlist, Complex, Field, User, Notification } = require('../models');
 const wa = require('./whatsappService');
 const integrations = require('./integrations.service');
+const waModulos = require('./whatsappModulos.service');
 const waWindow = require('./whatsappWindowService');
 const notifService = require('./notification.service');
 const { sendMail } = require('../config/mailer');
@@ -104,7 +105,7 @@ async function notificarLiberado(complexId, { field_id, fecha, hora, deporte }) 
     const field = await Field.findByPk(field_id, { attributes: ['nombre', 'identificador', 'deporte'] });
     const canchaLbl = field ? field.nombre : 'una cancha';
     const deporteLbl = labelDeporte(deporte || field?.deporte);
-    const creds = await integrations.getMetaCredentials(complexId).catch(() => null);
+    const creds = await waModulos.credencialesPara(complexId, 'reservas');
     const complejo = await Complex.findByPk(complexId, { attributes: ['nombre'] });
     const dur = inscriptos[0]?.duracion || 60;
     const horaFin = (() => { const [h, m] = String(hora).split(':').map(Number); const t = h * 60 + m + dur; return `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; })();

@@ -7,6 +7,7 @@ import TorneoForm from './TorneoForm';
 import HorariosEditor from './HorariosEditor';
 import InscripcionForm from './InscripcionForm';
 import TelefonoEntidad from '../TelefonoEntidad';
+import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores } from './FixtureViews';
 import { uploadUrl } from '../../services/torneosService';
 import {
@@ -558,19 +559,73 @@ function ComunicacionSeccion({ svc, torneo }) {
   const [dest, setDest] = useState('todos');
   const [msg, setMsg] = useState({});
   const [enviando, setEnviando] = useState(false);
+  const [manual, setManual] = useState(null);   // { titulo, texto, destinatarios } — modo WhatsApp del dispositivo
   useEffect(() => { svc.canal(torneo.id).then(setCanal).catch(() => {}); }, [svc, torneo.id]);
+  const esManual = canal?.modo === 'manual';
 
   const correr = async (fn) => {
     setEnviando(true); setMsg({});
     try { setMsg({ ok: await fn() }); } catch (e) { setMsg({ error: errMsg(e) }); } finally { setEnviando(false); }
   };
 
+  if (esManual) return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="card text-sm flex items-start gap-2">
+        <MessageCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <span>Los torneos se comunican <strong>desde el WhatsApp de este dispositivo</strong>. El sistema arma los mensajes y vos los enviás: no se usa el número del club ni el chatbot, y no hay avisos automáticos.</span>
+      </div>
+
+      <div className="card space-y-2">
+        <div className="font-semibold text-sm">Próximos partidos</div>
+        <p className="text-xs text-muted-foreground">Genera el aviso del próximo partido de cada pareja para enviarlo jugador por jugador.</p>
+        <button className="btn-outline text-sm flex items-center gap-2" disabled={enviando}
+          onClick={() => correr(async () => {
+            const r = await svc.proximos(torneo.id);
+            setManual(r.destinatarios?.length ? { titulo: 'Próximos partidos', destinatarios: r.destinatarios } : null);
+            return r.destinatarios?.length ? `${r.destinatarios.length} mensaje(s) listos para ${r.parejas} parejas.` : 'No hay partidos programados con jugadores para avisar.';
+          })}>
+          <RefreshCw className="w-4 h-4" /> Generar avisos de próximos partidos
+        </button>
+      </div>
+
+      <div className="card space-y-3">
+        <div className="font-semibold text-sm">Mensaje a jugadores</div>
+        <select className="input text-sm" value={dest} onChange={e => setDest(e.target.value)}>
+          <option value="todos">Todas las parejas inscriptas</option>
+          <option value="pagados">Solo con pago confirmado</option>
+          <option value="pendientes">Solo con pago pendiente</option>
+        </select>
+        <textarea className="input min-h-[110px]" maxLength={1000} placeholder="Ej: Por lluvia, los partidos de hoy pasan a las canchas techadas." value={mensaje} onChange={e => setMensaje(e.target.value)} />
+        <button className="btn-primary text-sm flex items-center gap-2" disabled={enviando || mensaje.trim().length < 3}
+          onClick={() => correr(async () => {
+            const r = await svc.difundir(torneo.id, { mensaje, destinatarios: dest });
+            setManual({ titulo: torneo.nombre, texto: r.texto, destinatarios: r.destinatarios || [] });
+            return `Mensaje generado para ${r.parejas} parejas (${(r.destinatarios || []).length} jugadores con WhatsApp).`;
+          })}>
+          <Send className="w-4 h-4" /> {enviando ? 'Generando…' : 'Generar mensaje'}
+        </button>
+      </div>
+      <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>
+
+      {manual && (
+        <div className="card space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-sm">{manual.titulo}</div>
+            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setManual(null)}>Cerrar</button>
+          </div>
+          <CompartirMensaje texto={manual.texto || manual.destinatarios[0]?.texto || ''} editable={Boolean(manual.texto)} titulo={manual.titulo}
+            destinatarios={manual.destinatarios} ayuda="Tocá cada jugador para abrir su chat en el WhatsApp de este dispositivo." />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="card text-sm flex items-center gap-2">
         <MessageCircle className="w-4 h-4 text-primary" />
         Canal: <strong>{canal ? (canal.proveedor === 'baileys' ? 'WhatsApp Web (Baileys)' : 'WhatsApp Business (Meta)') : '…'}</strong>
-        {canal && <span className={canal.conectado ? 'badge-green' : 'badge-red'}>{canal.conectado ? 'Conectado' : 'Sin conectar'}</span>}
+        {canal && <span className={canal.conectado ? 'badge-green' : 'badge-red'} title={canal.modulo_autorizado === false ? 'Habilitalo en Configuración → WhatsApp → Módulos autorizados' : undefined}>{canal.conectado ? 'Conectado' : canal.modulo_autorizado === false ? 'WhatsApp no habilitado para Torneos' : 'Sin conectar'}</span>}
         <span className="text-xs text-muted-foreground ml-auto">Lo configura el administrador de la plataforma</span>
       </div>
 

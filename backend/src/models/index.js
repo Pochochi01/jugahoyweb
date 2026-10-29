@@ -22,6 +22,8 @@ const Localidad       = require('./Localidad');
 const Favorite        = require('./Favorite');
 const PushSubscription = require('./PushSubscription');
 const ClubIntegration  = require('./ClubIntegration');
+const WhatsappModulo     = require('./WhatsappModulo');
+const ClubWhatsappModulo = require('./ClubWhatsappModulo');
 const Blacklist        = require('./Blacklist');
 const ConfiguracionChatbot = require('./ConfiguracionChatbot');
 const CantinaProducto       = require('./CantinaProducto');
@@ -159,6 +161,10 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 // ── Integraciones por club (multi-tenant) ─────────────────────
 Complex.hasOne(ClubIntegration,    { foreignKey: 'club_id', as: 'integrations' });
 ClubIntegration.belongsTo(Complex, { foreignKey: 'club_id', as: 'club' });
+// Permisos por módulo de cada número de WhatsApp del club
+ClubIntegration.hasMany(ClubWhatsappModulo, { foreignKey: 'club_integration_id', as: 'modulos', onDelete: 'CASCADE' });
+ClubWhatsappModulo.belongsTo(ClubIntegration, { foreignKey: 'club_integration_id', as: 'integracion' });
+ClubWhatsappModulo.belongsTo(WhatsappModulo, { foreignKey: 'modulo', targetKey: 'clave', as: 'definicion' });
 
 // ── Cantina ──
 CantinaVenta.hasMany(CantinaDetalleVenta,   { foreignKey: 'venta_id', as: 'detalle', onDelete: 'CASCADE' });
@@ -302,7 +308,7 @@ module.exports = {
   // Push
   PushSubscription,
   // Integraciones por club (multi-tenant)
-  ClubIntegration,
+  ClubIntegration, WhatsappModulo, ClubWhatsappModulo,
   // Lista de incumplidos (inasistencias)
   Blacklist,
   // Configuración del chatbot (confirmación de asistencia)

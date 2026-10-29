@@ -40,10 +40,13 @@ const integrations = require('../services/integrations.service');
 const notifService = require('../services/notification.service');
 const reservaPago  = require('../services/reservaPago.service');
 const actividades  = require('../services/actividadesService');
+const waModulos    = require('../services/whatsappModulos.service');
 
 // Opciones 5 y 6 del menú (escuelas, profesores y torneos) — DESHABILITADAS por ahora.
 // Para reactivarlas: CHATBOT_ACTIVIDADES=true en backend/.env y reiniciar.
 const ACTIVIDADES_ON = String(process.env.CHATBOT_ACTIVIDADES || '').toLowerCase() === 'true';
+// Además del flag, el número del club debe tener autorizado el módulo (Configuración → WhatsApp → Módulos autorizados).
+const actividadesOn = (ctx) => ACTIVIDADES_ON && Boolean(ctx?.mod?.escuelas || ctx?.mod?.profesores || ctx?.mod?.torneos);
 const { todayAR }  = require('../utils/time');
 const { frontendUrl } = require('../config/urls');
 const { abbrDeporte, abbrSuperficie, nombreCancha, tipoCanchaCompleto, labelDeporte } = require('../utils/canchas');
@@ -787,6 +790,12 @@ async function handleWebhook(req, res) {
 async function procesarMensaje(ctx, msg) {
   try {
     const { clubId } = ctx;
+    // Permisos por módulo del número: el chatbot es el módulo "reservas". Sin permiso no se procesa el evento.
+    ctx.mod = await waModulos.permisosDe(clubId).catch(() => ({}));
+    if (!ctx.mod.reservas) {
+      console.warn(`[WhatsApp][módulos] mensaje entrante IGNORADO · club ${clubId} · módulo "reservas" no autorizado para este número`);
+      return;
+    }
     const send = p => wa.sendMessage(p, ctx.creds);
 
     const from    = msg.from;   // número WhatsApp del remitente
@@ -820,7 +829,7 @@ async function procesarMensaje(ctx, msg) {
       }
 
       // Selección numérica del menú principal (1 / 2 / 3 / 4), igual que tocar la lista.
-      if (['1', '2', '3', '4', ...(ACTIVIDADES_ON ? ['5', '6'] : [])].includes(text)) {
+      if (['1', '2', '3', '4', ...(actividadesOn(ctx) ? ['5', '6'] : [])].includes(text)) {
         if (text === '5') { await _sendActividadesMenu(ctx, from); return; }
         if (text === '6') { await _sendMisActividades(ctx, from); return; }
         if (text === '1') { await _sendContactButton(ctx, from); return; }
@@ -871,12 +880,12 @@ async function procesarMensaje(ctx, msg) {
       }
 
       // "mis horarios" / "mis clases" / "mis torneos" → lo de esta persona en el club
-      if (ACTIVIDADES_ON && /\bmis?\s+(horarios?|clases?|torneos?|entrenamientos?|actividades)\b/.test(text)) {
+      if (actividadesOn(ctx) && /\bmis?\s+(horarios?|clases?|torneos?|entrenamientos?|actividades)\b/.test(text)) {
         await _sendMisActividades(ctx, from);
         return;
       }
       // "escuela de tenis", "profesores de pádel", "torneos" → catálogo del club (por deporte)
-      if (ACTIVIDADES_ON && /escuela|profe|clase|torneo|entrenador|actividades/.test(text)) {
+      if (actividadesOn(ctx) && /escuela|profe|clase|torneo|entrenador|actividades/.test(text)) {
         await _sendActividades(ctx, from, actividades.deporteDeTexto(text), _tipoActividad(text));
         return;
       }
@@ -910,7 +919,7 @@ async function procesarMensaje(ctx, msg) {
         return;
       }
       // Botones viejos de 5/6 (mensajes ya enviados) con la opción apagada → menú principal
-      if (!ACTIVIDADES_ON && (replyId === 'menu_actividades' || replyId === 'menu_mishorarios' || replyId.startsWith('act_'))) {
+      if (!actividadesOn(ctx) && (replyId === 'menu_actividades' || replyId === 'menu_mishorarios' || replyId.startsWith('act_'))) {
         await _sendWelcome(ctx, from);
         return;
       }
@@ -1110,7 +1119,7 @@ async function _sendWelcome(ctx, to) {
       { id: 'menu_web',       title: '2. Turnos por la Web',  description: 'Reservá desde la web' },
       { id: 'menu_turnos',    title: '3. Turnos por WhatsApp', description: 'Sacá tu turno acá mismo' },
       { id: 'menu_misturnos', title: '4. Ver mis turnos',     description: 'Consultá tus turnos agendados' },
-      ...(ACTIVIDADES_ON ? [
+      ...(actividadesOn(ctx) ? [
         { id: 'menu_actividades', title: '5. Escuelas y torneos', description: 'Escuelas, profesores y torneos' },
         { id: 'menu_mishorarios', title: '6. Mis clases/torneos', description: 'Tus horarios de escuela y torneos' },
       ] : []),
@@ -1147,10 +1156,12 @@ async function _sendActividadesMenu(ctx, to) {
  */
 async function _sendActividades(ctx, to, deporte = null, tipo = null, catalogo = null) {
   const send = p => wa.sendMessage(p, ctx.creds);
+  // Solo los tipos cuyo módulo está autorizado para el número del club
+  if (tipo && !ctx.mod?.[tipo]) return _sendWelcome(ctx, to);
   const cat = catalogo || await actividades.catalogoComplejo(ctx.clubId, deporte);
   const dl = deporte ? ` de ${(actividades.DEPORTE_LABEL[deporte] || deporte).toLowerCase()}` : '';
   const partes = [];
-  if (!tipo || tipo === 'escuelas') {
+  if ((!tipo || tipo === 'escuelas') && ctx.mod?.escuelas) {
     partes.push(cat.escuelas.length
       ? `🏫 *Escuelas${dl}*\n` + cat.escuelas.map(e => [
         `• *${e.nombre}* (${e.deporte_label})${e.entrenadores.length ? ` — Prof. ${e.entrenadores.join(', ')}` : ''}`,
@@ -1158,12 +1169,12 @@ async function _sendActividades(ctx, to, deporte = null, tipo = null, catalogo =
       ].join('\n')).join('\n')
       : `🏫 No hay escuelas${dl} abiertas por ahora.`);
   }
-  if (!tipo || tipo === 'profesores') {
+  if ((!tipo || tipo === 'profesores') && ctx.mod?.profesores) {
     partes.push(cat.profesores.length
       ? `👨‍🏫 *Profesores${dl}*\n` + cat.profesores.map(p => `• ${p.nombre}${p.deportes.length ? ` (${p.deportes.map(d => actividades.DEPORTE_LABEL[d] || d).join(', ')})` : ''}`).join('\n')
       : `👨‍🏫 No hay profesores${dl} cargados.`);
   }
-  if (!tipo || tipo === 'torneos') {
+  if ((!tipo || tipo === 'torneos') && ctx.mod?.torneos) {
     const activos = cat.torneos.filter(t => actividades.TORNEO_ACTIVO.includes(t.estado));
     partes.push(activos.length
       ? `🏆 *Torneos${dl}*\n` + activos.map(t => `• *${t.nombre}* (${t.deporte_label}) · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}\n   ${t.inscripcion_abierta ? `✅ Inscripción abierta · ${t.cupos_libres} cupos${t.precio_inscripcion ? ` · ${_money(t.precio_inscripcion)}` : ''}` : t.estado === 'inscripcion' ? '⛔ Cupo completo' : '🎾 En juego'} · ${t.inscriptas} inscriptos`).join('\n')
@@ -1180,18 +1191,18 @@ async function _sendMisActividades(ctx, from) {
   const send = p => wa.sendMessage(p, ctx.creds);
   const a = await actividades.actividadesPorTelefono(ctx.clubId, from);
   const partes = [];
-  for (const al of a.alumnos) {
+  for (const al of (ctx.mod?.escuelas ? a.alumnos : [])) {
     partes.push(`🏫 *${al.nombre}* — ${al.escuela || 'Escuela'} · ${al.categoria}${al.estado === 'pendiente' ? ' _(pre‑inscripción pendiente)_' : ''}\n   🕒 ${al.horarios.length ? _horariosTxt(al.horarios) : 'horarios a confirmar'}`);
   }
-  if (a.profesor) {
-    for (const e of a.profesor.escuelas) {
+  if (a.profesor && ctx.mod?.profesores) {
+    for (const e of (ctx.mod?.escuelas ? a.profesor.escuelas : [])) {
       partes.push(`👨‍🏫 *${e.nombre}* (${e.deporte_label})\n` + (e.categorias.length
         ? e.categorias.map(c => `   ▸ ${c.nombre}: ${c.horarios.length ? _horariosTxt(c.horarios) : 'sin horarios'}`).join('\n')
         : '   (sin categorías asignadas)'));
     }
-    for (const t of a.profesor.torneos) partes.push(`🏆 *${t.nombre}*${t.rol ? ` — ${t.rol}` : ''} · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}`);
+    for (const t of (ctx.mod?.torneos ? a.profesor.torneos : [])) partes.push(`🏆 *${t.nombre}*${t.rol ? ` — ${t.rol}` : ''} · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}`);
   }
-  for (const t of a.torneos) partes.push(`🏆 *${t.nombre}* (jugador) · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}${t.pago === 'pendiente' ? ' · inscripción a pagar' : ''}`);
+  for (const t of (ctx.mod?.torneos ? a.torneos : [])) partes.push(`🏆 *${t.nombre}* (jugador) · ${_fechaCorta(t.fecha_inicio)} al ${_fechaCorta(t.fecha_fin)}${t.pago === 'pendiente' ? ' · inscripción a pagar' : ''}`);
   await send({ to: from, type: 'text', text: { body: partes.length
     ? _corte(`📋 *Tus clases y torneos*\n\n${partes.join('\n\n')}`)
     : 'ℹ️ No encontramos escuelas, clases ni torneos asociados a este número en el club.\nEscribí *5* para ver las escuelas y torneos disponibles.' } });
