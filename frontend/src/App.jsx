@@ -24,6 +24,7 @@ import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/tor
 import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
 import { ProfesorLogin, ProfesorPanel } from './pages/profesor/ProfesorPages';
 import EscuelaPortalPage from './pages/escuela/EscuelaPortalPage';
+import GymSocioPage from './pages/GymSocioPage';
 import MercadoPagoCallbackPage from './pages/MercadoPagoCallbackPage';
 import ActividadesPage from './pages/ActividadesPage';
 
@@ -71,6 +72,7 @@ export default function App() {
 
       {/* Escuela de fútbol: portal del alumno / padre (link personal, sin login) */}
       <Route path="/escuela/alumno/:token" element={<EscuelaPortalPage />} />
+      <Route path="/gym/socio/:token" element={<GymSocioPage />} />
       <Route path="/complejo/:id/actividades" element={<ActividadesPage />} />
 
       {/* Profesores de pádel (login por DNI) */}

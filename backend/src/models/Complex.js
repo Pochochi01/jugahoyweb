@@ -30,6 +30,8 @@ const Complex = sequelize.define('Complex', {
   // Módulo opcional (pago): lista de espera en el chatbot + recordatorios de turnos.
   // Lo habilita el administrador general al abonarse el extra.
   modulo_lista_recordatorios: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Módulo Gym / Fitness center (lo habilita el administrador general)
+  modulo_gym: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, { tableName: 'complexes' });
 
 module.exports = Complex;

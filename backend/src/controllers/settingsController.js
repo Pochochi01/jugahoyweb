@@ -68,6 +68,9 @@ async function updateSettings(req, res) {
     else if (req.body.modulo_lista_recordatorios !== undefined) {
       req.body.modulo_lista_recordatorios = !!req.body.modulo_lista_recordatorios;
     }
+    // Módulo Gym: lo habilita solo el administrador general
+    if (req.user?.rol !== 'general_admin') delete req.body.modulo_gym;
+    else if (req.body.modulo_gym !== undefined) req.body.modulo_gym = !!req.body.modulo_gym;
 
     // Límite de inasistencias por mes: solo admins (general/complex), validado.
     if (req.body.max_inasistencias_mes !== undefined) {

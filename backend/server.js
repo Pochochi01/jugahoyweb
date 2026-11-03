@@ -52,6 +52,9 @@ async function start() {
     } catch (err) {
       console.error('✗ No se pudo iniciar el scheduler de recordatorios:', err.message);
     }
+    // Gym: vencimientos de membresías, morosos y cierre de clases
+    try { require('./src/services/gym/scheduler').iniciar(15); }
+    catch (err) { console.error('✗ Gym scheduler:', err.message); }
     // Confirmación de asistencia por WhatsApp (hora configurable por complejo)
     try { require('./src/services/recordatorioService').iniciar(60); }
     catch (err) { console.error('✗ Confirmación de asistencia:', err.message); }

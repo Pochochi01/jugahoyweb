@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal, Dumbbell,
 } from 'lucide-react';
 import ComplexSwitcher from '../../components/ComplexSwitcher';
 import BrandLogo from '../../components/BrandLogo';
@@ -25,6 +25,7 @@ import InvitesTab       from './InvitesTab';
 import CantinaTab       from './CantinaTab';
 import TorneosTab       from './TorneosTab';
 import ProfesoresTab    from './ProfesoresTab';
+import GymTab           from './GymTab';
 
 // permiso: clave usada en Collaborator.permisos
 // deportivo: módulo que requiere canchas → oculto en complejos sin canchas (modo Almacén)
@@ -41,6 +42,8 @@ const TABS = [
   { key: 'torneos',       label: 'Torneos Pádel', icon: Trophy,      permiso: 'torneos',    modulo: 'torneos' },
   { key: 'profesores',    label: 'Profesores',    icon: GraduationCap, permiso: 'profesores', modulo: 'profesores' },
   { key: 'escuela',       label: 'Escuelas',      icon: Goal,        permiso: 'escuela',    modulo: 'escuela' },
+  // Gym / Fitness: complejos con el módulo habilitado (también sin canchas). Colaboradores: con rol de gym asignado.
+  { key: 'gym',           label: 'Gym',           icon: Dumbbell,    permiso: 'gym_rol',    gym: true },
   { key: 'estadisticas',  label: 'Estadísticas',  icon: BarChart2,   permiso: 'estadisticas', deportivo: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings,    permiso: 'configuracion' },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users,       permiso: 'colaboradores' },
@@ -94,9 +97,9 @@ export default function Dashboard() {
   const tabsDelComplejo = useMemo(() => {
     const modulos = modulosComplejo(selectedComplex);
     return TABS
-      .filter(tab => !(almacen && tab.deportivo) && !(tab.modulo && !modulos[tab.modulo]))
+      .filter(tab => !(almacen && tab.deportivo) && !(tab.modulo && !modulos[tab.modulo]) && !(tab.gym && !selectedComplex?.modulo_gym))
       .map(tab => (tab.key === 'cantina' && almacen ? { ...tab, label: nombreComercio(selectedComplex), icon: Store } : tab));
-  }, [almacen, selectedComplex?.fields]);
+  }, [almacen, selectedComplex?.fields, selectedComplex?.modulo_gym]);
 
   // Tabs visibles según rol y permisos del complejo seleccionado (memoizado)
   const visibleTabs = useMemo(() => {
@@ -107,6 +110,8 @@ export default function Dashboard() {
         const permisos = getCollaboratorPermisos(selectedComplex.id);
         // tab.permisos (array) → visible si tiene AL MENOS UNO; tab.permiso (único).
         if (tab.permisos) return tab.permisos.some(p => permisos?.[p] === true);
+        // gym_rol guarda la clave del rol (string): cualquier rol asignado muestra la pestaña
+        if (tab.gym) return Boolean(permisos?.gym_rol);
         return permisos?.[tab.permiso] === true;
       }
       return false;
@@ -185,6 +190,7 @@ export default function Dashboard() {
       case 'torneos':       return <TorneosTab {...props} />;
       case 'profesores':    return <ProfesoresTab {...props} />;
       case 'escuela':       return <EscuelaTab {...props} />;
+      case 'gym':           return <GymTab {...props} irA={setActiveTab} />;
       case 'estadisticas':  return <StatsTab {...props} />;
       case 'configuracion': return (
         <SettingsTab {...props} resultadoMp={resultadoMp && (!resultadoMp.complexId || resultadoMp.complexId === selectedComplex.id) ? resultadoMp : null}
@@ -207,7 +213,7 @@ export default function Dashboard() {
   // Navegación agrupada por intención (el orden de TABS se respeta dentro de cada grupo)
   const GRUPOS = [
     { titulo: 'Operación',   keys: ['agenda', 'invitaciones', 'operaciones', 'caja', 'cantina'] },
-    { titulo: 'Actividades', keys: ['torneos', 'profesores', 'escuela'] },
+    { titulo: 'Actividades', keys: ['torneos', 'profesores', 'escuela', 'gym'] },
     { titulo: 'Gestión',     keys: ['estadisticas', 'configuracion', 'colaboradores'] },
     { titulo: 'Plataforma',  keys: ['imagenes', 'usuarios'] },
   ];

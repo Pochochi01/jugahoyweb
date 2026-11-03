@@ -12,7 +12,8 @@
     "migrate:undo:all": "sequelize db:migrate:undo:all",
     "migrate:status": "sequelize db:migrate:status",
     "seed:localidades": "node scripts/seed-localidades.js",
-    "check:tokens": "node scripts/check-expiring-tokens.js"
+    "check:tokens": "node scripts/check-expiring-tokens.js",
+    "test:gym": "node tests/gym.e2e.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",
