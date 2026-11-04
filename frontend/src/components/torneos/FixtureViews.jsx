@@ -253,14 +253,15 @@ ${llave.length ? `<h3>Llave</h3><table><thead><tr><th>Instancia</th><th>Partido<
 }
 
 /** Cuadro de referencia: mismos cruces que la llave real; cada lugar se completa con la pareja al terminar su zona. */
-function BracketReferencia({ prevista }) {
+function BracketReferencia({ prevista, onReprogramar }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         <strong className="text-foreground">Llave de referencia</strong> · {prevista.clasificados} clasificados de {prevista.zonas} zonas{prevista.estimada ? ' (estimadas con las parejas inscriptas)' : ''}
         {' '}→ empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong>{prevista.byes ? ` · ${prevista.byes} BYE para los primeros de zona` : ''}.
         Al terminar cada zona su lugar se reemplaza por la pareja que quedó en esa posición.
-        {prevista.simulada ? ' Los horarios son una simulación según la disponibilidad de canchas y las demás categorías.' : ' Cargá el inicio de la llave para simular los horarios.'}
+        {prevista.simulada ? ' Los horarios son una simulación según la disponibilidad de canchas y las demás categorías (📌 = fijado a mano).' : ' Cargá el inicio de la llave para simular los horarios.'}
+        {onReprogramar && ' Tocá el día y la hora de un partido para reprogramarlo.'}
       </p>
       <div className="overflow-x-auto pb-2">
         <div className="flex gap-4 min-w-max">
@@ -280,11 +281,19 @@ function BracketReferencia({ prevista }) {
                         </div>
                       );
                     })}
-                    {!p.es_bye && (p.fecha || p.sin_lugar) && (
-                      <div className={`px-2.5 py-1 text-[10px] border-t border-dashed border-border ${p.sin_lugar ? 'text-amber-400' : 'text-muted-foreground'}`}>
-                        {p.sin_lugar ? 'Sin cancha libre: ampliá las franjas o reprogramá' : <>🕒 {fechaCorta(p.fecha)} · {p.hora} hs · {p.cancha}</>}
-                      </div>
-                    )}
+                    {!p.es_bye && (p.fecha || p.sin_lugar || onReprogramar) && (() => {
+                      const texto = p.fecha ? <>{p.fijado ? '📌' : '🕒'} {fechaCorta(p.fecha)} · {p.hora} hs · {p.cancha}</> : (p.sin_lugar ? 'Sin cancha libre: elegí día y hora' : 'Sin horario: elegir día y hora');
+                      const color = p.conflicto || p.sin_lugar ? 'text-amber-400' : 'text-muted-foreground';
+                      const aviso = p.conflicto && <span className="block">⚠️ Empieza antes de que terminen los partidos que lo definen</span>;
+                      return onReprogramar ? (
+                        <button type="button" onClick={() => onReprogramar(p)} title="Reprogramar día, hora y cancha"
+                          className={`w-full text-left px-2.5 py-1 text-[10px] border-t border-dashed border-border ${color} hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors`}>
+                          <span className="flex items-center gap-1"><span className="min-w-0 truncate">{texto}</span><span className="ml-auto shrink-0" aria-hidden="true">✎</span></span>{aviso}
+                        </button>
+                      ) : (
+                        <div className={`px-2.5 py-1 text-[10px] border-t border-dashed border-border ${color}`}>{texto}{aviso}</div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -303,7 +312,7 @@ function BracketReferencia({ prevista }) {
  */
 export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
   // Sin llave generada: cuadro de referencia por zonas ("1° Zona A vs 2° Zona D")
-  if (!llave?.length && prevista?.rondas?.length) return <BracketReferencia prevista={prevista} />;
+  if (!llave?.length && prevista?.rondas?.length) return <BracketReferencia prevista={prevista} onReprogramar={onReprogramar} />;
   if (!llave?.length) return <p className="text-sm text-muted-foreground">La llave se genera al terminar la fase de zonas.</p>;
   const campeon = campeonId && llave.at(-1).partidos[0];
   const nombreCampeon = campeon && (campeon.pareja1?.id === campeonId ? campeon.pareja1 : campeon.pareja2)?.nombre;

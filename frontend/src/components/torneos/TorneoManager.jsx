@@ -618,8 +618,8 @@ function LlaveSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
       <Bracket llave={fx.llave} campeonId={fx.campeon} prevista={fx.llave_prevista}
         onReprogramar={permisos['tournament.match.reschedule'] !== false && !['finalizado', 'cancelado'].includes(torneo.estado) ? setReprogramando : undefined} />
       {reprogramando && (
-        <ReprogramarModal svc={svc} torneo={torneo} partido={reprogramando} permisos={permisos}
-          partidos={[...fx.zonas.flatMap(z => z.partidos), ...fx.llave.flatMap(r => r.partidos)]}
+        <ReprogramarModal svc={svc} torneo={torneo} partido={reprogramando} permisos={permisos} categoria={fx.categoria_id}
+          partidos={[...fx.zonas.flatMap(z => z.partidos), ...fx.llave.flatMap(r => r.partidos), ...(fx.llave_prevista?.rondas || []).flatMap(r => r.partidos).filter(p => p.fecha)]}
           onClose={() => setReprogramando(null)}
           onGuardado={(nueva) => { setReprogramando(null); setMsg({ ok: `Partido reprogramado: ${nueva}.` }); cargar(); onChange(); }} />
       )}

@@ -71,6 +71,23 @@ const cuando = (p) => `${p.fecha} ${p.hora}`;
     ok(ronda(f5.llave_prevista, 'semifinal').every(p => cuando(p) >= '2026-12-20 15:00' && p.fecha === '2026-12-20'), 'semis simuladas el 20/12 desde las 15:00');
     ok(ronda(f5.llave_prevista, 'final')[0].fecha === '2026-12-21' && ronda(f5.llave_prevista, 'final')[0].hora >= '20:00', 'final simulada el 21/12 desde las 20:00');
 
+    // ── Reprogramar partidos de la llave de REFERENCIA (antes de generarla) ──
+    const prev = (clave, body) => call('PUT', `/torneos/${t.id}/categorias/5/llave-prevista/${clave}`, body);
+    ok((await prev('cuartos-1', { field_id: c2.id, fecha: '2026-12-19', hora: '23:30' })).status === 400 || (await prev('cuartos-1', { field_id: c2.id, fecha: '2026-12-19', hora: '07:00' })).status === 409, 'horario fuera de la franja de la cancha → rechazado');
+    const fij = await prev('cuartos-1', { field_id: c2.id, fecha: '2026-12-19', hora: '13:00', motivo: 'Pedido del club' });
+    ok(fij.status === 200 && fij.data.automatico === false, 'cuartos 1 fijado a mano: 19/12 13:00 en Pádel 2');
+    ok((await prev('cuartos-2', { field_id: c2.id, fecha: '2026-12-19', hora: '13:00' })).status === 409, 'otro partido en el mismo horario fijado → 409');
+    f5 = (await call('GET', `/torneos/${t.id}/fixture?categoria_id=5`)).data;
+    const q1 = ronda(f5.llave_prevista, 'cuartos').find(p => p.clave === 'cuartos-1');
+    ok(q1.fecha === '2026-12-19' && q1.hora === '13:00' && q1.field_id === c2.id && q1.fijado, 'la llave de referencia muestra el horario fijado');
+    const f4b = (await call('GET', `/torneos/${t.id}/fixture?categoria_id=4`)).data;
+    ok(!f4b.llave_prevista.rondas.flatMap(r => r.partidos).some(p => p.field_id === c2.id && p.fecha === '2026-12-19' && p.hora === '13:00'), 'la otra categoría no usa el horario fijado');
+    await prev('semifinal-1', { field_id: c1.id, fecha: '2026-12-19', hora: '11:00' });
+    f5 = (await call('GET', `/torneos/${t.id}/fixture?categoria_id=5`)).data;
+    ok(ronda(f5.llave_prevista, 'semifinal').find(p => p.clave === 'semifinal-1').conflicto, 'semifinal fijada antes que su cuarto de final → marcada en conflicto');
+    const auto = await prev('semifinal-1', { estado: 'pendiente' });
+    ok(auto.status === 200 && auto.data.automatico, 'semifinal vuelve a la simulación automática');
+
     // ── Llave real de 5ta con la configuración ──
     await call('POST', `/torneos/${t.id}/zonas/generar`, { categoria_id: 5, notificar: false });
     for (let v = 0; v < 4; v++) {
@@ -83,6 +100,9 @@ const cuando = (p) => `${p.fecha} ${p.hora}`;
     const rr = (r) => real.llave.find(x => x.ronda === r)?.partidos || [];
     ok(rr('cuartos').length === 4 && rr('cuartos').every(p => cuando(p) >= '2026-12-19 10:00'), 'llave real: cuartos desde el inicio configurado');
     ok(rr('semifinal').every(p => p.fecha === '2026-12-20' && p.hora >= '15:00') && rr('final')[0].fecha === '2026-12-21' && rr('final')[0].hora >= '20:00', 'llave real: semis y final en el día y horario configurados');
+    const cq1 = rr('cuartos').find(p => p.orden === 1);
+    ok(cq1.fecha === '2026-12-19' && cq1.hora === '13:00' && cq1.field_id === c2.id, 'llave real: cuartos 1 respeta el horario fijado en la referencia');
+    ok(await m.TorneoLlaveProgramacion.count({ where: { torneo_id: t.id, categoria_id: 5 } }) === 0, 'al generar la llave se limpian los horarios fijados de esa categoría');
     // Siguen siendo modificables partido por partido
     const sf = rr('semifinal')[0];
     const rep = await call('PUT', `/torneos/${t.id}/partidos/${sf.id}/programacion`, { field_id: c1.id, fecha: '2026-12-21', hora: '11:00', motivo: 'Cambio de día', notificar: false });

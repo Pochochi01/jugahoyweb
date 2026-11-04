@@ -25,7 +25,7 @@ const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
   TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
   TorneoTablaPosicion, TorneoCategoria, TorneoPuntajeHistorial, TorneoZonaHistorial,
-  TorneoReprogramacion, TorneoNotificacion,
+  TorneoReprogramacion, TorneoNotificacion, TorneoLlaveProgramacion,
 } = require('../../models');
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
@@ -754,8 +754,12 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
   // Programación ronda por ronda, siempre después de la fase de zonas
   const todos = cuadro.rondas.flatMap(r => r.partidos.map(p => ({ ...p, ronda: r.ronda })));
   const aProgramar = todos.filter(p => !p.es_bye);
-  const asignacion = fx.programar(aProgramar, slots, parejas, {
-    descanso: torneo.descanso_minimo, agenda, usados, minAbs: Math.max(maxAbs + torneo.descanso_minimo, inicioAbs),
+  // Horarios fijados a mano en la llave de referencia: se respetan (y los de otras categorías se reservan)
+  const fijados = await fijadosLlave(torneo);
+  reservarFijados(fijados, dias, usados, cat);
+  const { previos, resto } = aplicarFijados(aProgramar, fijados.get(cat), dias, usados, agenda, Number(torneo.duracion_partido) || 90);
+  const asignacion = fx.programar(resto, slots, parejas, {
+    descanso: torneo.descanso_minimo, agenda, usados, previos, minAbs: Math.max(maxAbs + torneo.descanso_minimo, inicioAbs),
     minDe: minimosPorRonda(tc, dias),
   });
 
@@ -777,6 +781,7 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
       idPorKey.set(p.key, creado.id);
     }
     await tc.update({ estado: 'llaves' }, { transaction: t });
+    await TorneoLlaveProgramacion.destroy({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     await sincronizarEstado(torneo, t);
     await sincronizarAgenda(torneo, t);
   });
@@ -847,6 +852,48 @@ async function cuadroReferencia(torneo, cat, zonas) {
   return { numZonas, K, estimada: !zonas.length, cuadro: fx.armarLlavePorZonas(numZonas, K) };
 }
 
+/** Horarios fijados a mano en la llave de referencia: Map(categoria_id → Map(clave → fila)). */
+async function fijadosLlave(torneo) {
+  const filas = await TorneoLlaveProgramacion.findAll({ where: { torneo_id: torneo.id }, raw: true });
+  const out = new Map();
+  for (const f of filas) {
+    if (!out.has(f.categoria_id)) out.set(f.categoria_id, new Map());
+    out.get(f.categoria_id).set(f.clave, f);
+  }
+  return out;
+}
+
+/**
+ * Separa los partidos con horario fijado: los devuelve como asignaciones previas (respetadas
+ * por fx.programar para el orden de rondas) y reserva su cancha/hora (y la agenda de las
+ * parejas, si ya se conocen) para que el resto no los pise.
+ */
+function aplicarFijados(partidos, fijados, dias, usados, agenda, dur) {
+  const previos = new Map();
+  const resto = [];
+  for (const p of partidos) {
+    const f = fijados?.get(p.key);
+    if (!f || !dias.includes(f.fecha)) { resto.push(p); continue; }
+    const abs = dias.indexOf(f.fecha) * 1440 + fx.toMin(f.hora);
+    previos.set(p.key, { field_id: f.field_id, fecha: f.fecha, hora: f.hora, abs, fuera_preferencia: false, manual: true });
+    usados.add(`${f.field_id}|${abs}`);
+    for (const pid of [p.pareja1_id, p.pareja2_id]) {
+      if (pid == null || !agenda) continue;
+      if (!agenda.has(pid)) agenda.set(pid, []);
+      agenda.get(pid).push([abs, abs + dur]);
+    }
+  }
+  return { previos, resto };
+}
+
+/** Reserva en `usados` los horarios fijados de TODAS las categorías (antes de simular cualquiera). */
+function reservarFijados(todos, dias, usados, excepto = null) {
+  for (const [cat, mapa] of todos) {
+    if (cat === excepto) continue;
+    for (const f of mapa.values()) if (dias.includes(f.fecha)) usados.add(`${f.field_id}|${dias.indexOf(f.fecha) * 1440 + fx.toMin(f.hora)}`);
+  }
+}
+
 /**
  * Simula los horarios de las llaves todavía no generadas de TODAS las categorías del torneo,
  * con la disponibilidad real: franjas de las canchas cedidas, agenda general (reservas,
@@ -861,8 +908,12 @@ async function simularLlaves(torneo) {
   let slots;
   try { slots = await slotsDisponibles(torneo); } catch { return new Map(); }   // sin canchas asignadas
   const { usados, dias } = await estadoAgenda(torneo, slots, {});
-  const fields = await Field.findAll({ where: { id: [...new Set(slots.map(s => s.field_id))] }, attributes: ['id', 'nombre', 'identificador'] });
+  const fijados = await fijadosLlave(torneo);
+  reservarFijados(fijados, dias, usados);   // los horarios fijados a mano no los toma ninguna otra categoría
+  const fieldIds = new Set([...slots.map(s => s.field_id), ...[...fijados.values()].flatMap(m => [...m.values()].map(f => f.field_id))]);
+  const fields = await Field.findAll({ where: { id: [...fieldIds] }, attributes: ['id', 'nombre', 'identificador'] });
   const canchas = new Map(fields.map(f => [f.id, canchaLabel(f)]));
+  const dur = Number(torneo.duracion_partido) || 90;
   const out = new Map();
   for (const tc of pendientes) {
     const zonas = await tablasDeZonas(torneo, false, tc.categoria_id);
@@ -871,14 +922,26 @@ async function simularLlaves(torneo) {
     const { maxAbs } = await estadoAgenda(torneo, slots, { categoria_id: tc.categoria_id, ronda: 'zona' });
     const inicioAbs = tc.llave_inicio_fecha && tc.llave_inicio_hora && dias.includes(tc.llave_inicio_fecha)
       ? dias.indexOf(tc.llave_inicio_fecha) * 1440 + fx.toMin(tc.llave_inicio_hora) : 0;
-    if (!inicioAbs && !maxAbs) continue;   // sin inicio ni zonas programadas: nada que simular todavía
+    const propios = fijados.get(tc.categoria_id);
+    if (!inicioAbs && !maxAbs && !propios?.size) continue;   // sin inicio, zonas ni horarios fijados: nada que simular
     const partidos = ref.cuadro.rondas.flatMap(r => r.partidos.map(p => ({ ...p, ronda: r.ronda }))).filter(p => !p.es_bye);
-    const asignacion = fx.programar(partidos, slots, new Map(), {
-      descanso: torneo.descanso_minimo, usados,
+    const { previos, resto } = aplicarFijados(partidos, propios, dias, new Set(), null, dur);   // ya reservados arriba
+    const asignacion = fx.programar(resto, slots, new Map(), {
+      descanso: torneo.descanso_minimo, usados, previos,
       minAbs: Math.max(maxAbs ? maxAbs + torneo.descanso_minimo : 0, inicioAbs),
       minDe: minimosPorRonda(tc, dias),
     });
-    out.set(tc.categoria_id, { asignacion, canchas });
+    // Conflicto: un partido fijado a mano que empieza antes de que terminen los que lo alimentan
+    const conflictos = new Set();
+    for (const p of partidos) {
+      const a = asignacion.get(p.key);
+      if (!a?.manual) continue;
+      for (const dep of p.despuesDe || []) {
+        const d = asignacion.get(dep);
+        if (d && d.abs + dur + Number(torneo.descanso_minimo || 0) > a.abs) conflictos.add(p.key);
+      }
+    }
+    out.set(tc.categoria_id, { asignacion, canchas, conflictos });
   }
   return out;
 }
@@ -895,8 +958,8 @@ async function llavePrevista(torneo, cat, zonas, simulacion = null) {
   // Horario simulado de cada partido (si la categoría tiene inicio o zonas programadas)
   const horario = (key) => {
     const a = simulacion?.asignacion.get(key);
-    return a ? { fecha: a.fecha, hora: a.hora, field_id: a.field_id, cancha: simulacion.canchas.get(a.field_id) || null, sin_lugar: false }
-      : { fecha: null, hora: null, field_id: null, cancha: null, sin_lugar: Boolean(simulacion) };
+    return a ? { fecha: a.fecha, hora: a.hora, field_id: a.field_id, cancha: simulacion.canchas.get(a.field_id) || null, sin_lugar: false, fijado: Boolean(a.manual), conflicto: simulacion.conflictos?.has(key) || false }
+      : { fecha: null, hora: null, field_id: null, cancha: null, sin_lugar: Boolean(simulacion), fijado: false, conflicto: false };
   };
   const porKey = new Map(cuadro.plazas.map(p => [p.key, p]));
   const lugar = (key) => {
@@ -915,7 +978,7 @@ async function llavePrevista(torneo, cat, zonas, simulacion = null) {
       return {
         ronda: r.ronda,
         partidos: r.partidos.map(p => ({
-          id: `prev-${p.key}`, ronda: r.ronda, orden: p.orden, es_bye: p.es_bye, prevista: true,
+          id: `prev-${p.key}`, clave: p.key, ronda: r.ronda, orden: p.orden, es_bye: p.es_bye, prevista: true,
           pareja1: p.pareja1_id ? lugar(p.pareja1_id) : (i === 0 ? null : ganador(p.orden * 2 - 1)),
           pareja2: p.pareja2_id ? lugar(p.pareja2_id) : (i === 0 ? null : ganador(p.orden * 2)),
           resultado: null, ...(p.es_bye ? { fecha: null, hora: null, cancha: null } : horario(p.key)),
@@ -1179,6 +1242,51 @@ async function reprogramarPartido(torneo, partidoId, datos = {}, { notificar = t
   return { partido: await cargarPartido(partido.id), reprogramacion: registro };
 }
 
+/**
+ * Fija día / hora / cancha de un partido de la llave de REFERENCIA (antes de generarla).
+ * Valida: categoría sin llave, partido del cuadro, fecha del torneo, cancha cedida, horario
+ * dentro de su franja y libre (agenda general, partidos del torneo y otros horarios fijados).
+ * datos.estado === 'pendiente' → vuelve a la simulación automática.
+ */
+async function programarPrevista(torneo, categoriaId, clave, datos = {}, { usuario = {}, motivo = null, puede = () => true } = {}) {
+  const tc = await resolverCategoria(torneo, categoriaId);
+  if (!['pendiente', 'zonas'].includes(tc.estado)) throw httpError(409, 'La llave ya está generada: reprogramá el partido desde la llave.');
+  const zonas = await tablasDeZonas(torneo, false, tc.categoria_id);
+  const ref = await cuadroReferencia(torneo, tc.categoria_id, zonas);
+  const partido = ref?.cuadro.rondas.flatMap(r => r.partidos).find(p => p.key === clave);
+  if (!partido) throw httpError(404, 'Partido de la llave no encontrado.');
+  if (partido.es_bye) throw httpError(400, 'Un BYE no se programa.');
+  const actual = await TorneoLlaveProgramacion.findOne({ where: { torneo_id: torneo.id, categoria_id: tc.categoria_id, clave } });
+  if (datos.estado === 'pendiente') {
+    if (actual) await actual.destroy();
+    return { clave, automatico: true };
+  }
+  const fieldId = Number(datos.field_id);
+  const { fecha, hora } = datos;
+  if (!Number.isInteger(fieldId) || fieldId <= 0) throw httpError(400, 'Elegí la cancha.');
+  if (!ISO_FECHA.test(String(fecha || ''))) throw httpError(400, 'Fecha inválida.');
+  if (!HHMM.test(String(hora || ''))) throw httpError(400, 'Horario inválido (HH:MM).');
+  if (fecha < torneo.fecha_inicio || fecha > torneo.fecha_fin) throw httpError(400, `La fecha debe estar entre el ${torneo.fecha_inicio} y el ${torneo.fecha_fin}.`);
+  const faltan = [
+    actual && fecha !== actual.fecha && 'tournament.match.change_date',
+    actual && hora !== actual.hora && 'tournament.match.change_time',
+    actual && fieldId !== actual.field_id && 'tournament.match.change_court',
+  ].filter(Boolean).filter(p => !puede(p));
+  if (faltan.length) throw httpError(403, 'No tenés permiso para hacer ese cambio.');
+  if (!(await TorneoCancha.count({ where: { torneo_id: torneo.id, field_id: fieldId } }))) throw httpError(400, 'Esa cancha no está cedida al torneo.');
+  const slots = await slotsDisponibles(torneo);
+  const slot = slots.find(s => s.field_id === fieldId && s.fecha === fecha && s.hora === hora);
+  if (!slot) throw httpError(409, 'Ese horario no está disponible en la cancha: está fuera de la franja cedida al torneo o ya hay una reserva, clase u otro torneo.');
+  const { usados } = await estadoAgenda(torneo, slots, {});
+  if (usados.has(`${slot.field_id}|${slot.abs}`)) throw httpError(409, 'Ya hay un partido del torneo en esa cancha y horario.');
+  const otro = await TorneoLlaveProgramacion.findOne({ where: { torneo_id: torneo.id, field_id: fieldId, fecha, hora, ...(actual && { id: { [Op.ne]: actual.id } }) } });
+  if (otro) throw httpError(409, 'Ese horario ya está fijado para otro partido de la llave.');
+  const fila = { torneo_id: torneo.id, categoria_id: tc.categoria_id, clave, field_id: fieldId, fecha, hora, motivo: motivo ? String(motivo).trim().slice(0, 255) || null : null, usuario_id: usuario.id || null, usuario: usuario.nombre || null };
+  if (actual) await actual.update(fila); else await TorneoLlaveProgramacion.create(fila);
+  console.log(`[torneos] llave de referencia · torneo ${torneo.id} · ${rk.nombreCat(tc.categoria_id)} · ${clave} fijado ${fecha} ${hora} cancha ${fieldId} · ${usuario.nombre || '?'}`);
+  return { clave, automatico: false, fecha, hora, field_id: fieldId };
+}
+
 /** Historial de reprogramaciones de un partido (con nombres de cancha). */
 async function historialPartido(torneo, partidoId) {
   const partido = await TorneoPartido.findOne({ where: { id: partidoId, torneo_id: torneo.id }, attributes: ['id'] });
@@ -1260,6 +1368,7 @@ module.exports = {
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
   previsualizarZonas, prepararSiembra, historialZonas, historialPartido, configurarInicioLlave, llavePrevista, simularLlaves,
+  programarPrevista,
 };
 
 /** Historial de armados de zonas del torneo (auditoría). */

@@ -30,7 +30,8 @@ export function ModalTorneo({ titulo, icon: Icon, onClose, children, ancho = 'sm
  * motivo e historial. Solo ofrece horarios libres de la cancha (franja cedida al torneo y sin
  * otros partidos); el backend vuelve a validar todo. `permisos` deshabilita lo no permitido.
  */
-export default function ReprogramarModal({ svc, torneo, partido, partidos = [], permisos = {}, onClose, onGuardado }) {
+export default function ReprogramarModal({ svc, torneo, partido, partidos = [], permisos = {}, onClose, onGuardado, categoria }) {
+  const prevista = Boolean(partido.prevista);   // partido de la llave de referencia (todavía no generada)
   const [slots, setSlots] = useState(null);
   const [hist, setHist] = useState(null);
   const [verHist, setVerHist] = useState(false);
@@ -44,7 +45,10 @@ export default function ReprogramarModal({ svc, torneo, partido, partidos = [], 
   const puede = (k) => permisos[k] !== false;
 
   useEffect(() => { svc.getSlots(torneo.id).then(setSlots).catch(() => setSlots([])); }, [svc, torneo.id]);
-  useEffect(() => { svc.historialPartido(torneo.id, partido.id).then(setHist).catch(() => setHist([])); }, [svc, torneo.id, partido.id]);
+  useEffect(() => {
+    if (prevista) { setHist([]); return; }
+    svc.historialPartido(torneo.id, partido.id).then(setHist).catch(() => setHist([]));
+  }, [svc, torneo.id, partido.id, prevista]);
 
   // Canchas cedidas al torneo (catálogo) y horarios libres de la cancha/día elegidos
   const canchas = useMemo(() => {
@@ -59,18 +63,20 @@ export default function ReprogramarModal({ svc, torneo, partido, partidos = [], 
     .map(s => s.hora).sort(), [slots, fieldId, fecha, ocupados]);
   useEffect(() => { if (hora && slots && !horas.includes(hora) && !(fecha === partido.fecha && Number(fieldId) === partido.field_id && hora === partido.hora)) setHora(''); }, [horas]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sinCambios = estado === 'programado' && fecha === partido.fecha && hora === partido.hora && Number(fieldId) === partido.field_id;
+  const sinCambios = estado === 'programado' && fecha === partido.fecha && hora === partido.hora && Number(fieldId) === partido.field_id && (!prevista || partido.fijado);
   const guardar = async (e) => {
     e.preventDefault(); setError('');
     if (estado === 'programado' && (!fecha || !hora || !fieldId)) return setError('Elegí día, cancha y horario.');
     if (sinCambios) return setError('No hay cambios: es el mismo día, horario y cancha.');
-    const nueva = estado === 'pendiente' ? 'sin programar' : `${fechaCorta(fecha)} ${hora} hs en ${canchas.find(c => c.id === Number(fieldId))?.nombre || 'la cancha elegida'}`;
+    const nueva = estado === 'pendiente' ? (prevista ? 'horario automático (simulación)' : 'sin programar') : `${fechaCorta(fecha)} ${hora} hs en ${canchas.find(c => c.id === Number(fieldId))?.nombre || 'la cancha elegida'}`;
     if (!window.confirm(`¿Reprogramar el partido a ${nueva}?`)) return;
     setGuardando(true);
     try {
-      await svc.reprogramar(torneo.id, partido.id, estado === 'pendiente'
+      const body = estado === 'pendiente'
         ? { estado: 'pendiente', motivo: motivo.trim() || undefined }
-        : { field_id: Number(fieldId), fecha, hora, motivo: motivo.trim() || undefined });
+        : { field_id: Number(fieldId), fecha, hora, motivo: motivo.trim() || undefined };
+      if (prevista) await svc.programarPrevista(torneo.id, categoria, partido.clave, body);
+      else await svc.reprogramar(torneo.id, partido.id, body);
       onGuardado(nueva);
     } catch (err) { setError(errMsg(err)); } finally { setGuardando(false); }
   };
@@ -80,12 +86,13 @@ export default function ReprogramarModal({ svc, torneo, partido, partidos = [], 
       <form onSubmit={guardar} className="space-y-4">
         <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
           <div className="text-[15px] font-medium leading-snug">{partido.pareja1?.nombre || 'A definir'} <span className="text-xs text-muted-foreground">vs</span> {partido.pareja2?.nombre || 'A definir'}</div>
-          <div className="text-xs text-muted-foreground mt-1"><strong className="text-foreground">Actual:</strong> {partido.fecha ? `${fechaCorta(partido.fecha)} · ${partido.hora} hs · ${partido.cancha || 'sin cancha'}` : 'Sin programar'}</div>
+          <div className="text-xs text-muted-foreground mt-1"><strong className="text-foreground">Actual:</strong> {partido.fecha ? `${fechaCorta(partido.fecha)} · ${partido.hora} hs · ${partido.cancha || 'sin cancha'}` : 'Sin programar'}{prevista && (partido.fijado ? ' (fijado a mano)' : ' (simulado)')}</div>
+          {prevista && <div className="text-[11px] text-muted-foreground mt-1">La llave todavía no está generada: el horario queda reservado y se respeta al simular y al generar la llave.</div>}
         </div>
 
         <div className="flex gap-4 text-sm" role="radiogroup" aria-label="Estado de programación">
           <label className="flex items-center gap-2"><input type="radio" checked={estado === 'programado'} onChange={() => setEstado('programado')} /> Programar</label>
-          <label className="flex items-center gap-2"><input type="radio" checked={estado === 'pendiente'} onChange={() => setEstado('pendiente')} /> Dejar sin programar</label>
+          {(!prevista || partido.fijado) && <label className="flex items-center gap-2"><input type="radio" checked={estado === 'pendiente'} onChange={() => setEstado('pendiente')} /> {prevista ? 'Volver al horario automático' : 'Dejar sin programar'}</label>}
         </div>
 
         {estado === 'programado' && (
@@ -114,7 +121,7 @@ export default function ReprogramarModal({ svc, torneo, partido, partidos = [], 
 
         {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" className="btn-ghost text-sm mr-auto" onClick={() => setVerHist(v => !v)}><History className="w-4 h-4" /> Historial{hist?.length ? ` (${hist.length})` : ''}</button>
+          {!prevista ? <button type="button" className="btn-ghost text-sm mr-auto" onClick={() => setVerHist(v => !v)}><History className="w-4 h-4" /> Historial{hist?.length ? ` (${hist.length})` : ''}</button> : <span className="mr-auto" />}
           <button type="button" className="btn-outline text-sm" onClick={onClose}>Cancelar</button>
           <button className="btn-primary text-sm" disabled={guardando || sinCambios}>{guardando ? 'Guardando…' : 'Guardar'}</button>
         </div>

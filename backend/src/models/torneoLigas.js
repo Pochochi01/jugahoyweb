@@ -143,6 +143,15 @@ const TorneoJugadorCambio = sequelize.define('TorneoJugadorCambio', {
   datos_anteriores: T.JSON, datos_nuevos: T.JSON, usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'torneo_jugador_cambios', updatedAt: false });
 
+// Horarios fijados a mano en la llave de referencia (antes de generarla)
+const TorneoLlaveProgramacion = sequelize.define('TorneoLlaveProgramacion', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, categoria_id: { type: T.TINYINT, allowNull: false },
+  clave: { type: T.STRING(20), allowNull: false },                 // partido del cuadro fijo: "cuartos-1", "final-1"
+  field_id: { type: T.INTEGER, allowNull: false }, fecha: { type: T.DATEONLY, allowNull: false }, hora: { type: T.STRING(5), allowNull: false },
+  motivo: T.STRING(255), usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_llave_programacion' });
+
 function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador }) {
   Complex.hasMany(TorneoLiga, { foreignKey: 'id_tenant', as: 'ligas' });
   TorneoLiga.hasMany(Torneo, { foreignKey: 'liga_id', as: 'torneos' });
@@ -164,4 +173,4 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
 }
 
 module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial,
-  RankingTemporada, RankingConfiguracion, RankingResultado, TorneoReprogramacion, TorneoNotificacion, TorneoJugadorCambio }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };
+  RankingTemporada, RankingConfiguracion, RankingResultado, TorneoReprogramacion, TorneoNotificacion, TorneoJugadorCambio, TorneoLlaveProgramacion }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };

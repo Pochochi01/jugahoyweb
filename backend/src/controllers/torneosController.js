@@ -350,6 +350,14 @@ async function inicioLlave(req, res) {
   try { res.json(await svc.configurarInicioLlave(req.torneo, req.params.categoriaId, req.body || {})); } catch (err) { send(res, err); }
 }
 
+/** PUT /torneos/:torneoId/categorias/:categoriaId/llave-prevista/:clave  { field_id, fecha, hora, estado?, motivo? } */
+async function programarPrevista(req, res) {
+  try {
+    const usuario = req.user ? autor(req) : { nombre: req.organizador ? `Organizador ${req.organizador.nombre || req.organizador.usuario}` : null };
+    res.json(await svc.programarPrevista(req.torneo, req.params.categoriaId, req.params.clave, req.body || {}, { usuario, motivo: req.body?.motivo, puede: (p) => permisos.puede(req, p) }));
+  } catch (err) { send(res, err); }
+}
+
 /** GET /torneos/:torneoId/partidos/:partidoId/historial — reprogramaciones del partido. */
 async function historialPartido(req, res) {
   try { res.json(await svc.historialPartido(req.torneo, req.params.partidoId)); } catch (err) { send(res, err); }
@@ -371,7 +379,7 @@ async function reprogramar(req, res) {
 }
 
 module.exports = {
-  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido, inicioLlave,
+  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido, inicioLlave, programarPrevista,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,
