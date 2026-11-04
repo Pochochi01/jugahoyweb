@@ -297,7 +297,11 @@ function BracketReferencia({ prevista }) {
 }
 
 /** Cuadro eliminatorio en columnas (scroll horizontal en mobile). */
-export function Bracket({ llave, campeonId, prevista }) {
+/**
+ * Llave en columnas. `onReprogramar(partido)` (panel) hace clickeable el día / hora / cancha
+ * de cada enfrentamiento no jugado para abrir "Reprogramar partido".
+ */
+export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
   // Sin llave generada: cuadro de referencia por zonas ("1° Zona A vs 2° Zona D")
   if (!llave?.length && prevista?.rondas?.length) return <BracketReferencia prevista={prevista} />;
   if (!llave?.length) return <p className="text-sm text-muted-foreground">La llave se genera al terminar la fase de zonas.</p>;
@@ -334,11 +338,17 @@ export function Bracket({ llave, campeonId, prevista }) {
                         </div>
                       );
                     })}
-                    {!p.es_bye && p.fecha && !p.resultado && (
+                    {!p.es_bye && !p.resultado && (p.fecha || onReprogramar) && (onReprogramar ? (
+                      <button type="button" onClick={() => onReprogramar(p)} title="Reprogramar día, hora y cancha"
+                        className="w-full text-left px-2.5 py-1 text-[10px] border-t border-border text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors flex items-center gap-1">
+                        <span className="min-w-0 truncate">{p.fecha ? `${fechaCorta(p.fecha)} ${p.hora} · ${p.cancha || 'sin cancha'}` : 'Sin programar: elegir día y hora'}</span>
+                        <span className="ml-auto shrink-0" aria-hidden="true">✎</span>
+                      </button>
+                    ) : (
                       <div className="px-2.5 py-1 text-[10px] text-muted-foreground border-t border-border">
                         {fechaCorta(p.fecha)} {p.hora} · {p.cancha}
                       </div>
-                    )}
+                    ))}
                   </div>
                 ))}
               </div>

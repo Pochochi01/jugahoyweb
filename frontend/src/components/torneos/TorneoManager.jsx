@@ -112,7 +112,7 @@ export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
       {seccion === 'canchas'       && <CanchasSeccion svc={svc} torneo={torneo} />}
       {seccion === 'inscripciones' && <InscripcionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} permisos={permisos} />}
       {seccion === 'fixture'       && categoria && <PartidosSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} permisos={permisos} />}
-      {seccion === 'llave'         && categoria && <LlaveSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
+      {seccion === 'llave'         && categoria && <LlaveSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} permisos={permisos} />}
       {seccion === 'posiciones'    && categoria && <PosicionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} admin={admin} />}
       {seccion === 'comunicacion'  && <ComunicacionSeccion svc={svc} torneo={torneo} />}
       {seccion === 'whatsapp'      && <TelefonoEntidad svc={svc.telefono(torneo.id)} quienes="inscriptos" />}
@@ -580,7 +580,8 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
 }
 
 // ── Llave ─────────────────────────────────────────────────────
-function LlaveSeccion({ svc, torneo, onChange, categoria }) {
+function LlaveSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
+  const [reprogramando, setReprogramando] = useState(null);   // partido de la llave en el modal
   const [fx, setFx] = useState(null);
   const [msg, setMsg] = useState({});
   const cargar = useCallback(() => svc.fixture(torneo.id, categoria).then(setFx).catch(() => {}), [svc, torneo.id, categoria]);
@@ -614,7 +615,14 @@ function LlaveSeccion({ svc, torneo, onChange, categoria }) {
         </div>
       )}
       <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>
-      <Bracket llave={fx.llave} campeonId={fx.campeon} prevista={fx.llave_prevista} />
+      <Bracket llave={fx.llave} campeonId={fx.campeon} prevista={fx.llave_prevista}
+        onReprogramar={permisos['tournament.match.reschedule'] !== false && !['finalizado', 'cancelado'].includes(torneo.estado) ? setReprogramando : undefined} />
+      {reprogramando && (
+        <ReprogramarModal svc={svc} torneo={torneo} partido={reprogramando} permisos={permisos}
+          partidos={[...fx.zonas.flatMap(z => z.partidos), ...fx.llave.flatMap(r => r.partidos)]}
+          onClose={() => setReprogramando(null)}
+          onGuardado={(nueva) => { setReprogramando(null); setMsg({ ok: `Partido reprogramado: ${nueva}.` }); cargar(); onChange(); }} />
+      )}
     </div>
   );
 }
