@@ -392,7 +392,7 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
       {todos.length === 0 && <div className="card text-sm text-muted-foreground text-center py-6">Todavía no hay partidos.</div>}
 
       {/* Zonas: grilla por zona con parejas numeradas y P1…Pn */}
-      <div className="grid xl:grid-cols-2 gap-4 items-start">
+      <div className="grid 2xl:grid-cols-2 gap-4 items-start">
         {fx.zonas.map(z => (
           <div key={z.zona_id} className="space-y-2">
             <ZonaGrilla zona={z} accionesDe={acciones} />

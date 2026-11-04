@@ -104,7 +104,7 @@ export function TorneoPublicPage() {
       {tab === 'inscripcion' && <Inscripcion torneo={torneo} />}
       {tab === 'mi' && <MisPartidos torneoId={id} />}
       {tab === 'fixture' && (fx?.zonas?.length
-        ? <div className="grid lg:grid-cols-2 gap-4 items-start">{fx.zonas.map(z => <ZonaGrilla key={z.zona_id} zona={z} />)}</div>
+        ? <div className="grid xl:grid-cols-2 gap-4 items-start">{fx.zonas.map(z => <ZonaGrilla key={z.zona_id} zona={z} />)}</div>
         : <p className="text-sm text-muted-foreground">El fixture se publica al cerrar la inscripción.</p>)}
       {tab === 'llave' && <Bracket llave={fx?.llave} campeonId={fx?.campeon} />}
       {tab === 'posiciones' && (

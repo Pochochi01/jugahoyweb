@@ -54,7 +54,7 @@ function NombrePareja({ par, gano, fallback = 'A definir' }) {
   if (par.pendiente) return <span className="text-muted-foreground italic">{par.nombre}</span>;
   return (
     <span className={gano ? 'font-semibold text-primary' : ''}>
-      {par.numero_zona && <span className="text-[10px] text-muted-foreground mr-1 font-mono">#{par.numero_zona}</span>}
+      {par.numero_zona && <span className="text-[11px] text-muted-foreground mr-1.5 font-mono">#{par.numero_zona}</span>}
       {par.nombre}
     </span>
   );
@@ -93,28 +93,42 @@ export function ZonaGrilla({ zona, accionesDe }) {
   const formato4 = zona.partidos.length === 4 && parejas.length === 4;
   return (
     <div className="card !p-0 overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span className="font-semibold">{zona.nombre}</span>
-        <span className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
-          {parejas.map(p => <span key={p.pareja_id}><span className="font-mono">#{p.numero_zona}</span> {p.pareja}</span>)}
-        </span>
-        {formato4 && <span className="text-[10px] text-muted-foreground ml-auto">1v3 · 2v4 · G1vP2 · G2vP1</span>}
+      {/* Cabecera: nombre de la zona + parejas, una por renglón (sin cortar nombres) */}
+      <div className="px-4 py-3 border-b border-border space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <span className="font-semibold text-base">{zona.nombre}</span>
+          {formato4 && <span className="text-[11px] text-muted-foreground">1v3 · 2v4 · G1vP2 · G2vP1</span>}
+        </div>
+        <ol className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
+          {parejas.map(p => (
+            <li key={p.pareja_id} className="flex items-start gap-2 text-sm leading-snug min-w-0">
+              <span className="shrink-0 grid place-items-center w-5 h-5 mt-px rounded-full bg-muted text-[11px] font-semibold font-mono">{p.numero_zona}</span>
+              <span className="break-words min-w-0">{p.numero_zona === 1 && <span className="mr-1" title="Cabeza de serie" aria-label="Cabeza de serie">🏆</span>}{p.pareja}</span>
+            </li>
+          ))}
+        </ol>
       </div>
       <div className="divide-y divide-border">
         {zona.partidos.map(p => {
           const g = (l) => p.resultado?.ganador_id && p.resultado.ganador_id === p[`pareja${l}`]?.id;
+          const res = resultadoTxt(p);
           return (
-            <div key={p.id} className="px-4 py-2.5 grid grid-cols-[2.5rem_1fr_auto] sm:grid-cols-[2.5rem_1fr_9rem_8rem_auto] gap-x-3 gap-y-1 items-center text-sm">
-              <span className="font-mono text-xs text-muted-foreground">P{p.orden}</span>
-              <div className="min-w-0 space-y-0.5">
-                <div className="truncate"><NombrePareja par={p.pareja1} gano={g(1)} /></div>
-                <div className="truncate"><NombrePareja par={p.pareja2} gano={g(2)} /></div>
+            <div key={p.id} className="px-4 py-3 space-y-2">
+              {/* Línea superior: número de partido, horario/cancha y resultado */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="font-mono font-semibold text-foreground/80">P{p.orden}</span>
+                <span className="min-w-0">{p.fecha ? <>{fechaCorta(p.fecha)} · {p.hora} hs{p.cancha && <> · {p.cancha}</>}</> : 'Sin programar'}</span>
+                {res && <span className="ml-auto font-mono text-sm text-foreground">{res}</span>}
               </div>
-              <div className="hidden sm:block text-xs text-muted-foreground">
-                {p.fecha ? <>{fechaCorta(p.fecha)} {p.hora}<br />{p.cancha}</> : 'Sin programar'}
+              {/* Parejas: renglón completo para cada una, el nombre se acomoda en varias líneas si hace falta */}
+              <div className="grid grid-cols-[1fr_auto] gap-x-3 items-center">
+                <div className="min-w-0 text-[15px] leading-snug space-y-1">
+                  <div className="break-words"><NombrePareja par={p.pareja1} gano={g(1)} /></div>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">vs</div>
+                  <div className="break-words"><NombrePareja par={p.pareja2} gano={g(2)} /></div>
+                </div>
+                {accionesDe && <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 shrink-0">{accionesDe(p)}</div>}
               </div>
-              <div className="font-mono text-sm sm:text-right">{resultadoTxt(p) || <span className="text-muted-foreground text-xs">—</span>}</div>
-              {accionesDe && <div className="col-span-3 sm:col-span-1 flex justify-end">{accionesDe(p)}</div>}
             </div>
           );
         })}
