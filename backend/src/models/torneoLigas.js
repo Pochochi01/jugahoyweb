@@ -64,6 +64,14 @@ const RankingAjuste = sequelize.define('RankingAjuste', {
   motivo: T.STRING(255), torneo_id: T.INTEGER, usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'ranking_ajustes', updatedAt: false });
 
+// Historial de modificaciones manuales del puntaje de un jugador en un torneo
+const TorneoPuntajeHistorial = sequelize.define('TorneoPuntajeHistorial', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, jugador_id: { type: T.INTEGER, allowNull: false },
+  puntaje_anterior: { type: T.INTEGER, allowNull: false }, puntaje_nuevo: { type: T.INTEGER, allowNull: false },
+  automatico: { type: T.BOOLEAN, defaultValue: false }, motivo: T.STRING(255), usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_puntajes_historial', updatedAt: false });
+
 function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador }) {
   Complex.hasMany(TorneoLiga, { foreignKey: 'id_tenant', as: 'ligas' });
   TorneoLiga.hasMany(Torneo, { foreignKey: 'liga_id', as: 'torneos' });
@@ -73,6 +81,7 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
   TorneoCategoria.belongsTo(PadelCategoria, { foreignKey: 'categoria_id', as: 'categoria' });
   for (const M of [TorneoPareja, TorneoZona, TorneoPartido]) M.belongsTo(PadelCategoria, { foreignKey: 'categoria_id', as: 'categoriaDef' });
   TorneoJugador.belongsTo(PadelJugador, { foreignKey: 'jugador_id', as: 'registro' });
+  TorneoPuntajeHistorial.belongsTo(TorneoJugador, { foreignKey: 'jugador_id', as: 'jugador' });
   PadelJugador.hasMany(RankingPunto, { foreignKey: 'jugador_id', as: 'puntos' });
   RankingPunto.belongsTo(PadelJugador, { foreignKey: 'jugador_id', as: 'jugador' });
   RankingPunto.belongsTo(TorneoLiga, { foreignKey: 'liga_id', as: 'liga' });
@@ -80,4 +89,4 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
   RankingAjuste.belongsTo(TorneoLiga, { foreignKey: 'liga_id', as: 'liga' });
 }
 
-module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste }, asociar, GENEROS };
+module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial }, asociar, GENEROS };

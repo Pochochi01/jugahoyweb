@@ -128,6 +128,9 @@ club.post('/torneos/:torneoId/zonas/generar',           loadTorneo, torneos.gene
 club.post('/torneos/:torneoId/llave/generar',           loadTorneo, torneos.generarLlave);
 club.get ('/torneos/:torneoId/fixture',                 loadTorneo, torneos.fixture);
 club.get ('/torneos/:torneoId/ranking',                 loadTorneo, torneos.ranking);
+// Puntaje manual en las posiciones (solo administrador del club; queda en torneo_puntajes_historial)
+club.put ('/torneos/:torneoId/jugadores/:jugadorId/puntaje', requireClubAdmin, loadTorneo, torneos.modificarPuntaje);
+club.get ('/torneos/:torneoId/puntajes/historial',      requireClubAdmin, loadTorneo, torneos.historialPuntajes);
 club.put ('/torneos/:torneoId/partidos/:partidoId/programacion', loadTorneo, torneos.reprogramar);
 
 // Resultados

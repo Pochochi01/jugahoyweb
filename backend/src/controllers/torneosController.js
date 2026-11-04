@@ -315,6 +315,22 @@ async function ranking(req, res) {
   try { res.json(await svc.rankingJugadores(req.torneo, req.query.categoria_id)); } catch (err) { send(res, err); }
 }
 
+/** Quién modifica (para la auditoría). */
+const autor = (req) => (req.user ? { id: req.user.id, nombre: `${req.user.nombre || ''} ${req.user.apellido || ''}`.trim() || req.user.email } : {});
+
+/** PUT /torneos/:torneoId/jugadores/:jugadorId/puntaje  { puntaje: number|null, motivo? } — solo admin del club. */
+async function modificarPuntaje(req, res) {
+  try {
+    if (req.body?.puntaje === undefined) return res.status(400).json({ message: 'Indicá el puntaje nuevo.' });
+    res.json(await svc.modificarPuntaje(req.torneo, req.params.jugadorId, req.body, autor(req)));
+  } catch (err) { send(res, err); }
+}
+
+/** GET /torneos/:torneoId/puntajes/historial?jugador_id= */
+async function historialPuntajes(req, res) {
+  try { res.json(await svc.historialPuntajes(req.torneo, { jugadorId: req.query.jugador_id })); } catch (err) { send(res, err); }
+}
+
 async function reprogramar(req, res) {
   try {
     const { field_id, fecha, hora, notificar } = req.body || {};
@@ -325,7 +341,7 @@ async function reprogramar(req, res) {
 }
 
 module.exports = {
-  conCategorias,
+  conCategorias, modificarPuntaje, historialPuntajes,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,

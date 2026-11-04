@@ -15,7 +15,8 @@
     "check:tokens": "node scripts/check-expiring-tokens.js",
     "test:gym": "node tests/gym.e2e.js",
     "test:torneos": "node tests/torneos-ligas.e2e.js",
-    "test:torneos:migracion": "node tests/torneos-migracion.test.js"
+    "test:torneos:migracion": "node tests/torneos-migracion.test.js",
+    "test:torneos:puntajes": "node tests/torneos-puntajes.e2e.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

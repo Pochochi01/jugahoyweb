@@ -24,7 +24,7 @@ const { Op } = require('sequelize');
 const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
   TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
-  TorneoTablaPosicion, TorneoCategoria,
+  TorneoTablaPosicion, TorneoCategoria, TorneoPuntajeHistorial,
 } = require('../../models');
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
@@ -32,7 +32,7 @@ const notifier = require('./torneoNotifier');
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
-const JUGADORES_PUBLICOS = ['id', 'nombre', 'categoria'];
+const JUGADORES_PUBLICOS = ['id', 'nombre', 'categoria', 'puntos_manual'];
 
 function httpError(status, message) { const e = new Error(message); e.status = status; return e; }
 
@@ -594,35 +594,101 @@ async function tablasDeZonas(torneo, publico = false, categoriaId = null) {
 }
 
 /** Posiciones por jugador (cada jugador hereda los números de su pareja). */
+/**
+ * Posiciones por jugador. Parte de TODOS los inscriptos activos (pendientes y pagados),
+ * tengan o no zona/partidos: el que no jugó aparece con 0 en todo (equivalente a un
+ * LEFT JOIN con COALESCE(…, 0)). Si un administrador fijó un puntaje manual
+ * (torneo_jugadores.puntos_manual) se usa ese; los PJ/PG/PP y diferencias son los reales.
+ * Tres consultas en total (inscriptos, tablas de zona, partidos de llave): sin N+1.
+ */
 async function rankingJugadores(torneo, categoriaId = null) {
   const cat = categoriaId ? (await resolverCategoria(torneo, categoriaId)).categoria_id : null;
-  const zonas = await tablasDeZonas(torneo, true, cat);
-  const parejas = await TorneoPareja.findAll({
-    where: { torneo_id: torneo.id, zona_id: { [Op.ne]: null }, ...(cat && { categoria_id: cat }) },
-    include: [{ model: TorneoJugador, as: 'jugadores', attributes: JUGADORES_PUBLICOS }],
-  });
-  // Partidos de llave ganados suman al ranking general
-  const llave = await TorneoPartido.findAll({
-    where: { torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' }, es_bye: false, estado: ['jugado', 'walkover'], ...(cat && { categoria_id: cat }) },
-    include: [{ model: TorneoResultado, as: 'resultado' }],
-  });
+  const [zonas, parejas, llave] = await Promise.all([
+    tablasDeZonas(torneo, true, cat),
+    TorneoPareja.findAll({
+      where: { torneo_id: torneo.id, estado_pago: PAREJAS_ACTIVAS, ...(cat && { categoria_id: cat }) },
+      include: [{ model: TorneoJugador, as: 'jugadores', attributes: JUGADORES_PUBLICOS }, { model: TorneoZona, as: 'zona', attributes: ['nombre'] }],
+      order: [['id', 'ASC']],
+    }),
+    // Partidos de llave jugados suman al ranking general
+    TorneoPartido.findAll({
+      where: { torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' }, es_bye: false, estado: ['jugado', 'walkover'], ...(cat && { categoria_id: cat }) },
+      include: [{ model: TorneoResultado, as: 'resultado' }],
+    }),
+  ]);
+  const tablaDe = new Map(zonas.flatMap(z => z.tabla.map(r => [r.pareja_id, r])));
+  const n = (v) => Number(v) || 0;   // COALESCE(v, 0)
   const filas = [];
-  for (const z of zonas) for (const r of z.tabla) {
-    const p = parejas.find(x => x.id === r.pareja_id);
-    const extra = llave.filter(m => [m.pareja1_id, m.pareja2_id].includes(r.pareja_id));
-    const pgLlave = extra.filter(m => m.resultado?.ganador_id === r.pareja_id).length;
-    for (const j of p?.jugadores || []) {
+  for (const p of parejas) {
+    const r = tablaDe.get(p.id) || {};
+    const extra = llave.filter(m => [m.pareja1_id, m.pareja2_id].includes(p.id));
+    const pgLlave = extra.filter(m => m.resultado?.ganador_id === p.id).length;
+    const calculados = n(r.puntos) + pgLlave * fx.PUNTOS_VICTORIA + (extra.length - pgLlave) * fx.PUNTOS_DERROTA;
+    for (const j of p.jugadores) {
+      const manual = j.puntos_manual !== null && j.puntos_manual !== undefined;
       filas.push({
-        jugador_id: j.id, jugador: j.nombre, pareja: r.pareja, zona: z.nombre, categoria_id: z.categoria_id,
-        pj: r.pj + extra.length, pg: r.pg + pgLlave, pp: r.pp + (extra.length - pgLlave),
-        puntos: r.puntos + pgLlave * fx.PUNTOS_VICTORIA + (extra.length - pgLlave) * fx.PUNTOS_DERROTA,
-        dif_sets: r.dif_sets, dif_games: r.dif_games,
+        jugador_id: j.id, jugador: j.nombre, categoria: j.categoria, pareja: notifier.nombrePareja(p),
+        zona: p.zona?.nombre || null, categoria_id: p.categoria_id,
+        pj: n(r.pj) + extra.length, pg: n(r.pg) + pgLlave, pp: n(r.pp) + (extra.length - pgLlave),
+        dif_sets: n(r.dif_sets), dif_games: n(r.dif_games),
+        puntos_calculados: calculados, puntos: manual ? j.puntos_manual : calculados, manual,
       });
     }
   }
-  filas.sort((a, b) => (b.puntos - a.puntos) || (b.dif_sets - a.dif_sets) || (b.dif_games - a.dif_games));
-  filas.forEach((f, i) => { f.posicion = i + 1; });
+  filas.sort((a, b) => (b.puntos - a.puntos) || (b.dif_sets - a.dif_sets) || (b.dif_games - a.dif_games) || a.jugador.localeCompare(b.jugador, 'es'));
+  // Empates de puntos y diferencias comparten posición (1, 2, 2, 4)
+  filas.forEach((f, i) => {
+    const prev = filas[i - 1];
+    f.posicion = prev && prev.puntos === f.puntos && prev.dif_sets === f.dif_sets && prev.dif_games === f.dif_games ? prev.posicion : i + 1;
+  });
   return filas;
+}
+
+/**
+ * Modifica a mano el puntaje de un jugador en las posiciones del torneo (con auditoría).
+ * puntaje: entero ≥ 0, o null para volver al cálculo automático por partidos.
+ * @returns {{ jugador: object, ranking: object[] }} fila actualizada (con su posición) + ranking de su categoría
+ */
+async function modificarPuntaje(torneo, jugadorId, { puntaje, motivo } = {}, usuario = {}) {
+  const automatico = puntaje === null;
+  const valor = automatico ? null : Number(puntaje);
+  if (!automatico && (puntaje === undefined || puntaje === '' || !Number.isInteger(valor))) throw httpError(400, 'El puntaje debe ser un número entero.');
+  if (!automatico && valor < 0) throw httpError(400, 'El puntaje no puede ser negativo.');
+  if (!automatico && valor > 100000) throw httpError(400, 'Puntaje fuera de rango.');
+  const mot = motivo ? String(motivo).trim().slice(0, 255) : null;
+  if (torneo.estado === 'cancelado') throw httpError(409, 'El torneo está cancelado.');
+
+  const jugador = await TorneoJugador.findOne({
+    where: { id: Number(jugadorId) },
+    include: [{ model: TorneoPareja, as: 'pareja', attributes: ['id', 'torneo_id', 'categoria_id', 'estado_pago'], where: { torneo_id: torneo.id } }],
+  });
+  if (!jugador) throw httpError(404, 'El jugador no está inscripto en este torneo.');
+  if (!['pendiente', 'pagado'].includes(jugador.pareja.estado_pago)) throw httpError(409, 'La inscripción del jugador está cancelada.');
+
+  const cat = jugador.pareja.categoria_id || null;
+  const antes = (await rankingJugadores(torneo, cat)).find(f => f.jugador_id === jugador.id);
+  const anterior = antes?.puntos ?? 0;
+  await sequelize.transaction(async (t) => {
+    await jugador.update({ puntos_manual: valor }, { transaction: t });
+    await TorneoPuntajeHistorial.create({
+      torneo_id: torneo.id, jugador_id: jugador.id, puntaje_anterior: anterior,
+      puntaje_nuevo: automatico ? (antes?.puntos_calculados ?? 0) : valor, automatico,
+      motivo: mot, usuario_id: usuario.id || null, usuario: usuario.nombre || null,
+    }, { transaction: t });
+  });
+  const ranking = await rankingJugadores(torneo, cat);
+  const fila = ranking.find(f => f.jugador_id === jugador.id);
+  console.log(`[torneos] puntaje manual · torneo ${torneo.id} · jugador ${jugador.id} (${jugador.nombre}): ${anterior} → ${fila.puntos}${automatico ? ' (automático)' : ''} · ${usuario.nombre || '?'}${mot ? ` · "${mot}"` : ''}`);
+  return { jugador: fila, ranking };
+}
+
+/** Historial de modificaciones manuales de puntaje del torneo. */
+function historialPuntajes(torneo, { jugadorId } = {}) {
+  return TorneoPuntajeHistorial.findAll({
+    where: { torneo_id: torneo.id, ...(jugadorId && { jugador_id: Number(jugadorId) }) },
+    include: [{ model: TorneoJugador, as: 'jugador', attributes: ['id', 'nombre'] }],
+    order: [['id', 'DESC']], limit: 300,
+  });
 }
 
 // ── Llave ─────────────────────────────────────────────────────
@@ -939,5 +1005,5 @@ module.exports = {
   inscribirPareja, confirmarPago, emitirTickets, sincronizarAgenda, conTransaccion, eliminarTorneo,
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, PUNTOS_INSTANCIA, notificarProximos, reprogramarPartido, fixture,
-  categoriasDe, resolverCategoria, sincronizarEstado,
+  categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
 };

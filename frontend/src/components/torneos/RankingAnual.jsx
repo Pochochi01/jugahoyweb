@@ -217,7 +217,7 @@ function Historial({ svc, ligas }) {
             {filas?.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Sin cambios registrados.</td></tr>}
             {(filas || []).map(a => (
               <tr key={a.id} className="border-t border-border align-top">
-                <td className="px-3 py-2 whitespace-nowrap">{fechaHora(a.created_at)}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{fechaHora(a.createdAt || a.created_at)}</td>
                 <td className="px-3 py-2">{a.usuario || '—'}</td>
                 <td className="px-3 py-2">{a.jugador?.nombre}<div className="text-xs text-muted-foreground">DNI {a.jugador?.dni}</div></td>
                 <td className="px-3 py-2">{a.liga?.nombre}<div className="text-xs text-muted-foreground">{catNombre(a.categoria_id)} · {a.genero} · {a.temporada}</div></td>

@@ -87,6 +87,9 @@ export function torneosStaff(client, cid) {
     generarLlave:  (tid, d)    => client.post(`${t(tid)}/llave/generar`, d),
     fixture:       (tid, categoria_id) => client.get(`${t(tid)}/fixture`, { params: categoria_id ? { categoria_id } : {} }),
     ranking:       (tid, categoria_id) => client.get(`${t(tid)}/ranking`, { params: categoria_id ? { categoria_id } : {} }),
+    // Puntaje manual de un jugador en las posiciones (solo admin del club) + historial
+    setPuntaje:    (tid, jugadorId, d) => client.put(`${t(tid)}/jugadores/${jugadorId}/puntaje`, d),
+    historialPuntajes: (tid, params) => client.get(`${t(tid)}/puntajes/historial`, { params }),
     reprogramar:   (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/programacion`, d),
     partidos:      (tid, params) => client.get(`${t(tid)}/partidos`, { params }),
     setResultado:  (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/resultado`, d),

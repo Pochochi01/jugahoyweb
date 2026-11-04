@@ -141,7 +141,7 @@ function EditorRutina({ id, onClose, onGuardado, api, permisos, avisar }) {
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">Versión:</span>
             <select className="input text-sm !w-auto" value={d.version_vista} onChange={e => { setForm(null); setVersion(Number(e.target.value)); }}>
-              {d.versiones.map(v => <option key={v.id} value={v.version}>v{v.version}{v.version === d.version_actual ? ' (vigente)' : ''} · {fechaCorta(v.created_at)}{v.notas ? ` · ${v.notas}` : ''}</option>)}
+              {d.versiones.map(v => <option key={v.id} value={v.version}>v{v.version}{v.version === d.version_actual ? ' (vigente)' : ''} · {fechaCorta(v.createdAt || v.created_at)}{v.notas ? ` · ${v.notas}` : ''}</option>)}
             </select>
             {soloLectura && <span className="badge-yellow">Versión anterior: solo lectura</span>}
             <span className="ml-auto flex gap-1">
@@ -205,7 +205,7 @@ function EditorRutina({ id, onClose, onGuardado, api, permisos, avisar }) {
           <div className="space-y-2 border-t border-border pt-3">
             <h4 className="text-sm font-semibold flex items-center gap-1.5"><MessageSquare className="w-4 h-4" /> Comentarios</h4>
             {d.comentarios.length === 0 && <p className="text-xs text-muted-foreground">Sin comentarios.</p>}
-            {d.comentarios.map(c => <div key={c.id} className="text-sm rounded-lg bg-muted px-3 py-2"><span className="font-medium">{c.autor}</span> <span className="text-xs text-muted-foreground">· {fechaCorta(c.created_at)}</span><p className="whitespace-pre-line">{c.texto}</p></div>)}
+            {d.comentarios.map(c => <div key={c.id} className="text-sm rounded-lg bg-muted px-3 py-2"><span className="font-medium">{c.autor}</span> <span className="text-xs text-muted-foreground">· {fechaCorta(c.createdAt || c.created_at)}</span><p className="whitespace-pre-line">{c.texto}</p></div>)}
             <div className="flex gap-2">
               <input className="input text-sm" placeholder="Escribí un comentario…" value={comentario} onChange={e => setComentario(e.target.value)} maxLength={2000} />
               <button className="btn-outline btn-sm" disabled={comentario.trim().length < 2} onClick={comentar}>Enviar</button>

@@ -1,4 +1,4 @@
-import { Trophy, AlertTriangle } from 'lucide-react';
+import { Trophy, AlertTriangle, Pencil } from 'lucide-react';
 import { RONDA_LABEL, fechaCorta, setsTxt } from '../../utils/torneos';
 
 /** Tabla de posiciones de una zona (persistida en el backend). */
@@ -174,22 +174,42 @@ export function Bracket({ llave, campeonId }) {
 }
 
 /** Ranking por jugador. */
-export function RankingJugadores({ filas }) {
-  if (!filas?.length) return <p className="text-sm text-muted-foreground">Sin partidos jugados todavía.</p>;
+/**
+ * Posiciones por jugador. Muestra a TODOS los inscriptos (los que no jugaron, con 0).
+ * `onEditar(fila)` (solo administradores) agrega la columna Acciones → "Modificar puntaje".
+ */
+export function RankingJugadores({ filas, onEditar }) {
+  if (!filas?.length) return <p className="text-sm text-muted-foreground">Todavía no hay jugadores inscriptos en esta categoría.</p>;
+  const z = (v) => Number(v) || 0;   // nunca null / undefined / vacío
+  const dif = (v) => (z(v) > 0 ? `+${z(v)}` : z(v));
   return (
     <div className="card !p-0 overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="text-xs text-muted-foreground text-left">
-          <tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Jugador</th><th className="px-3 py-2">Pareja</th>
-            <th className="px-2 py-2 text-center">PJ</th><th className="px-2 py-2 text-center">PG</th><th className="px-3 py-2 text-center">Pts</th></tr>
+          <tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Jugador</th><th className="px-3 py-2 hidden md:table-cell">Pareja</th>
+            <th className="px-2 py-2 text-center">PJ</th><th className="px-2 py-2 text-center">PG</th><th className="px-2 py-2 text-center">PP</th>
+            <th className="px-2 py-2 text-center hidden sm:table-cell" title="Diferencia de sets">DS</th><th className="px-3 py-2 text-center">Pts</th>
+            {onEditar && <th className="px-2 py-2 text-right">Acciones</th>}</tr>
         </thead>
         <tbody>
           {filas.map(f => (
             <tr key={f.jugador_id} className="border-t border-border">
-              <td className="px-3 py-2">{f.posicion}</td><td className="px-3 py-2 font-medium">{f.jugador}</td>
-              <td className="px-3 py-2 text-muted-foreground">{f.pareja}</td>
-              <td className="px-2 py-2 text-center">{f.pj}</td><td className="px-2 py-2 text-center">{f.pg}</td>
-              <td className="px-3 py-2 text-center font-bold text-primary">{f.puntos}</td>
+              <td className="px-3 py-2">{f.posicion}</td>
+              <td className="px-3 py-2 font-medium">{f.jugador}<div className="text-xs text-muted-foreground font-normal md:hidden">{f.pareja}</div></td>
+              <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{f.pareja}</td>
+              <td className="px-2 py-2 text-center">{z(f.pj)}</td><td className="px-2 py-2 text-center">{z(f.pg)}</td><td className="px-2 py-2 text-center">{z(f.pp)}</td>
+              <td className="px-2 py-2 text-center hidden sm:table-cell">{dif(f.dif_sets)}</td>
+              <td className="px-3 py-2 text-center font-bold text-primary whitespace-nowrap">
+                {z(f.puntos)}{f.manual && <span className="ml-1 align-middle badge-yellow !text-[10px] !px-1.5 !py-0" title={`Puntaje modificado a mano (por partidos: ${z(f.puntos_calculados)})`}>manual</span>}
+              </td>
+              {onEditar && (
+                <td className="px-2 py-2 text-right">
+                  <button className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                    onClick={() => onEditar(f)} aria-label={`Modificar puntaje de ${f.jugador}`} title="Modificar puntaje">
+                    <Pencil className="w-4 h-4" /><span className="hidden lg:inline">Modificar puntaje</span>
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

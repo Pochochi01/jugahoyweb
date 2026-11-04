@@ -38,7 +38,7 @@ const Aviso = ({ tipo = 'error', children }) => children
  * @param {object} svc      torneosStaff(client, complexId)
  * @param {number} torneoId
  */
-export default function TorneoManager({ svc, torneoId, onBack }) {
+export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
   const [torneo, setTorneo] = useState(null);
   const [seccion, setSeccion] = useState('datos');
   const [error, setError] = useState('');
@@ -108,7 +108,7 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
       {seccion === 'inscripciones' && <InscripcionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} />}
       {seccion === 'fixture'       && categoria && <PartidosSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
       {seccion === 'llave'         && categoria && <LlaveSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
-      {seccion === 'posiciones'    && categoria && <PosicionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} />}
+      {seccion === 'posiciones'    && categoria && <PosicionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} admin={admin} />}
       {seccion === 'comunicacion'  && <ComunicacionSeccion svc={svc} torneo={torneo} />}
       {seccion === 'whatsapp'      && <TelefonoEntidad svc={svc.telefono(torneo.id)} quienes="inscriptos" />}
     </div>
@@ -545,14 +545,18 @@ function LlaveSeccion({ svc, torneo, onChange, categoria }) {
 }
 
 // ── Posiciones ────────────────────────────────────────────────
-function PosicionesSeccion({ svc, torneo, categoria }) {
+function PosicionesSeccion({ svc, torneo, categoria, admin }) {
   const [fx, setFx] = useState(null);
   const [ranking, setRanking] = useState(null);
   const [vista, setVista] = useState('zonas');
+  const [editando, setEditando] = useState(null);   // fila del jugador
+  const [toast, setToast] = useState(null);
+  const avisar = (tipo, msg) => { setToast({ tipo, msg }); setTimeout(() => setToast(null), 3500); };
+  const cargarRanking = useCallback(() => svc.ranking(torneo.id, categoria).then(setRanking).catch(() => setRanking([])), [svc, torneo.id, categoria]);
   useEffect(() => {
     svc.fixture(torneo.id, categoria).then(setFx).catch(() => {});
-    svc.ranking(torneo.id, categoria).then(setRanking).catch(() => setRanking([]));
-  }, [svc, torneo.id, categoria]);
+    cargarRanking();
+  }, [svc, torneo.id, categoria, cargarRanking]);
   if (!fx) return <Loader />;
   return (
     <div className="space-y-4">
@@ -564,7 +568,79 @@ function PosicionesSeccion({ svc, torneo, categoria }) {
       {vista === 'zonas'
         ? (fx.zonas.length ? <div className="grid lg:grid-cols-2 gap-4">{fx.zonas.map(z => <TablaZona key={z.zona_id} zona={z} mostrarRanking={torneo.tipo === 'anual'} />)}</div>
           : <p className="text-sm text-muted-foreground">Todavía no hay zonas.</p>)
-        : <RankingJugadores filas={ranking} />}
+        : <RankingJugadores filas={ranking} onEditar={admin ? setEditando : undefined} />}
+      {editando && (
+        <PuntajeModal fila={editando} torneo={torneo} onClose={() => setEditando(null)}
+          onGuardar={async (d) => {
+            const r = await svc.setPuntaje(torneo.id, editando.jugador_id, d);
+            setRanking(r.ranking);   // tabla al día sin recargar la página
+            setEditando(null);
+            avisar('ok', `Puntaje de ${r.jugador.jugador} actualizado: ${r.jugador.puntos} pts (posición ${r.jugador.posicion}).`);
+          }} />
+      )}
+      {toast && <div className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-white ${toast.tipo === 'ok' ? 'bg-green-600' : 'bg-red-600'}`} role="status">{toast.msg}</div>}
+    </div>
+  );
+}
+
+/**
+ * Modal "Modificar puntaje": jugador, categoría, torneo, puntaje actual y nuevo (entero ≥ 0),
+ * motivo opcional, confirmación antes de guardar y opción de volver al cálculo automático.
+ */
+function PuntajeModal({ fila, torneo, onClose, onGuardar }) {
+  const [valor, setValor] = useState(String(fila.puntos ?? 0));
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => {
+    const esc = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+  const n = Number(valor);
+  const invalido = valor.trim() === '' || !Number.isInteger(n) || n < 0;
+  const guardar = async (automatico = false) => {
+    setError('');
+    if (!automatico && invalido) return setError('Ingresá un número entero mayor o igual a 0.');
+    const texto = automatico
+      ? `¿Volver al puntaje calculado por los partidos (${fila.puntos_calculados ?? 0} pts) para ${fila.jugador}?`
+      : `¿Cambiar el puntaje de ${fila.jugador} de ${fila.puntos ?? 0} a ${n} puntos?`;
+    if (!window.confirm(texto)) return;
+    setGuardando(true);
+    try { await onGuardar({ puntaje: automatico ? null : n, motivo: motivo.trim() || undefined }); }
+    catch (e) { setError(errMsg(e)); } finally { setGuardando(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="puntaje-titulo">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <form onSubmit={e => { e.preventDefault(); guardar(); }} className="relative z-10 w-full sm:max-w-md bg-card text-foreground border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 id="puntaje-titulo" className="font-semibold flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" /> Modificar puntaje</h3>
+          <button type="button" className="p-1 rounded hover:bg-muted" onClick={onClose} aria-label="Cerrar"><X className="w-5 h-5" /></button>
+        </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+          <dt className="text-muted-foreground">Jugador</dt><dd className="font-medium">{fila.jugador}</dd>
+          <dt className="text-muted-foreground">Categoría</dt><dd>{fila.categoria_id ? catNombre(fila.categoria_id) : catsTexto(torneo)}{fila.categoria ? ` · juega ${catLabel(fila.categoria)}` : ''}</dd>
+          <dt className="text-muted-foreground">Torneo</dt><dd>{torneo.nombre}</dd>
+          <dt className="text-muted-foreground">Puntaje actual</dt>
+          <dd><strong>{fila.puntos ?? 0}</strong>{fila.manual && <span className="text-xs text-muted-foreground"> (manual · por partidos: {fila.puntos_calculados ?? 0})</span>}</dd>
+        </dl>
+        <label className="block text-sm">
+          <span className="text-xs text-muted-foreground">Nuevo puntaje</span>
+          <input className="input text-lg" type="number" inputMode="numeric" min="0" step="1" value={valor} autoFocus
+            onChange={e => setValor(e.target.value.replace(/[^\d]/g, ''))} aria-invalid={invalido} />
+        </label>
+        <label className="block text-sm">
+          <span className="text-xs text-muted-foreground">Motivo (opcional)</span>
+          <input className="input" maxLength={255} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej.: corrección de planilla" />
+        </label>
+        {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+        <div className="flex flex-wrap gap-2 justify-end">
+          {fila.manual && <button type="button" className="btn-ghost text-sm mr-auto" disabled={guardando} onClick={() => guardar(true)}>Volver al automático</button>}
+          <button type="button" className="btn-outline text-sm" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary text-sm" disabled={guardando || invalido}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </form>
     </div>
   );
 }

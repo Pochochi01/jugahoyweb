@@ -70,7 +70,7 @@ export function OrganizadorPanel() {
         {tickets && <ValidarTicket svc={svc} />}
         {ranking && <RankingAnual svc={svc} admin={false} />}
         {abierto
-          ? <TorneoManager svc={svc} torneoId={abierto} onBack={() => setAbierto(null)} />
+          ? <TorneoManager svc={svc} torneoId={abierto} onBack={() => setAbierto(null)} admin={false} />
           : <ListaTorneos svc={svc} onOpen={setAbierto} />}
       </main>
     </div>

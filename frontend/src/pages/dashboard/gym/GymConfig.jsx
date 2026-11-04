@@ -140,7 +140,7 @@ function Auditoria() {
       </form>
       {d.cargando && !d.data ? <Cargando /> : d.error ? <ErrorBox>{d.error}</ErrorBox> : (
         <Tabla filas={d.data} onRow={r => setAbierto(abierto === r.id ? null : r.id)} columnas={[
-          { k: 'created_at', l: 'Fecha', r: x => new Date(x.created_at).toLocaleString('es-AR') },
+          { k: 'created_at', l: 'Fecha', r: x => new Date(x.createdAt || x.created_at).toLocaleString('es-AR') },
           { k: 'usuario', l: 'Usuario' }, { k: 'accion', l: 'Acción' },
           { k: 'entidad', l: 'Entidad', r: x => `${x.entidad}${x.entidad_id ? ` #${x.entidad_id}` : ''}` },
           { k: 'ip', l: 'IP' }, { k: 'sucursal_id', l: 'Sucursal' },

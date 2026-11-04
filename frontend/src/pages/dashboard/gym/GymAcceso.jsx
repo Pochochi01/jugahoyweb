@@ -96,7 +96,7 @@ export default function GymAcceso() {
         </div>
         {lista.cargando && !lista.data ? <Cargando /> : (
           <Tabla filas={lista.data || []} vacio="Todavía no hubo ingresos hoy." columnas={[
-            { k: 'hora', l: 'Hora', r: a => new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }) },
+            { k: 'hora', l: 'Hora', r: a => new Date(a.createdAt || a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }) },
             { k: 'socio', l: 'Socio', r: a => (a.socio ? nombre(a.socio) : <span className="text-muted-foreground">No encontrado ({a.dato})</span>) },
             { k: 'metodo', l: 'Método', r: a => a.metodo.toUpperCase() },
             { k: 'resultado', l: 'Resultado', r: a => <span className={a.resultado === 'permitido' ? 'badge-green' : 'badge-red'}>{a.resultado === 'permitido' ? 'Permitido' : 'Denegado'}</span> },
