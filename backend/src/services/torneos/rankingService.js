@@ -176,7 +176,11 @@ async function moverPuntos(clubId, { jugador_id, liga_id, categoria_id, genero, 
   const anterior = actual.puntos;
   const nuevo = ['fijar', 'baja'].includes(tipo) ? v : tipo === 'restar' ? anterior - v : anterior + v;
   if (nuevo < 0) throw httpError(400, `No se pueden restar ${v} puntos: el jugador tiene ${anterior}.`);
-  await actual.update({ puntos: nuevo }, { transaction });
+  // Los puntos de torneos se recalculan; lo manual queda como ajuste (puntos = torneos + ajuste)
+  const patch = tipo === 'torneo'
+    ? { puntos: nuevo, puntos_torneos: actual.puntos_torneos + v }
+    : { puntos: nuevo, ajuste_manual: nuevo - actual.puntos_torneos };
+  await actual.update(patch, { transaction });
   await RankingAjuste.create({
     id_tenant: clubId, ranking_id: actual.id, jugador_id, liga_id, categoria_id, genero, temporada,
     puntos_anterior: anterior, puntos_nuevo: nuevo, tipo, motivo: motivo || null, torneo_id: torneo_id || null,

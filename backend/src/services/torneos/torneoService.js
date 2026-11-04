@@ -404,15 +404,19 @@ async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false
 
   // Puntos (ranking de la liga + categoría + año, en todos los tipos de torneo) y desempates
   const puntosPorDni = await puntosRanking(torneo, cat);
-  const historial = await historialJugadores(torneo, parejas.flatMap(p => p.jugadores.map(j => j.jugador_id)).filter(Boolean));
+  const combinacion = { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) };
+  const stats = await require('./rankingAnualService').statsPorJugador(torneo.id_tenant, combinacion, parejas.flatMap(p => p.jugadores.map(j => j.jugador_id)).filter(Boolean));
   const suma = (p, f) => p.jugadores.reduce((acc, j) => acc + f(j), 0);
+  const st = (j, k) => stats.get(j.jugador_id)?.[k] || 0;
   const conDatos = parejas.map(p => ({
     id: p.id,
     nombre: notifier.nombrePareja(p),
     horarios_preferidos: p.horarios_preferidos,
     puntos_totales: suma(p, j => puntosPorDni.get(j.dni) || 0),
-    torneos_jugados: suma(p, j => historial.torneos.get(j.jugador_id) || 0),
-    partidos_ganados: suma(p, j => historial.ganados.get(j.jugador_id) || 0),
+    titulos: suma(p, j => st(j, 'titulos')),
+    finales: suma(p, j => st(j, 'finales')),
+    torneos_jugados: suma(p, j => st(j, 'torneos')),
+    jugadores: p.jugadores.map(j => ({ nombre: j.nombre, puntos: puntosPorDni.get(j.dni) || 0 })),
     inscripcion: p.createdAt,
   }));
   const zonas = fx.generateSnakeSeedingZones(conDatos, { parejasPorZona: torneo.parejas_por_zona });
@@ -422,40 +426,17 @@ async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false
   return { tc, cat, parejas, zonas, firma };
 }
 
-/**
- * Torneos jugados y partidos ganados por jugador en la MISMA liga (otros torneos).
- * Dos consultas agregadas para todos los jugadores a la vez.
- */
-async function historialJugadores(torneo, jugadorIds) {
-  if (!jugadorIds.length) return { torneos: new Map(), ganados: new Map() };
-  const r = { ids: jugadorIds, liga: torneo.liga_id, torneo: torneo.id };
-  const [torneos, ganados] = await Promise.all([
-    sequelize.query(`SELECT j.jugador_id, COUNT(DISTINCT p.torneo_id) n
-      FROM torneo_jugadores j JOIN torneo_parejas p ON p.id = j.pareja_id JOIN torneos t ON t.id = p.torneo_id
-      WHERE j.jugador_id IN (:ids) AND t.liga_id = :liga AND t.id <> :torneo AND p.estado_pago = 'pagado'
-      GROUP BY j.jugador_id`, { replacements: r, type: sequelize.QueryTypes.SELECT }),
-    sequelize.query(`SELECT j.jugador_id, COUNT(*) n
-      FROM torneo_jugadores j JOIN torneo_resultados res ON res.ganador_id = j.pareja_id
-      JOIN torneo_partidos m ON m.id = res.partido_id JOIN torneos t ON t.id = m.torneo_id
-      WHERE j.jugador_id IN (:ids) AND t.liga_id = :liga AND t.id <> :torneo AND m.es_bye = 0
-      GROUP BY j.jugador_id`, { replacements: r, type: sequelize.QueryTypes.SELECT }),
-  ]);
-  return {
-    torneos: new Map(torneos.map(x => [x.jugador_id, Number(x.n)])),
-    ganados: new Map(ganados.map(x => [x.jugador_id, Number(x.n)])),
-  };
-}
-
 /** Vista previa de las zonas (no guarda nada). */
 async function previsualizarZonas(torneo, opts = {}) {
   const { cat, zonas, firma, parejas } = await prepararSiembra(torneo, opts);
   return {
-    categoria_id: cat, metodo: 'snake_seeding', firma, cantidad_zonas: zonas.length, parejas: parejas.length,
+    categoria_id: cat, metodo: 'ranking_anual_snake', firma,
+    ranking: { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) }, cantidad_zonas: zonas.length, parejas: parejas.length,
     zonas: zonas.map(z => ({
       zona: z.zona,
       parejas: z.parejas.map(p => ({
         id: p.id, nombre: p.nombre, siembra: p.siembra, numero_zona: p.numero_zona, cabeza_serie: p.cabeza_serie,
-        puntos_totales: p.puntos_totales, torneos_jugados: p.torneos_jugados, partidos_ganados: p.partidos_ganados,
+        puntos_totales: p.puntos_totales, titulos: p.titulos, finales: p.finales, torneos_jugados: p.torneos_jugados, jugadores: p.jugadores,
       })),
     })),
   };
@@ -548,8 +529,12 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     for (const z of zonas) await recalcularTablaZona(z.id, t);
     // Auditoría del armado (en la misma transacción)
     await TorneoZonaHistorial.create({
-      torneo_id: torneo.id, categoria_id: cat, metodo: 'snake_seeding', zonas: siembra.length, parejas: parejas.length,
-      reparto: siembra.map(z => ({ zona: z.zona, parejas: z.parejas.map(p => ({ id: p.id, siembra: p.siembra, puntos: p.puntos_totales })) })),
+      torneo_id: torneo.id, categoria_id: cat, metodo: 'ranking_anual_snake', zonas: siembra.length, parejas: parejas.length,
+      // Ranking usado y puntos de cada pareja (y de sus jugadores) al momento del armado
+      reparto: {
+        ranking: { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) },
+        zonas: siembra.map(z => ({ zona: z.zona, parejas: z.parejas.map(p => ({ id: p.id, nombre: p.nombre, siembra: p.siembra, puntos: p.puntos_totales, jugadores: p.jugadores })) })),
+      },
       usuario_id: usuario?.id || null, usuario: usuario?.nombre || null,
     }, { transaction: t });
     await sincronizarAgenda(torneo, t);
@@ -564,7 +549,7 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     parejas: parejas.length,
     sin_programar: sinProgramar,
     // Reparto final (para mostrar el sorteo / los cabezas de serie)
-    metodo: 'snake_seeding',
+    metodo: 'ranking_anual_snake',
     reparto: siembra.map(z => ({ zona: z.zona, parejas: z.parejas.map(p => ({ id: p.id, nombre: p.nombre, numero: p.numero_zona, siembra: p.siembra, cabeza_serie: p.cabeza_serie, puntos: p.puntos_totales })) })),
   };
 }
@@ -581,47 +566,18 @@ function puntosRanking(torneo, categoriaId = torneo.categoria) {
  * Puntos que suma cada jugador según la instancia a la que llegó su pareja.
  * Se aplican una sola vez, al finalizar un torneo 'anual'.
  */
-const PUNTOS_INSTANCIA = { campeon: 100, final: 70, semifinal: 50, cuartos: 35, octavos: 25, zona: 10 };
-
+/**
+ * Al finalizar una categoría de un torneo 'anual' se aplican sus puntos al ranking anual con la
+ * configuración vigente de la temporada + categoría (rankingAnualService.applyTournamentPoints).
+ * Idempotente: ranking_resultados es único por torneo + categoría + jugador.
+ */
 async function asignarPuntosAnuales(torneo, tc, transaction) {
   if (torneo.tipo !== 'anual' || tc.puntos_asignados) return;
-  const cat = tc.categoria_id;
-  const partidos = await TorneoPartido.findAll({
-    where: { torneo_id: torneo.id, categoria_id: cat, es_bye: false },
-    include: [{ model: TorneoResultado, as: 'resultado' }], transaction,
-  });
-  const parejas = await TorneoPareja.findAll({
-    where: { torneo_id: torneo.id, categoria_id: cat, zona_id: { [Op.ne]: null } },
-    include: [{ model: TorneoJugador, as: 'jugadores' }], transaction,
-  });
-  // Instancia máxima alcanzada por cada pareja
-  const orden = ['zona', 'octavos', 'cuartos', 'semifinal', 'final'];
-  const instancia = new Map(parejas.map(p => [p.id, 'zona']));
-  for (const m of partidos) {
-    for (const pid of [m.pareja1_id, m.pareja2_id]) {
-      if (pid && orden.indexOf(m.ronda) > orden.indexOf(instancia.get(pid))) instancia.set(pid, m.ronda);
-    }
-    if (m.ronda === 'final' && m.resultado?.ganador_id) instancia.set(m.resultado.ganador_id, 'campeon');
-  }
-  // Byes: una pareja que pasó directo figura en la ronda siguiente → ya queda contemplada
-  // Cada jugador suma SOLO en la combinación liga + categoría + género + año del cuadro
-  const combinacion = { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) };
-  for (const p of parejas) {
-    const inst = instancia.get(p.id);
-    const pts = PUNTOS_INSTANCIA[inst] || 0;
-    if (!pts) continue;
-    for (const j of p.jugadores) {
-      const jugadorId = j.jugador_id || (await rk.upsertJugador(torneo.id_tenant, j, transaction)).id;
-      if (!j.jugador_id) await j.update({ jugador_id: jugadorId }, { transaction });
-      await rk.moverPuntos(torneo.id_tenant, { jugador_id: jugadorId, ...combinacion }, {
-        tipo: 'torneo', valor: pts, motivo: `${torneo.nombre} (${rk.nombreCat(cat)}): ${inst}`, torneo_id: torneo.id, usuario: { nombre: 'sistema' },
-      }, transaction);
-    }
-  }
+  const r = await require('./rankingAnualService').applyTournamentPoints(torneo, tc, transaction);
   await tc.update({ puntos_asignados: true }, { transaction });
   const pendientes = await TorneoCategoria.count({ where: { torneo_id: torneo.id, puntos_asignados: false }, transaction });
   if (!pendientes) await torneo.update({ puntos_asignados: true }, { transaction });
-  console.log(`[torneos] puntos anuales asignados · torneo ${torneo.id} · ${rk.nombreCat(cat)} · liga ${torneo.liga_id} · ${parejas.length} parejas`);
+  console.log(`[torneos] puntos anuales asignados · torneo ${torneo.id} · ${rk.nombreCat(tc.categoria_id)} · liga ${torneo.liga_id} · ${r.aplicados} jugador(es)${r.ya_procesado ? ' (ya procesado: sin cambios)' : ''}`);
 }
 
 // ── Tablas ────────────────────────────────────────────────────
@@ -1085,7 +1041,7 @@ module.exports = {
   httpError, canchaLabel, incluirPartido,
   inscribirPareja, confirmarPago, emitirTickets, sincronizarAgenda, conTransaccion, eliminarTorneo,
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
-  registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, PUNTOS_INSTANCIA, notificarProximos, reprogramarPartido, fixture,
+  registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
   previsualizarZonas, prepararSiembra, historialZonas,
 };

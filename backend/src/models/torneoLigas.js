@@ -49,7 +49,10 @@ const RankingPunto = sequelize.define('RankingPunto', {
   categoria_id: { type: T.TINYINT, allowNull: false },
   genero: { type: T.ENUM(...GENEROS), allowNull: false },
   temporada: { type: T.SMALLINT, allowNull: false },
+  // puntos = max(0, puntos_torneos + ajuste_manual) — el ajuste manual sobrevive a los recálculos
   puntos: { type: T.INTEGER, defaultValue: 0 },
+  puntos_torneos: { type: T.INTEGER, defaultValue: 0 },
+  ajuste_manual: { type: T.INTEGER, defaultValue: 0 },
 }, { tableName: 'ranking_puntos' });
 
 // Auditoría: cada cambio de puntos (torneo, ajuste manual, migración)
@@ -60,7 +63,7 @@ const RankingAjuste = sequelize.define('RankingAjuste', {
   jugador_id: { type: T.INTEGER, allowNull: false }, liga_id: { type: T.INTEGER, allowNull: false },
   categoria_id: { type: T.TINYINT, allowNull: false }, genero: { type: T.STRING(10), allowNull: false }, temporada: { type: T.SMALLINT, allowNull: false },
   puntos_anterior: { type: T.INTEGER, allowNull: false }, puntos_nuevo: { type: T.INTEGER, allowNull: false },
-  tipo: { type: T.ENUM('fijar', 'sumar', 'restar', 'torneo', 'migracion', 'baja'), allowNull: false },
+  tipo: { type: T.ENUM('fijar', 'sumar', 'restar', 'torneo', 'migracion', 'baja', 'recalculo'), allowNull: false },
   motivo: T.STRING(255), torneo_id: T.INTEGER, usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'ranking_ajustes', updatedAt: false });
 
@@ -81,6 +84,33 @@ const TorneoZonaHistorial = sequelize.define('TorneoZonaHistorial', {
   reparto: T.JSON, usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'torneo_zonas_historial', updatedAt: false });
 
+// ── Ranking anual configurable (migración 060) ──
+const INSTANCIAS = ['zona', '16avos', 'octavos', 'cuartos', 'semifinal', 'final', 'campeon'];
+const CAMPOS_PUNTOS = { zona: 'puntos_zona', '16avos': 'puntos_16avos', octavos: 'puntos_8vos', cuartos: 'puntos_4tos', semifinal: 'puntos_semifinal', final: 'puntos_final', campeon: 'puntos_campeon' };
+
+const RankingTemporada = sequelize.define('RankingTemporada', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  id_tenant: { type: T.INTEGER, allowNull: false }, anio: { type: T.SMALLINT, allowNull: false },
+  nombre: { type: T.STRING(60), allowNull: false }, estado: { type: T.ENUM('activa', 'cerrada'), defaultValue: 'activa' },
+}, { tableName: 'ranking_temporadas' });
+
+const RankingConfiguracion = sequelize.define('RankingConfiguracion', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  temporada_id: { type: T.INTEGER, allowNull: false }, categoria_id: { type: T.TINYINT, allowNull: false },
+  ...Object.fromEntries(Object.values(CAMPOS_PUNTOS).map(c => [c, { type: T.INTEGER, allowNull: false, defaultValue: 0 }])),
+  updated_by: T.STRING(150),
+}, { tableName: 'ranking_configuracion' });
+
+// Instancia y puntos de cada jugador en cada torneo/categoría (único: un torneo no suma dos veces)
+const RankingResultado = sequelize.define('RankingResultado', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  id_tenant: { type: T.INTEGER, allowNull: false }, torneo_id: { type: T.INTEGER, allowNull: false },
+  categoria_id: { type: T.TINYINT, allowNull: false }, jugador_id: { type: T.INTEGER, allowNull: false },
+  liga_id: { type: T.INTEGER, allowNull: false }, genero: { type: T.ENUM(...GENEROS), allowNull: false },
+  temporada: { type: T.SMALLINT, allowNull: false }, instancia: { type: T.ENUM(...INSTANCIAS), allowNull: false },
+  puntos: { type: T.INTEGER, defaultValue: 0 },
+}, { tableName: 'ranking_resultados' });
+
 function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador }) {
   Complex.hasMany(TorneoLiga, { foreignKey: 'id_tenant', as: 'ligas' });
   TorneoLiga.hasMany(Torneo, { foreignKey: 'liga_id', as: 'torneos' });
@@ -96,6 +126,10 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
   RankingPunto.belongsTo(TorneoLiga, { foreignKey: 'liga_id', as: 'liga' });
   RankingAjuste.belongsTo(PadelJugador, { foreignKey: 'jugador_id', as: 'jugador' });
   RankingAjuste.belongsTo(TorneoLiga, { foreignKey: 'liga_id', as: 'liga' });
+  RankingTemporada.hasMany(RankingConfiguracion, { foreignKey: 'temporada_id', as: 'configuracion', onDelete: 'CASCADE' });
+  RankingConfiguracion.belongsTo(RankingTemporada, { foreignKey: 'temporada_id', as: 'temporadaDef' });
+  RankingResultado.belongsTo(Torneo, { foreignKey: 'torneo_id', as: 'torneo' });
 }
 
-module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial }, asociar, GENEROS };
+module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial,
+  RankingTemporada, RankingConfiguracion, RankingResultado }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };

@@ -111,17 +111,20 @@ const n0 = (v) => Number(v) || 0;   // COALESCE(v, 0)
 const ts = (v) => (v ? new Date(v).getTime() : Number.MAX_SAFE_INTEGER);
 
 /**
- * Orden del ranking de parejas (determinista, sin azar):
- *   1. más puntos (suma del ranking de ambos jugadores, nulos = 0)
- *   2. más torneos jugados (suma de ambos jugadores, en la liga)
- *   3. más partidos ganados (suma de ambos jugadores, en la liga)
+ * Orden del ranking de parejas (determinista, sin azar). Fuente: Ranking Anual de la liga
+ * (misma liga + categoría + circuito + temporada), sumando a los dos jugadores:
+ *   0. más puntos (puntaje_jugador_1 + puntaje_jugador_2, nulos = 0)
+ *   1. más títulos obtenidos
+ *   2. más finales jugadas
+ *   3. más torneos disputados
  *   4. inscripción más antigua
  *   5. id ascendente
  */
 function compararSiembra(a, b) {
   return (n0(b.puntos_totales) - n0(a.puntos_totales))
+    || (n0(b.titulos) - n0(a.titulos))
+    || (n0(b.finales) - n0(a.finales))
     || (n0(b.torneos_jugados) - n0(a.torneos_jugados))
-    || (n0(b.partidos_ganados) - n0(a.partidos_ganados))
     || (ts(a.inscripcion) - ts(b.inscripcion))
     || (a.id - b.id);
 }
@@ -135,7 +138,7 @@ function ordenarPorRanking(parejas) {
  * Función central de armado: ranking + distribución en serpiente.
  *   Zona 1 ← siembra 1, Zona 2 ← siembra 2 … Zona N ← siembra N (cabezas de serie),
  *   luego N → 1, después 1 → N, y así hasta ubicar a todas.
- * @param {Array<{id, puntos_totales?, torneos_jugados?, partidos_ganados?, inscripcion?}>} parejas
+ * @param {Array<{id, puntos_totales?, titulos?, finales?, torneos_jugados?, inscripcion?}>} parejas
  * @param {{parejasPorZona?:number, zonas?:number}} opts  zonas fija N; si no, se deriva de parejasPorZona
  * @returns {Array<{zona:string, parejas:Array<{...pareja, siembra, numero_zona, cabeza_serie}>}>}
  */

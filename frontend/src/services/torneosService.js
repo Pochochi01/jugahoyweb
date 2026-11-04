@@ -51,6 +51,14 @@ export function torneosStaff(client, cid) {
     ranking_delete: (id)        => client.delete(`${b}/ranking/${id}`),
     ranking_ajuste: (d)         => client.post(`${b}/ranking/ajustes`, d),
     ranking_historial: (params) => client.get(`${b}/ranking/ajustes`, { params }),
+    // Ranking anual configurable: temporadas, puntos por instancia y recálculo (Admin General)
+    ranking_temporadas:   ()        => client.get(`${b}/ranking/temporadas`),
+    ranking_crearTemporada: (d)     => client.post(`${b}/ranking/temporadas`, d),
+    ranking_actualizarTemporada: (id, d) => client.put(`${b}/ranking/temporadas/${id}`, d),
+    ranking_config:       (temporada) => client.get(`${b}/ranking/configuracion`, { params: { temporada } }),
+    ranking_guardarConfig: (temporada, categoriaId, puntos) => client.put(`${b}/ranking/configuracion/${temporada}/${categoriaId}`, { puntos }),
+    ranking_recalcular:   (d)       => client.post(`${b}/ranking/recalcular`, d),
+    ranking_estadoRecalculo: (id)   => client.get(`${b}/ranking/recalcular/${id}`),
     // Ligas, categorías y jugadores del club
     ligas:         (params)    => client.get(`${b}/ligas`, { params }),
     createLiga:    (d)         => client.post(`${b}/ligas`, d),

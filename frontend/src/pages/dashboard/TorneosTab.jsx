@@ -5,6 +5,7 @@ import api from '../../services/api';
 import { torneosStaff } from '../../services/torneosService';
 import TorneoManager from '../../components/torneos/TorneoManager';
 import TorneoForm from '../../components/torneos/TorneoForm';
+import { useAuth } from '../../context/AuthContext';
 import { ESTADO_TORNEO, GENEROS, catsTexto, fechaCorta, errMsg } from '../../utils/torneos';
 
 /**
@@ -16,6 +17,7 @@ export default function TorneosTab({ complexId }) {
   const svc = useMemo(() => torneosStaff(api, complexId), [complexId]);
   const [vista, setVista] = useState('torneos');   // torneos | organizadores | tickets
   const [abierto, setAbierto] = useState(null);
+  const { isGeneralAdmin } = useAuth();
 
   if (abierto) return <TorneoManager svc={svc} torneoId={abierto} onBack={() => setAbierto(null)} />;
 
@@ -23,7 +25,7 @@ export default function TorneosTab({ complexId }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><Trophy className="w-5 h-5 text-primary" /> Torneos Pádel</h2>
-        {[['torneos', 'Torneos', Trophy], ['ranking', 'Ranking anual', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
+        {[['torneos', 'Torneos', Trophy], ['ranking', 'Ligas anuales', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
             <Icon className="w-4 h-4" /> {l}
@@ -31,7 +33,7 @@ export default function TorneosTab({ complexId }) {
         ))}
       </div>
       {vista === 'torneos' && <ListaTorneos svc={svc} onOpen={setAbierto} />}
-      {vista === 'ranking' && <RankingAnual svc={svc} />}
+      {vista === 'ranking' && <RankingAnual svc={svc} adminGeneral={isGeneralAdmin} />}
       {vista === 'organizadores' && <Organizadores svc={svc} />}
       {vista === 'tickets' && <ValidarTicket svc={svc} />}
     </div>

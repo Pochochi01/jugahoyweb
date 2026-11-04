@@ -91,12 +91,22 @@ club.delete('/ligas/:id',   requireClubAdmin, ranking.eliminarLiga);
 club.get   ('/categorias',  ranking.categorias);
 // Jugadores del club (todos, también con 0 puntos) para inscribir
 club.get   ('/jugadores',   ranking.jugadores);
-// Ranking anual por liga + categoría + año; ajustes manuales con auditoría (solo admin del club)
-club.get   ('/ranking',          ranking.list);
-club.get   ('/ranking/ajustes',  requireClubAdmin, ranking.historial);
-club.post  ('/ranking/ajustes',  requireClubAdmin, ranking.ajuste);
-club.put   ('/ranking',          requireClubAdmin, ranking.upsert);
-club.delete('/ranking/:id',      requireClubAdmin, ranking.remove);
+// Ranking anual por liga + categoría + temporada (consulta: staff del club).
+// Editar puntos, configurar puntajes, recalcular y ver auditorías: SOLO Administrador General.
+const soloAdminGeneral = (req, res, next) => (req.user?.rol === 'general_admin'
+  ? next() : res.status(403).json({ message: 'Solo el Administrador General puede hacer esto.' }));
+club.get   ('/ranking',                          ranking.list);
+club.get   ('/ranking/temporadas',               ranking.temporadas);
+club.post  ('/ranking/temporadas',               soloAdminGeneral, ranking.crearTemporada);
+club.put   ('/ranking/temporadas/:id',           soloAdminGeneral, ranking.actualizarTemporada);
+club.get   ('/ranking/configuracion',            ranking.config);
+club.put   ('/ranking/configuracion/:temporada/:categoriaId', soloAdminGeneral, ranking.guardarConfig);
+club.post  ('/ranking/recalcular',               soloAdminGeneral, ranking.recalcular);
+club.get   ('/ranking/recalcular/:id',           soloAdminGeneral, ranking.estadoRecalculo);
+club.get   ('/ranking/ajustes',                  soloAdminGeneral, ranking.historial);
+club.post  ('/ranking/ajustes',                  soloAdminGeneral, ranking.ajuste);
+club.put   ('/ranking',                          soloAdminGeneral, ranking.upsert);
+club.delete('/ranking/:id',                      soloAdminGeneral, ranking.remove);
 
 // Tickets: validación en la entrada
 club.post('/tickets/validar', inscr.validarTicket);

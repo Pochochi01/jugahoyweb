@@ -41,19 +41,20 @@ function unitarias() {
   }
   ok(patronOk, 'patrón serpiente correcto para 2–8 zonas y cantidades no múltiplos');
 
-  // Desempates: puntos → torneos jugados → partidos ganados → inscripción → id
+  // Desempates: puntos → títulos → finales → torneos disputados → inscripción → id
   const t0 = '2026-01-01T10:00:00Z', t1 = '2026-01-02T10:00:00Z';
   const empatadas = [
-    { id: 10, puntos_totales: 100, torneos_jugados: 1, partidos_ganados: 9, inscripcion: t0 },
-    { id: 11, puntos_totales: 100, torneos_jugados: 3, partidos_ganados: 0, inscripcion: t1 },
-    { id: 12, puntos_totales: 100, torneos_jugados: 1, partidos_ganados: 2, inscripcion: t0 },
-    { id: 13, puntos_totales: 100, torneos_jugados: 1, partidos_ganados: 2, inscripcion: t1 },
-    { id: 9, puntos_totales: 100, torneos_jugados: 1, partidos_ganados: 2, inscripcion: t1 },
+    { id: 10, puntos_totales: 100, titulos: 0, finales: 3, torneos_jugados: 9, inscripcion: t0 },
+    { id: 11, puntos_totales: 100, titulos: 2, finales: 2, torneos_jugados: 2, inscripcion: t1 },
+    { id: 12, puntos_totales: 100, titulos: 0, finales: 1, torneos_jugados: 5, inscripcion: t0 },
+    { id: 13, puntos_totales: 100, titulos: 0, finales: 1, torneos_jugados: 4, inscripcion: t0 },
+    { id: 16, puntos_totales: 100, titulos: 0, finales: 1, torneos_jugados: 4, inscripcion: t1 },
+    { id: 9, puntos_totales: 100, titulos: 0, finales: 1, torneos_jugados: 4, inscripcion: t1 },
     { id: 14, puntos_totales: null },
     { id: 15, puntos_totales: 150 },
   ];
   const orden = fx.ordenarPorRanking(empatadas).map(p => p.id);
-  ok(JSON.stringify(orden) === JSON.stringify([15, 11, 10, 12, 9, 13, 14]), `desempate: puntos > torneos > ganados > inscripción > id (${orden.join(',')})`);
+  ok(JSON.stringify(orden) === JSON.stringify([15, 11, 10, 12, 13, 9, 16, 14]), `desempate: puntos > títulos > finales > torneos > inscripción > id (${orden.join(',')})`);
   ok(fx.ordenarPorRanking([{ id: 1, puntos_totales: null }])[0].puntos_totales === 0, 'puntos nulos → 0 (COALESCE)');
   const a = fx.generateSnakeSeedingZones(empatadas, { zonas: 3 }).map(ids), b = fx.generateSnakeSeedingZones([...empatadas].reverse(), { zonas: 3 }).map(ids);
   ok(JSON.stringify(a) === JSON.stringify(b), 'determinista: mismo resultado sin importar el orden de entrada (sin azar)');
@@ -86,7 +87,7 @@ async function integracion() {
   const server = app.listen(0);
   const base = `http://127.0.0.1:${server.address().port}/api/torneos`;
   const s = Date.now();
-  const admin = await m.User.create({ nombre: 'Admin', apellido: 'Siembra', email: `ts-${s}@test.local`, password: 'x', rol: 'complex_admin', activo: true });
+  const admin = await m.User.create({ nombre: 'Admin', apellido: 'Siembra', email: `ts-${s}@test.local`, password: 'x', rol: 'general_admin', activo: true });
   const club = await m.Complex.create({ nombre: `TS TEST ${s}`, direccion: 'x', owner_id: admin.id, activo: true });
   const cancha = await m.Field.create({ complex_id: club.id, nombre: 'Pádel 1', deporte: 'padel', activa: true });
   const tk = jwt.sign({ id: admin.id }, process.env.JWT_SECRET, { expiresIn: '10m' });
@@ -117,10 +118,10 @@ async function integracion() {
       }
     }
     const prev = await call('POST', `/torneos/${t.id}/zonas/preview`, {});
-    ok(prev.status === 200 && prev.data.cantidad_zonas === 4 && prev.data.metodo === 'snake_seeding', 'vista previa: 4 zonas por Snake Seeding');
+    ok(prev.status === 200 && prev.data.cantidad_zonas === 4 && prev.data.metodo === 'ranking_anual_snake' && prev.data.ranking?.liga_id, 'vista previa: 4 zonas por Ranking Anual + Snake Seeding');
     const puntosZona = prev.data.zonas.map(z => z.parejas.map(p => p.puntos_totales));
     ok(JSON.stringify(puntosZona) === JSON.stringify([[500, 400, 390], [480, 410, 380], [470, 420, 370], [450, 430, 360]]), 'vista previa con los puntos reales del ranking: A{500,400,390} B{480,410,380} C{470,420,370} D{450,430,360}');
-    ok(prev.data.zonas.every(z => z.parejas[0].cabeza_serie && z.parejas[0].nombre), 'cabeza de serie y nombre de pareja en la vista previa');
+    ok(prev.data.zonas.every(z => z.parejas[0].cabeza_serie && z.parejas[0].nombre && z.parejas[0].jugadores.length === 2), 'cabeza de serie, pareja y jugadores (con sus puntos) en la vista previa');
     ok((await call('GET', `/torneos/${t.id}/fixture`)).data.zonas.length === 0, 'la vista previa no guarda nada');
 
     // Se agrega una pareja después de la vista previa → la firma cambia
@@ -130,14 +131,14 @@ async function integracion() {
     const prev2 = (await call('POST', `/torneos/${t.id}/zonas/preview`, {})).data;
     ok(prev2.parejas === 13 && prev2.firma !== prev.data.firma, 'la vista previa se recalcula con la pareja nueva');
     const conf = await call('POST', `/torneos/${t.id}/zonas/generar`, { firma: prev2.firma, notificar: false });
-    ok(conf.status === 200 && conf.data.metodo === 'snake_seeding' && conf.data.zonas === prev2.cantidad_zonas, 'confirmación con la firma vigente → zonas guardadas');
+    ok(conf.status === 200 && conf.data.metodo === 'ranking_anual_snake' && conf.data.zonas === prev2.cantidad_zonas, 'confirmación con la firma vigente → zonas guardadas');
     const fx2 = (await call('GET', `/torneos/${t.id}/fixture`)).data;
     const guardado = fx2.zonas.map(z => z.tabla.map(r => r.pareja_id).sort((x, y) => x - y));
     const previsto = prev2.zonas.map(z => z.parejas.map(p => p.id).sort((x, y) => x - y));
     ok(JSON.stringify(guardado) === JSON.stringify(previsto), 'lo guardado coincide exactamente con la vista previa');
     ok(fx2.zonas.every(z => z.tabla.some(r => r.numero_zona === 1 && r.siembra >= 1 && r.siembra <= prev2.cantidad_zonas)), 'cada zona guarda su cabeza de serie con su siembra');
     const hist = await m.TorneoZonaHistorial.findAll({ where: { torneo_id: t.id } });
-    ok(hist.length === 1 && hist[0].metodo === 'snake_seeding' && hist[0].zonas === 4 && hist[0].parejas === 13 && hist[0].usuario_id === admin.id && hist[0].reparto.length === 4, 'auditoría: usuario, fecha, zonas, parejas, método y reparto');
+    ok(hist.length === 1 && hist[0].metodo === 'ranking_anual_snake' && hist[0].zonas === 4 && hist[0].parejas === 13 && hist[0].usuario_id === admin.id && hist[0].reparto.zonas.length === 4 && hist[0].reparto.ranking.temporada === 2026 && hist[0].reparto.zonas[0].parejas[0].jugadores.length === 2, 'auditoría: usuario, fecha, ranking usado, puntos de cada pareja y jugador, método');
     ok((await call('GET', `/torneos/${t.id}/zonas/historial`)).data.length === 1, 'historial de armados consultable');
   } catch (err) {
     fallas++; console.error('✘ error inesperado:', err);

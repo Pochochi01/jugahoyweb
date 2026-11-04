@@ -17,6 +17,7 @@
  */
 const { RankingPunto } = require('../models');
 const rk = require('../services/torneos/rankingService');
+const anual = require('../services/torneos/rankingAnualService');
 
 const send = (res, err) => {
   if (!err.status) console.error('[ranking]', err);
@@ -34,7 +35,19 @@ const actualizarLiga = h(async (req, res) => res.json(await rk.actualizarLiga(re
 const eliminarLiga = h(async (req, res) => res.json(await rk.eliminarLiga(req.clubId, Number(req.params.id))));
 const categorias = h(async (_req, res) => res.json(await rk.categorias()));
 const jugadores = h(async (req, res) => res.json(await rk.jugadoresConPuntos(req.clubId, req.query)));
-const list = h(async (req, res) => res.json(await rk.ranking(req.clubId, req.query)));
+// Tabla general: todos los jugadores (0 si nunca jugaron) con estadísticas de la temporada
+const list = h(async (req, res) => res.json(await anual.getRankingTable(req.clubId, req.query)));
+
+// Temporadas y configuración de puntos por instancia (temporada + categoría)
+const temporadas = h(async (req, res) => res.json(await anual.temporadas(req.clubId)));
+const crearTemporada = h(async (req, res) => res.status(201).json(await anual.crearTemporada(req.clubId, req.body || {})));
+const actualizarTemporada = h(async (req, res) => res.json(await anual.actualizarTemporada(req.clubId, Number(req.params.id), req.body || {})));
+const config = h(async (req, res) => res.json(await anual.getConfig(req.clubId, req.query.temporada || new Date().getFullYear())));
+const guardarConfig = h(async (req, res) => res.json(await anual.saveConfig(req.clubId, req.params.temporada, req.params.categoriaId, req.body?.puntos, autor(req))));
+
+// Recálculo global (job en segundo plano con progreso)
+const recalcular = h(async (req, res) => res.status(202).json(anual.recalculateSeasonRanking(req.clubId, { temporada: req.body?.temporada }, autor(req))));
+const estadoRecalculo = h(async (req, res) => res.json(anual.estadoRecalculo(req.clubId, req.params.id)));
 const ajuste = h(async (req, res) => {
   const r = await rk.ajusteManual(req.clubId, req.body || {}, autor(req));
   res.status(201).json({ anterior: r.anterior, nuevo: r.nuevo, ranking: r.ranking });
@@ -57,4 +70,7 @@ const remove = h(async (req, res) => {
   res.json({ ok: true });
 });
 
-module.exports = { ligas, crearLiga, actualizarLiga, eliminarLiga, categorias, jugadores, list, ajuste, historial, upsert, remove };
+module.exports = {
+  ligas, crearLiga, actualizarLiga, eliminarLiga, categorias, jugadores, list, ajuste, historial, upsert, remove,
+  temporadas, crearTemporada, actualizarTemporada, config, guardarConfig, recalcular, estadoRecalculo,
+};

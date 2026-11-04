@@ -22,9 +22,8 @@ const cli = (cmd) => execSync(`npx sequelize-cli ${cmd}`, { stdio: 'pipe' }).toS
   const s = Date.now();
   let club, owner;
   try {
-    const ultima = (await q('SELECT name FROM SequelizeMeta ORDER BY name DESC LIMIT 1'))[0].name;
-    if (!ultima.startsWith('20260101000057')) throw new Error(`La última migración aplicada es ${ultima}: este test solo corre con la 057 como última.`);
-    cli('db:migrate:undo');
+    // Revierte la 057 y todas las posteriores (058 puntajes manuales, 059 siembra, 060 ranking configurable)
+    cli('db:migrate:undo:all --to 20260101000057-torneos-ligas-categorias.js');
     ok(!(await q("SHOW TABLES LIKE 'torneo_ligas'")).length, 'rollback: tablas nuevas eliminadas');
     ok(!(await q("SHOW COLUMNS FROM torneos LIKE 'liga_id'")).length, 'rollback: torneos.liga_id eliminado (datos previos intactos)');
 
@@ -63,11 +62,18 @@ const cli = (cmd) => execSync(`npx sequelize-cli ${cmd}`, { stdio: 'pipe' }).toS
     ok(juan.length === 2 && juan.find(r => r.categoria_id === 7).puntos === 120 && juan.find(r => r.categoria_id === 6).puntos === 80, 'Juan: 7ma = 120 y 6ta = 80, sin sumarse');
     ok((await q("SELECT COUNT(*) n FROM ranking_ajustes WHERE id_tenant = ? AND tipo = 'migracion'", [club]))[0].n === 3, 'migración auditada en ranking_ajustes');
     ok((await q('SELECT COUNT(*) n FROM ranking_jugadores WHERE id_tenant = ?', [club]))[0].n === 3, 'ranking_jugadores conservado (rollback)');
+    // 060: temporadas + configuración por defecto y puntos históricos preservados
+    ok((await q('SELECT COUNT(*) n FROM ranking_temporadas WHERE id_tenant = ? AND anio = 2025', [club]))[0].n === 1, '060: temporada 2025 creada desde los datos existentes');
+    ok((await q('SELECT COUNT(*) n FROM ranking_configuracion c JOIN ranking_temporadas t ON t.id = c.temporada_id WHERE t.id_tenant = ?', [club]))[0].n === 8, '060: configuración por defecto para las 8 categorías');
+    const rp2 = await q('SELECT puntos, puntos_torneos, ajuste_manual FROM ranking_puntos WHERE id_tenant = ?', [club]);
+    ok(rp2.length === 3 && rp2.every(r => r.puntos === r.puntos_torneos + r.ajuste_manual), '060: puntos = torneos + ajuste manual (sin perder puntos históricos)');
   } catch (err) {
     fallas++; console.error('✘ error:', err.message);
     try { cli('db:migrate'); } catch { /* ya migrada */ }
   } finally {
     if (club) {
+      await run('DELETE FROM ranking_resultados WHERE id_tenant = ?', [club]).catch(() => {});
+      await run('DELETE FROM ranking_temporadas WHERE id_tenant = ?', [club]).catch(() => {});
       await run('DELETE FROM ranking_ajustes WHERE id_tenant = ?', [club]).catch(() => {});
       await run('DELETE FROM ranking_puntos WHERE id_tenant = ?', [club]).catch(() => {});
       await run('DELETE j FROM torneo_jugadores j JOIN torneo_parejas p ON p.id = j.pareja_id JOIN torneos t ON t.id = p.torneo_id WHERE t.id_tenant = ?', [club]);

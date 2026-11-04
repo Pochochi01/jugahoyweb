@@ -40,7 +40,7 @@ async function unitarias() {
   const server = app.listen(0);
   const base = `http://127.0.0.1:${server.address().port}/api/torneos`;
   const s = Date.now();
-  const admin = await m.User.create({ nombre: 'Test', apellido: 'Torneos', email: `tl-${s}@test.local`, password: 'x', rol: 'complex_admin', activo: true });
+  const admin = await m.User.create({ nombre: 'Test', apellido: 'Torneos', email: `tl-${s}@test.local`, password: 'x', rol: 'general_admin', activo: true });
   const club = await m.Complex.create({ nombre: `TL TEST ${s}`, direccion: 'x', owner_id: admin.id, activo: true });
   const cancha = await m.Field.create({ complex_id: club.id, nombre: 'Pádel 1', deporte: 'padel', activa: true, hora_apertura: '08:00', hora_cierre: '23:00' });
   const tk = jwt.sign({ id: admin.id }, process.env.JWT_SECRET, { expiresIn: '10m' });
@@ -125,7 +125,8 @@ async function unitarias() {
     ok(rA7.jugadores[0].puntos === 100 && rA7.jugadores.at(-1).puntos === 70, 'liga A · 7ma: campeones 100, finalistas 70');
     ok(!rA6.jugadores.some(j => j.dni === '30000001'), 'Juan no aparece en liga A · 6ta (no la jugó)');
     ok((await call('GET', `/ranking?categoria_id=7&temporada=${anio}`)).status === 400, 'ranking sin liga → 400 (nunca global)');
-    ok((await call('GET', `/ranking?liga_id=${A.id}&categoria_id=7&temporada=${anio - 1}`)).data.jugadores.length === 0, 'otro año → ranking vacío (no mezcla años)');
+    const otroAnio = (await call('GET', `/ranking?liga_id=${A.id}&categoria_id=7&temporada=${anio - 1}`)).data.jugadores;
+    ok(otroAnio.length > 0 && otroAnio.every(j => j.puntos === 0 && j.torneos_jugados === 0), 'otro año: los jugadores aparecen con 0 (no se arrastran puntos entre temporadas)');
     const audTorneo = await m.RankingAjuste.count({ where: { id_tenant: club.id, tipo: 'torneo' } });
     ok(audTorneo === 12, 'cada punto de torneo quedó auditado (12 jugadores-cuadro)');
     ok((await call('PUT', `/torneos/${t1.data.id}/partidos/${fx7.llave.at(-1).partidos[0].id}/resultado`, { sets: [[6, 0], [6, 0]] })).status === 409, 'final con puntos ya asignados → no se puede re-cargar');

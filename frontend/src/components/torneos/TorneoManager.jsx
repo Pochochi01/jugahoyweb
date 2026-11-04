@@ -532,8 +532,8 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
   return (
     <div className="card space-y-3 border-primary/40">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="font-semibold text-sm mr-auto">Vista previa · {preview.cantidad_zonas} zonas · {preview.parejas} parejas · siembra en serpiente</div>
-        <button className="btn-ghost text-sm" onClick={onRecalcular}><RefreshCw className="w-4 h-4" /> Recalcular</button>
+        <div className="font-semibold text-sm mr-auto">Vista previa · {preview.cantidad_zonas} zonas · {preview.parejas} parejas · Ranking Anual {preview.ranking?.temporada} + serpiente</div>
+        <button className="btn-ghost text-sm" onClick={onRecalcular} title="Vuelve a leer el ranking anual y rearma la serpiente"><RefreshCw className="w-4 h-4" /> Recalcular siembra</button>
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {preview.zonas.map(z => (
@@ -545,7 +545,8 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
                   <span className="text-[11px] font-mono text-muted-foreground w-7 shrink-0" title="Posición en el ranking">#{p.siembra}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{p.nombre}</span>
-                    {p.cabeza_serie && <span className="text-[11px] text-primary font-medium">🏆 Cabeza de serie</span>}
+                    {p.jugadores?.length > 0 && <span className="block text-[11px] text-muted-foreground truncate">{p.jugadores.map(j => `${j.nombre} ${j.puntos}`).join(' + ')}</span>}
+                    {p.cabeza_serie && <span className="text-[11px] text-primary font-medium">🏆 Cabeza de serie · Seed #{p.siembra}</span>}
                   </span>
                   <span className="font-semibold shrink-0">{p.puntos_totales} pts</span>
                 </li>
