@@ -30,6 +30,9 @@ const TorneoCategoria = sequelize.define('TorneoCategoria', {
   // Inicio de la llave de esta categoría (null = después de la fase de zonas)
   llave_inicio_fecha: { type: T.DATEONLY, allowNull: true },
   llave_inicio_hora: { type: T.STRING(5), allowNull: true },
+  // Semifinales y final (null = último día del torneo)
+  semis_fecha: { type: T.DATEONLY, allowNull: true }, semis_hora: { type: T.STRING(5), allowNull: true },
+  final_fecha: { type: T.DATEONLY, allowNull: true }, final_hora: { type: T.STRING(5), allowNull: true },
 }, { tableName: 'torneo_categorias' });
 
 // Registro único de jugadores del club (por DNI): base del ranking y de la inscripción

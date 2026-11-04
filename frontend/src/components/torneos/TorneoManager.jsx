@@ -621,21 +621,43 @@ function LlaveSeccion({ svc, torneo, onChange, categoria }) {
 
 /**
  * Inicio de la llave (por categoría): según la cantidad de parejas se informa en qué ronda
- * empieza (ej. 12 parejas → 4 zonas → cuartos) y se elige el día y la hora de comienzo.
+ * empieza (ej. 12 parejas → 4 zonas → cuartos). Se elige día y hora de inicio y, aparte,
+ * de semifinales y final (por defecto el ÚLTIMO día del torneo). Al guardar se simulan los
+ * horarios de cada partido con la disponibilidad de canchas y las demás categorías.
  */
 function InicioLlave({ svc, torneo, tc, prevista, onGuardado, onError }) {
-  const [fecha, setFecha] = useState(tc?.llave_inicio_fecha || '');
-  const [hora, setHora] = useState(tc?.llave_inicio_hora || '');
+  const [v, setV] = useState({
+    fecha: tc?.llave_inicio_fecha || '', hora: tc?.llave_inicio_hora || '',
+    semis_fecha: tc?.semis_fecha || '', semis_hora: tc?.semis_hora || '',
+    final_fecha: tc?.final_fecha || '', final_hora: tc?.final_hora || '',
+  });
   const [guardando, setGuardando] = useState(false);
-  const guardar = async (limpiar = false) => {
-    if (!limpiar && (!fecha || !hora)) return onError('Elegí el día y la hora de inicio de la llave.');
+  const set = (k, x) => setV(o => ({ ...o, [k]: x }));
+  const dias = diasTorneo(torneo.fecha_inicio, torneo.fecha_fin);
+  const ultimo = dias.at(-1);
+  const guardar = async (cambios = v) => {
+    for (const [f, h, l] of [['fecha', 'hora', 'inicio'], ['semis_fecha', 'semis_hora', 'semifinales'], ['final_fecha', 'final_hora', 'final']]) {
+      if (Boolean(cambios[f]) !== Boolean(cambios[h])) return onError(`Completá día y hora de ${l} (o dejá los dos vacíos).`);
+    }
     setGuardando(true);
     try {
-      await svc.inicioLlave(torneo.id, tc.categoria_id, limpiar ? { fecha: null, hora: null } : { fecha, hora });
-      if (limpiar) { setFecha(''); setHora(''); }
-      onGuardado(limpiar ? 'La llave empieza apenas termine la fase de zonas.' : `La llave empieza el ${fechaCorta(fecha)} a las ${hora} hs.`);
+      const body = Object.fromEntries(Object.entries(cambios).map(([k, x]) => [k, x || null]));
+      await svc.inicioLlave(torneo.id, tc.categoria_id, body);
+      onGuardado(cambios.fecha ? `Llave desde el ${fechaCorta(cambios.fecha)} a las ${cambios.hora} hs: se simularon los horarios de cada partido.` : 'Guardado: la llave empieza al terminar la fase de zonas.');
     } catch (e) { onError(errMsg(e)); } finally { setGuardando(false); }
   };
+  const fila = (titulo, kf, kh, ayuda) => (
+    <div className="grid grid-cols-[7rem_1fr_auto] sm:grid-cols-[9rem_auto_auto_1fr] items-end gap-2">
+      <span className="text-sm font-medium pb-2">{titulo}</span>
+      <label className="text-xs text-muted-foreground">Día
+        <select className="input text-sm !w-auto" value={v[kf]} onChange={e => set(kf, e.target.value)}>
+          <option value="">{ayuda}</option>
+          {dias.map(d => <option key={d} value={d}>{fechaCorta(d)}</option>)}
+        </select></label>
+      <label className="text-xs text-muted-foreground">Hora
+        <input className="input text-sm !w-auto" type="time" step="900" value={v[kh]} onChange={e => set(kh, e.target.value)} /></label>
+    </div>
+  );
   return (
     <div className="card space-y-3">
       <div className="font-semibold text-sm">Inicio de la llave</div>
@@ -645,20 +667,18 @@ function InicioLlave({ svc, torneo, tc, prevista, onGuardado, onError }) {
           la llave empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong> ({prevista.clasificados} parejas{prevista.byes ? `, ${prevista.byes} BYE` : ''}).
         </p>
       )}
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-muted-foreground">Día
-          <select className="input text-sm !w-auto" value={fecha} onChange={e => setFecha(e.target.value)}>
-            <option value="">Elegí el día</option>
-            {diasTorneo(torneo.fecha_inicio, torneo.fecha_fin).map(d => <option key={d} value={d}>{fechaCorta(d)}</option>)}
-          </select></label>
-        <label className="text-xs text-muted-foreground">Hora
-          <input className="input text-sm !w-auto" type="time" step="900" value={hora} onChange={e => setHora(e.target.value)} /></label>
-        <button className="btn-primary text-sm" disabled={guardando} onClick={() => guardar(false)}>Guardar</button>
-        {tc?.llave_inicio_fecha && <button className="btn-ghost text-sm" disabled={guardando} onClick={() => guardar(true)}>Quitar (empezar al terminar las zonas)</button>}
+      <div className="space-y-2">
+        {fila(`Inicio (${prevista ? RONDA_LABEL[prevista.ronda] : 'llave'})`, 'fecha', 'hora', 'Al terminar las zonas')}
+        {(!prevista || prevista.ronda !== 'final') && fila('Semifinales', 'semis_fecha', 'semis_hora', `Último día (${fechaCorta(ultimo)})`)}
+        {fila('Final', 'final_fecha', 'final_hora', `Último día (${fechaCorta(ultimo)})`)}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary text-sm" disabled={guardando} onClick={() => guardar()}>{guardando ? 'Simulando…' : 'Guardar y simular horarios'}</button>
+        <button className="btn-ghost text-sm" disabled={guardando} onClick={() => { const vacio = { fecha: '', hora: '', semis_fecha: '', semis_hora: '', final_fecha: '', final_hora: '' }; setV(vacio); guardar(vacio); }}>Volver a los valores por defecto</button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        {tc?.llave_inicio_fecha ? `Configurado: ${fechaCorta(tc.llave_inicio_fecha)} · ${tc.llave_inicio_hora} hs. ` : 'Sin inicio fijo: la llave se programa a continuación de las zonas. '}
-        Al generar la llave ningún partido se programa antes de este momento.
+        Por defecto las semifinales y la final se juegan el último día del torneo. La simulación usa las canchas cedidas al torneo, sus franjas, las reservas y los partidos de todas las categorías.
+        Al generar la llave se respetan estos horarios y después cada partido se puede reprogramar.
       </p>
     </div>
   );

@@ -260,6 +260,7 @@ function BracketReferencia({ prevista }) {
         <strong className="text-foreground">Llave de referencia</strong> · {prevista.clasificados} clasificados de {prevista.zonas} zonas{prevista.estimada ? ' (estimadas con las parejas inscriptas)' : ''}
         {' '}→ empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong>{prevista.byes ? ` · ${prevista.byes} BYE para los primeros de zona` : ''}.
         Al terminar cada zona su lugar se reemplaza por la pareja que quedó en esa posición.
+        {prevista.simulada ? ' Los horarios son una simulación según la disponibilidad de canchas y las demás categorías.' : ' Cargá el inicio de la llave para simular los horarios.'}
       </p>
       <div className="overflow-x-auto pb-2">
         <div className="flex gap-4 min-w-max">
@@ -279,6 +280,11 @@ function BracketReferencia({ prevista }) {
                         </div>
                       );
                     })}
+                    {!p.es_bye && (p.fecha || p.sin_lugar) && (
+                      <div className={`px-2.5 py-1 text-[10px] border-t border-dashed border-border ${p.sin_lugar ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                        {p.sin_lugar ? 'Sin cancha libre: ampliá las franjas o reprogramá' : <>🕒 {fechaCorta(p.fecha)} · {p.hora} hs · {p.cancha}</>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

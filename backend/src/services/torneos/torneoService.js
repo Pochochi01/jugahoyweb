@@ -756,6 +756,7 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
   const aProgramar = todos.filter(p => !p.es_bye);
   const asignacion = fx.programar(aProgramar, slots, parejas, {
     descanso: torneo.descanso_minimo, agenda, usados, minAbs: Math.max(maxAbs + torneo.descanso_minimo, inicioAbs),
+    minDe: minimosPorRonda(tc, dias),
   });
 
   await conTransaccion(async (t) => {
@@ -797,25 +798,44 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
  * Inicio de la llave de una categoría (día y hora). null = después de la fase de zonas.
  * Solo se puede cambiar antes de generar la llave (después, reprogramar partido a partido).
  */
-async function configurarInicioLlave(torneo, categoriaId, { fecha, hora } = {}) {
+async function configurarInicioLlave(torneo, categoriaId, body = {}) {
   const tc = await resolverCategoria(torneo, categoriaId);
   if (['llaves', 'finalizado'].includes(tc.estado)) throw httpError(409, 'La llave ya está armada: reprogramá sus partidos desde "Partidos".');
-  const limpiar = !fecha && !hora;
-  if (!limpiar) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw httpError(400, 'Fecha de inicio inválida.');
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(hora || ''))) throw httpError(400, 'Hora de inicio inválida (HH:MM).');
-    if (fecha < torneo.fecha_inicio || fecha > torneo.fecha_fin) throw httpError(400, `El inicio de la llave debe estar entre el ${torneo.fecha_inicio} y el ${torneo.fecha_fin}.`);
-  }
-  await tc.update({ llave_inicio_fecha: limpiar ? null : fecha, llave_inicio_hora: limpiar ? null : hora });
-  return { categoria_id: tc.categoria_id, llave_inicio_fecha: tc.llave_inicio_fecha, llave_inicio_hora: tc.llave_inicio_hora };
+  // Cada par (día, hora) es opcional; vacío = por defecto (inicio: al terminar las zonas; semis y final: último día)
+  const par = (fecha, hora, etiqueta) => {
+    if (!fecha && !hora) return [null, null];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw httpError(400, `Día de ${etiqueta} inválido.`);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(hora || ''))) throw httpError(400, `Hora de ${etiqueta} inválida (HH:MM).`);
+    if (fecha < torneo.fecha_inicio || fecha > torneo.fecha_fin) throw httpError(400, `${etiqueta[0].toUpperCase()}${etiqueta.slice(1)}: el día debe estar entre el ${torneo.fecha_inicio} y el ${torneo.fecha_fin}.`);
+    return [fecha, hora];
+  };
+  const patchTc = {};
+  if ('fecha' in body || 'hora' in body) [patchTc.llave_inicio_fecha, patchTc.llave_inicio_hora] = par(body.fecha, body.hora, 'inicio de la llave');
+  if ('semis_fecha' in body || 'semis_hora' in body) [patchTc.semis_fecha, patchTc.semis_hora] = par(body.semis_fecha, body.semis_hora, 'semifinales');
+  if ('final_fecha' in body || 'final_hora' in body) [patchTc.final_fecha, patchTc.final_hora] = par(body.final_fecha, body.final_hora, 'la final');
+  const v = { ...tc.toJSON(), ...patchTc };
+  const cuando = (f, h) => (f && h ? `${f} ${h}` : null);
+  if (cuando(v.semis_fecha, v.semis_hora) && cuando(v.final_fecha, v.final_hora) && cuando(v.final_fecha, v.final_hora) <= cuando(v.semis_fecha, v.semis_hora)) throw httpError(400, 'La final tiene que ser después de las semifinales.');
+  if (cuando(v.llave_inicio_fecha, v.llave_inicio_hora) && cuando(v.semis_fecha, v.semis_hora) && cuando(v.semis_fecha, v.semis_hora) < cuando(v.llave_inicio_fecha, v.llave_inicio_hora)) throw httpError(400, 'Las semifinales no pueden ser antes del inicio de la llave.');
+  await tc.update(patchTc);
+  const r = tc.toJSON();
+  return { categoria_id: r.categoria_id, llave_inicio_fecha: r.llave_inicio_fecha, llave_inicio_hora: r.llave_inicio_hora, semis_fecha: r.semis_fecha, semis_hora: r.semis_hora, final_fecha: r.final_fecha, final_hora: r.final_hora };
 }
 
 /**
- * Llave de REFERENCIA antes de generarla: mismos cruces que la real ("1° Zona A vs 2° Zona D");
- * si una zona ya terminó, su lugar muestra la pareja que quedó en esa posición.
- * Sin zonas armadas, estima la cantidad de zonas con las parejas inscriptas.
+ * Mínimo de horario por ronda: semifinal y final, por defecto el ÚLTIMO día del torneo
+ * (desde el primer horario libre); si se configuró día y hora, desde ese momento.
  */
-async function llavePrevista(torneo, cat, zonas) {
+function minimosPorRonda(tc, dias) {
+  const abs = (f, h) => dias.indexOf(f) * 1440 + fx.toMin(h);
+  const ultimo = Math.max(0, dias.length - 1) * 1440;
+  const semis = tc.semis_fecha && tc.semis_hora && dias.includes(tc.semis_fecha) ? abs(tc.semis_fecha, tc.semis_hora) : ultimo;
+  const final = tc.final_fecha && tc.final_hora && dias.includes(tc.final_fecha) ? abs(tc.final_fecha, tc.final_hora) : ultimo;
+  return (p) => (p.ronda === 'semifinal' ? semis : p.ronda === 'final' ? final : 0);
+}
+
+/** Cuadro de referencia de una categoría (zonas reales o estimadas con las inscriptas). */
+async function cuadroReferencia(torneo, cat, zonas) {
   let numZonas = zonas.length;
   if (!numZonas) {
     const n = await TorneoPareja.count({ where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: PAREJAS_ACTIVAS } });
@@ -824,7 +844,60 @@ async function llavePrevista(torneo, cat, zonas) {
   }
   const K = Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona);
   if (numZonas * K < 2) return null;
-  const cuadro = fx.armarLlavePorZonas(numZonas, K);
+  return { numZonas, K, estimada: !zonas.length, cuadro: fx.armarLlavePorZonas(numZonas, K) };
+}
+
+/**
+ * Simula los horarios de las llaves todavía no generadas de TODAS las categorías del torneo,
+ * con la disponibilidad real: franjas de las canchas cedidas, agenda general (reservas,
+ * clases, otros torneos) y los partidos ya programados del torneo. Las categorías se simulan
+ * en orden (8va → 1ra) y cada una reserva sus horarios antes de la siguiente, así no se pisan.
+ * Una categoría se simula si tiene inicio de llave configurado o zonas programadas.
+ * @returns {Map<categoria_id, { asignacion: Map<key, slot|null>, canchas: Map<field_id, nombre> }>}
+ */
+async function simularLlaves(torneo) {
+  const pendientes = (await categoriasDe(torneo)).filter(c => ['pendiente', 'zonas'].includes(c.estado));
+  if (!pendientes.length) return new Map();
+  let slots;
+  try { slots = await slotsDisponibles(torneo); } catch { return new Map(); }   // sin canchas asignadas
+  const { usados, dias } = await estadoAgenda(torneo, slots, {});
+  const fields = await Field.findAll({ where: { id: [...new Set(slots.map(s => s.field_id))] }, attributes: ['id', 'nombre', 'identificador'] });
+  const canchas = new Map(fields.map(f => [f.id, canchaLabel(f)]));
+  const out = new Map();
+  for (const tc of pendientes) {
+    const zonas = await tablasDeZonas(torneo, false, tc.categoria_id);
+    const ref = await cuadroReferencia(torneo, tc.categoria_id, zonas);
+    if (!ref) continue;
+    const { maxAbs } = await estadoAgenda(torneo, slots, { categoria_id: tc.categoria_id, ronda: 'zona' });
+    const inicioAbs = tc.llave_inicio_fecha && tc.llave_inicio_hora && dias.includes(tc.llave_inicio_fecha)
+      ? dias.indexOf(tc.llave_inicio_fecha) * 1440 + fx.toMin(tc.llave_inicio_hora) : 0;
+    if (!inicioAbs && !maxAbs) continue;   // sin inicio ni zonas programadas: nada que simular todavía
+    const partidos = ref.cuadro.rondas.flatMap(r => r.partidos.map(p => ({ ...p, ronda: r.ronda }))).filter(p => !p.es_bye);
+    const asignacion = fx.programar(partidos, slots, new Map(), {
+      descanso: torneo.descanso_minimo, usados,
+      minAbs: Math.max(maxAbs ? maxAbs + torneo.descanso_minimo : 0, inicioAbs),
+      minDe: minimosPorRonda(tc, dias),
+    });
+    out.set(tc.categoria_id, { asignacion, canchas });
+  }
+  return out;
+}
+
+/**
+ * Llave de REFERENCIA antes de generarla: mismos cruces que la real ("1° Zona A vs 2° Zona D");
+ * si una zona ya terminó, su lugar muestra la pareja que quedó en esa posición.
+ * Sin zonas armadas, estima la cantidad de zonas con las parejas inscriptas.
+ */
+async function llavePrevista(torneo, cat, zonas, simulacion = null) {
+  const ref = await cuadroReferencia(torneo, cat, zonas);
+  if (!ref) return null;
+  const { numZonas, K, cuadro } = ref;
+  // Horario simulado de cada partido (si la categoría tiene inicio o zonas programadas)
+  const horario = (key) => {
+    const a = simulacion?.asignacion.get(key);
+    return a ? { fecha: a.fecha, hora: a.hora, field_id: a.field_id, cancha: simulacion.canchas.get(a.field_id) || null, sin_lugar: false }
+      : { fecha: null, hora: null, field_id: null, cancha: null, sin_lugar: Boolean(simulacion) };
+  };
   const porKey = new Map(cuadro.plazas.map(p => [p.key, p]));
   const lugar = (key) => {
     const pl = porKey.get(key);
@@ -834,7 +907,7 @@ async function llavePrevista(torneo, cat, zonas) {
     return real ? { id: null, nombre: real.pareja, referencia: pl.etiqueta, pendiente: false } : { id: null, nombre: pl.etiqueta, referencia: pl.etiqueta, pendiente: true };
   };
   return {
-    ...fx.rondaInicial(numZonas, K), zonas: numZonas, estimada: !zonas.length,
+    ...fx.rondaInicial(numZonas, K), zonas: numZonas, estimada: !zonas.length, simulada: Boolean(simulacion),
     rondas: cuadro.rondas.map((r, i) => {
       // Rondas siguientes: "Ganador Cuartos 1", "Ganador Semi 2"…
       const previa = i > 0 ? cuadro.rondas[i - 1].ronda : null;
@@ -845,7 +918,7 @@ async function llavePrevista(torneo, cat, zonas) {
           id: `prev-${p.key}`, ronda: r.ronda, orden: p.orden, es_bye: p.es_bye, prevista: true,
           pareja1: p.pareja1_id ? lugar(p.pareja1_id) : (i === 0 ? null : ganador(p.orden * 2 - 1)),
           pareja2: p.pareja2_id ? lugar(p.pareja2_id) : (i === 0 ? null : ganador(p.orden * 2)),
-          resultado: null, fecha: null, hora: null, cancha: null,
+          resultado: null, ...(p.es_bye ? { fecha: null, hora: null, cancha: null } : horario(p.key)),
         })),
       };
     }),
@@ -1161,10 +1234,15 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
   const llave = fx.ORDEN_RONDAS
     .map(r => ({ ronda: r, partidos: partidos.filter(p => p.ronda === r).sort((a, b) => a.orden - b.orden).map(serial) }))
     .filter(r => r.partidos.length);
-  const prevista = cat && !llave.length ? await llavePrevista(torneo, cat, zonas).catch(() => null) : null;
+  const simulacion = cat && !llave.length ? await simularLlaves(torneo).catch(() => new Map()) : null;
+  const prevista = cat && !llave.length ? await llavePrevista(torneo, cat, zonas, simulacion?.get(cat) || null).catch(() => null) : null;
   return {
     categoria_id: cat,
-    categorias: cats.map(c => ({ categoria_id: c.categoria_id, nombre: rk.nombreCat(c.categoria_id), estado: c.estado, puntos_asignados: c.puntos_asignados, llave_inicio_fecha: c.llave_inicio_fecha, llave_inicio_hora: c.llave_inicio_hora })),
+    categorias: cats.map(c => ({
+      categoria_id: c.categoria_id, nombre: rk.nombreCat(c.categoria_id), estado: c.estado, puntos_asignados: c.puntos_asignados,
+      llave_inicio_fecha: c.llave_inicio_fecha, llave_inicio_hora: c.llave_inicio_hora,
+      semis_fecha: c.semis_fecha, semis_hora: c.semis_hora, final_fecha: c.final_fecha, final_hora: c.final_hora,
+    })),
     llave_prevista: prevista,
     zonas: zonas.map(z => ({
       ...z,
@@ -1181,7 +1259,7 @@ module.exports = {
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
-  previsualizarZonas, prepararSiembra, historialZonas, historialPartido, configurarInicioLlave, llavePrevista,
+  previsualizarZonas, prepararSiembra, historialZonas, historialPartido, configurarInicioLlave, llavePrevista, simularLlaves,
 };
 
 /** Historial de armados de zonas del torneo (auditoría). */

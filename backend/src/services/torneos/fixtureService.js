@@ -317,6 +317,7 @@ function encajaPreferencia(pareja, slot) {
  *   - agenda:   Map<parejaId, Array<[ini,fin]>> partidos ya programados (se respeta)
  *   - usados:   Set<'field|abs'> slots ya tomados
  *   - minAbs:   ningún partido antes de este minuto absoluto
+ *   - minDe:    (partido) => minuto absoluto mínimo propio (ej. semis/final el último día)
  *   - previos:  Map<key, asignación> de una pasada anterior (para despuesDe)
  * @returns {Map<key, {field_id, fecha, hora, abs, fuera_preferencia} | null>}
  */
@@ -325,6 +326,7 @@ function programar(partidos, slots, parejas, opts = {}) {
   const agenda = opts.agenda || new Map();
   const usados = opts.usados || new Set();
   const minAbs = opts.minAbs || 0;
+  const minDe = opts.minDe || (() => 0);
   const asignado = new Map(opts.previos || []);
 
   const libre = (s) => !usados.has(`${s.field_id}|${s.abs}`) && s.abs >= minAbs;
@@ -349,7 +351,7 @@ function programar(partidos, slots, parejas, opts = {}) {
 
   for (const p of orden) {
     // No antes de que terminen (con descanso) los partidos que lo alimentan
-    let desde = 0;
+    let desde = minDe(p);
     for (const dep of p.despuesDe || []) {
       const d = asignado.get(dep);
       if (d) desde = Math.max(desde, d.abs + (slots[0]?.dur || 90) + descanso);
