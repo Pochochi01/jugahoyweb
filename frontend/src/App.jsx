@@ -23,6 +23,7 @@ import PWABadge           from './components/PWABadge';
 import { TorneosListPage, TorneoPublicPage, TorneoTicketPage } from './pages/torneos/TorneoPublicPages';
 import { OrganizadorLogin, OrganizadorPanel } from './pages/organizador/OrganizadorPages';
 import { ProfesorLogin, ProfesorPanel } from './pages/profesor/ProfesorPages';
+import { JugadorLogin, JugadorCambiarClave, JugadorRecuperar, JugadorDashboard, JugadorTorneos, JugadorTorneo, JugadorLigas, JugadorLiga, JugadorResultados, JugadorPosiciones } from './pages/jugador/JugadorPages';
 import EscuelaPortalPage from './pages/escuela/EscuelaPortalPage';
 import GymSocioPage from './pages/GymSocioPage';
 import MercadoPagoCallbackPage from './pages/MercadoPagoCallbackPage';
@@ -75,6 +76,18 @@ export default function App() {
       <Route path="/gym/socio/:token" element={<GymSocioPage />} />
       <Route path="/complejo/:id/actividades" element={<ActividadesPage />} />
 
+      {/* Portal de Jugador de torneos (login por DNI, solo lectura) */}
+      <Route path="/jugador"                element={<Navigate to="/jugador/dashboard" replace />} />
+      <Route path="/jugador/login"          element={<JugadorLogin />} />
+      <Route path="/jugador/cambiar-clave"  element={<JugadorCambiarClave />} />
+      <Route path="/jugador/recuperar"      element={<JugadorRecuperar />} />
+      <Route path="/jugador/dashboard"      element={<JugadorDashboard />} />
+      <Route path="/jugador/torneos"        element={<JugadorTorneos />} />
+      <Route path="/jugador/torneo/:id"     element={<JugadorTorneo />} />
+      <Route path="/jugador/ligas"          element={<JugadorLigas />} />
+      <Route path="/jugador/liga/:id"       element={<JugadorLiga />} />
+      <Route path="/jugador/resultados"     element={<JugadorResultados />} />
+      <Route path="/jugador/posiciones"     element={<JugadorPosiciones />} />
       {/* Profesores de pádel (login por DNI) */}
       <Route path="/profesor/login"         element={<ProfesorLogin />} />
       <Route path="/profesor"               element={<ProfesorPanel />} />

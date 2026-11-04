@@ -106,6 +106,7 @@ app.use('/api/torneos',       torneosRoutes);
 app.use('/api/profesores',    profesoresRoutes);
 app.use('/api/escuela',       escuelaRoutes);
 app.use('/api/gym',           require('./routes/gym'));   // Gym / Fitness center
+app.use('/api/player',        require('./routes/player'));   // Portal de Jugador (solo lectura)
 
 // ── Frontend estático (modo mismo-servidor) ───────────────────
 // Activar con SERVE_FRONTEND=true en .env.production cuando el frontend

@@ -21,7 +21,8 @@
     "test:ranking": "node tests/ranking-anual.e2e.js",
     "test:torneos:plantel": "node tests/torneos-plantel.e2e.js",
     "test:torneos:llave": "node tests/torneos-llave.e2e.js",
-    "test:torneos:simulacion": "node tests/torneos-simulacion.e2e.js"
+    "test:torneos:simulacion": "node tests/torneos-simulacion.e2e.js",
+    "test:portal-jugador": "node tests/portal-jugador.e2e.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

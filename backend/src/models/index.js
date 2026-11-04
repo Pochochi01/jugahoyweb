@@ -301,7 +301,11 @@ const gym = require('./gym');
 gym.asociar();
 Complex.hasOne(gym.modelos.GymConfig, { foreignKey: 'complex_id', as: 'gymConfig' });
 
+// ── Portal de Jugador (solo lectura) ──
+const playerPortal = require('./playerPortal');
+
 module.exports = {
+  ...playerPortal.modelos,
   ...gym.modelos,
   ...torneoLigas.modelos,
   sequelize,
