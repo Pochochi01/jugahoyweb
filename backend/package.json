@@ -16,7 +16,8 @@
     "test:gym": "node tests/gym.e2e.js",
     "test:torneos": "node tests/torneos-ligas.e2e.js",
     "test:torneos:migracion": "node tests/torneos-migracion.test.js",
-    "test:torneos:puntajes": "node tests/torneos-puntajes.e2e.js"
+    "test:torneos:puntajes": "node tests/torneos-puntajes.e2e.js",
+    "test:torneos:siembra": "node tests/torneos-siembra.test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

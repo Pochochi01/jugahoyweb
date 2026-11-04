@@ -124,7 +124,9 @@ club.put ('/torneos/:torneoId/parejas/:parejaId',       loadTorneo, inscr.update
 club.put ('/torneos/:torneoId/parejas/:parejaId/pago',  loadTorneo, inscr.setPago);
 
 // Fixture
+club.post('/torneos/:torneoId/zonas/preview',           loadTorneo, torneos.previewZonas);   // siembra en serpiente, sin guardar
 club.post('/torneos/:torneoId/zonas/generar',           loadTorneo, torneos.generarZonas);
+club.get ('/torneos/:torneoId/zonas/historial',         loadTorneo, torneos.historialZonas);
 club.post('/torneos/:torneoId/llave/generar',           loadTorneo, torneos.generarLlave);
 club.get ('/torneos/:torneoId/fixture',                 loadTorneo, torneos.fixture);
 club.get ('/torneos/:torneoId/ranking',                 loadTorneo, torneos.ranking);

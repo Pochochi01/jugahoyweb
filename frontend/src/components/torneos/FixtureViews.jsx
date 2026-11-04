@@ -25,8 +25,10 @@ export function TablaZona({ zona, mostrarRanking = false }) {
               <tr key={r.pareja_id} className="border-t border-border">
                 <td className="px-3 py-2 font-semibold">{r.posicion}°</td>
                 <td className="px-3 py-2 min-w-[170px]">
-                  {r.numero_zona && <span className="text-[10px] text-muted-foreground mr-1.5 font-mono">#{r.numero_zona}</span>}
+                  {r.numero_zona && <span className="text-[10px] text-muted-foreground mr-1.5 font-mono" title="Número en la zona">{r.numero_zona}.</span>}
+                  {r.numero_zona === 1 && <span className="mr-1" title="Cabeza de serie" aria-label="Cabeza de serie">🏆</span>}
                   {r.pareja}
+                  {r.siembra && <span className="ml-1.5 badge-neutral !text-[10px] !px-1.5 !py-0" title="Posición en el ranking general al armar las zonas">#{r.siembra}</span>}
                 </td>
                 {mostrarRanking && <td className="px-2 py-2 text-center text-muted-foreground">{r.puntos_ranking}</td>}
                 <td className="px-2 py-2 text-center">{r.pj}</td>

@@ -4,7 +4,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Motor PURO del torneo (sin acceso a BD → fácil de testear):
  *
- *   armarZonas()        zonas por sorteo (único) o por ranking en serpentina (anual)
+ *   generateSnakeSeedingZones()  ranking (puntos + desempates) → zonas en serpiente (Snake Seeding)
  *   crucesZona4()       zonas de 4: 1v3, 2v4, G1 v P2, G2 v P1
  *   roundRobin()        todos contra todos (zonas de 2, 3, 5+)
  *   validarResultado()  sets 6-x / 7-5 / 7-6 + tie-break, súper tie-break opcional
@@ -25,7 +25,6 @@
  *   - Tiempo absoluto de un slot: minutos desde el inicio del torneo (día*1440 + min).
  */
 
-const crypto = require('crypto');
 
 const PUNTOS_VICTORIA = 2;
 const PUNTOS_DERROTA  = 1;   // en pádel se suele premiar el partido jugado
@@ -85,16 +84,6 @@ function cantidadZonas(n, parejasPorZona) {
   return Math.max(1, Math.round(n / Math.max(2, parejasPorZona)));
 }
 
-/** Mezcla Fisher–Yates con azar criptográfico (sorteo auditable, sin sesgo de Math.random). */
-function mezclar(lista) {
-  const a = [...lista];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = crypto.randomInt(i + 1);
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 /**
  * Distribución en SERPENTINA sobre k zonas:
  *   ronda 1 (ascendente):  1→A, 2→B, … k→último
@@ -117,22 +106,52 @@ function serpentina(ordenadas, k) {
   return zonas;
 }
 
+// ── Siembra (Snake Seeding) ───────────────────────────────────
+const n0 = (v) => Number(v) || 0;   // COALESCE(v, 0)
+const ts = (v) => (v ? new Date(v).getTime() : Number.MAX_SAFE_INTEGER);
+
 /**
- * Arma las zonas según el tipo de torneo.
- *  - 'unico': sorteo aleatorio (el número dentro de la zona también sale del sorteo).
- *  - 'anual': ranking por `puntos_totales` (suma de ambos jugadores) descendente;
- *    los primeros k son cabezas de serie (1→A, 2→B…) y el resto sigue en serpentina.
- *    Empates de puntos se desempatan por sorteo.
- * @param {Array<{id, puntos_totales?}>} parejas
- * @param {{tipo:'unico'|'anual', parejasPorZona:number}} opts
+ * Orden del ranking de parejas (determinista, sin azar):
+ *   1. más puntos (suma del ranking de ambos jugadores, nulos = 0)
+ *   2. más torneos jugados (suma de ambos jugadores, en la liga)
+ *   3. más partidos ganados (suma de ambos jugadores, en la liga)
+ *   4. inscripción más antigua
+ *   5. id ascendente
  */
-function armarZonas(parejas, { tipo = 'unico', parejasPorZona = 3 } = {}) {
-  const k = cantidadZonas(parejas.length, parejasPorZona);
-  const orden = tipo === 'anual'
-    // mezclar primero y ordenar después (sort estable) → empates sorteados
-    ? mezclar(parejas).sort((a, b) => (b.puntos_totales || 0) - (a.puntos_totales || 0))
-    : mezclar(parejas);
-  return serpentina(orden, k);
+function compararSiembra(a, b) {
+  return (n0(b.puntos_totales) - n0(a.puntos_totales))
+    || (n0(b.torneos_jugados) - n0(a.torneos_jugados))
+    || (n0(b.partidos_ganados) - n0(a.partidos_ganados))
+    || (ts(a.inscripcion) - ts(b.inscripcion))
+    || (a.id - b.id);
+}
+
+/** Ranking de parejas: ordenadas y con `siembra` = posición (1 = mejor). */
+function ordenarPorRanking(parejas) {
+  return [...parejas].sort(compararSiembra).map((p, i) => ({ ...p, puntos_totales: n0(p.puntos_totales), siembra: i + 1 }));
+}
+
+/**
+ * Función central de armado: ranking + distribución en serpiente.
+ *   Zona 1 ← siembra 1, Zona 2 ← siembra 2 … Zona N ← siembra N (cabezas de serie),
+ *   luego N → 1, después 1 → N, y así hasta ubicar a todas.
+ * @param {Array<{id, puntos_totales?, torneos_jugados?, partidos_ganados?, inscripcion?}>} parejas
+ * @param {{parejasPorZona?:number, zonas?:number}} opts  zonas fija N; si no, se deriva de parejasPorZona
+ * @returns {Array<{zona:string, parejas:Array<{...pareja, siembra, numero_zona, cabeza_serie}>}>}
+ */
+function generateSnakeSeedingZones(parejas, { parejasPorZona = 3, zonas } = {}) {
+  const k = zonas ?? cantidadZonas(parejas.length, parejasPorZona);
+  if (!Number.isInteger(k) || k < 1) throw badRequest('Cantidad de zonas inválida.');
+  if (parejas.length < k) throw badRequest(`Hay menos parejas (${parejas.length}) que zonas (${k}).`);
+  return serpentina(ordenarPorRanking(parejas), k).map((grupo, i) => ({
+    zona: nombreZona(i),
+    parejas: grupo.map(p => ({ ...p, cabeza_serie: p.numero_zona === 1 })),
+  }));
+}
+
+/** Compatibilidad: devuelve solo los grupos (siempre por siembra en serpiente). */
+function armarZonas(parejas, { parejasPorZona = 3 } = {}) {
+  return generateSnakeSeedingZones(parejas, { parejasPorZona }).map(z => z.parejas);
 }
 
 /**
@@ -507,7 +526,7 @@ function armarLlave(clasificados) {
 module.exports = {
   PUNTOS_VICTORIA, PUNTOS_DERROTA, ORDEN_RONDAS,
   toMin, toHHMM, diasEntre, validarFranjas,
-  armarZonas, serpentina, cantidadZonas, crucesZona4, nombreZona, roundRobin,
+  armarZonas, serpentina, cantidadZonas, generateSnakeSeedingZones, ordenarPorRanking, compararSiembra, crucesZona4, nombreZona, roundRobin,
   validarSet, validarTieBreak, validarResultado,
   generarSlots, encajaPreferencia, programar,
   resumenSets, tablaZona, rankingClasificados,

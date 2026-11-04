@@ -24,7 +24,7 @@ const { Op } = require('sequelize');
 const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
   TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
-  TorneoTablaPosicion, TorneoCategoria, TorneoPuntajeHistorial,
+  TorneoTablaPosicion, TorneoCategoria, TorneoPuntajeHistorial, TorneoZonaHistorial,
 } = require('../../models');
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
@@ -370,7 +370,13 @@ async function estadoAgenda(torneo, slots, whereExtra = {}) {
  * Arma zonas + partidos de zona y los programa.
  * Sólo entran las parejas PAGADAS (o también pendientes con incluirPendientes).
  */
-async function generarZonas(torneo, { categoria_id, incluirPendientes = false, notificar = true } = {}) {
+/**
+ * Prepara la siembra de una categoría (sin escribir nada): valida, junta las parejas con
+ * sus puntos y criterios de desempate (consultas agregadas, sin N+1) y arma las zonas en
+ * serpiente (fx.generateSnakeSeedingZones). La `firma` identifica el resultado: si entre
+ * la vista previa y la confirmación cambian las parejas o sus puntos, cambia la firma.
+ */
+async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false } = {}) {
   if (['finalizado', 'cancelado'].includes(torneo.estado)) throw httpError(409, `El torneo está ${torneo.estado}.`);
   const tc = await resolverCategoria(torneo, categoria_id);
   const cat = tc.categoria_id;
@@ -383,17 +389,84 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
   const parejas = await TorneoPareja.findAll({
     where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: incluirPendientes ? PAREJAS_ACTIVAS : 'pagado' },
     include: [{ model: TorneoJugador, as: 'jugadores' }],
+    order: [['id', 'ASC']],
   });
   if (parejas.length < 2) throw httpError(409, `${rk.nombreCat(cat)}: se necesitan al menos 2 parejas ${incluirPendientes ? 'inscriptas' : 'pagadas'}.`);
 
-  // Anual: puntos de la pareja = suma del ranking de sus dos jugadores (liga + categoría + año)
-  const puntosPorDni = torneo.tipo === 'anual' ? await puntosRanking(torneo, cat) : new Map();
-  const conPuntos = parejas.map(p => ({
+  // Validaciones: parejas completas y sin jugadores repetidos entre parejas
+  const incompletas = parejas.filter(p => p.jugadores.length !== 2 || p.jugadores.some(j => !j.dni || !String(j.nombre || '').trim()));
+  if (incompletas.length) throw httpError(409, `Hay parejas con jugadores faltantes o sin datos: ${incompletas.map(p => notifier.nombrePareja(p) || `#${p.id}`).join(', ')}.`);
+  const vistos = new Map();
+  for (const p of parejas) for (const j of p.jugadores) {
+    if (vistos.has(j.dni) && vistos.get(j.dni) !== p.id) throw httpError(409, `El DNI ${j.dni} (${j.nombre}) está inscripto en dos parejas: corregí las inscripciones.`);
+    vistos.set(j.dni, p.id);
+  }
+
+  // Puntos (ranking de la liga + categoría + año, en todos los tipos de torneo) y desempates
+  const puntosPorDni = await puntosRanking(torneo, cat);
+  const historial = await historialJugadores(torneo, parejas.flatMap(p => p.jugadores.map(j => j.jugador_id)).filter(Boolean));
+  const suma = (p, f) => p.jugadores.reduce((acc, j) => acc + f(j), 0);
+  const conDatos = parejas.map(p => ({
     id: p.id,
+    nombre: notifier.nombrePareja(p),
     horarios_preferidos: p.horarios_preferidos,
-    puntos_totales: p.jugadores.reduce((acc, j) => acc + (puntosPorDni.get(j.dni) || 0), 0),
+    puntos_totales: suma(p, j => puntosPorDni.get(j.dni) || 0),
+    torneos_jugados: suma(p, j => historial.torneos.get(j.jugador_id) || 0),
+    partidos_ganados: suma(p, j => historial.ganados.get(j.jugador_id) || 0),
+    inscripcion: p.createdAt,
   }));
-  const grupos = fx.armarZonas(conPuntos, { tipo: torneo.tipo, parejasPorZona: torneo.parejas_por_zona });
+  const zonas = fx.generateSnakeSeedingZones(conDatos, { parejasPorZona: torneo.parejas_por_zona });
+  const firma = crypto.createHash('sha1')
+    .update(zonas.map(z => `${z.zona}:${z.parejas.map(p => `${p.id}/${p.puntos_totales}`).join(',')}`).join('|'))
+    .digest('hex').slice(0, 16);
+  return { tc, cat, parejas, zonas, firma };
+}
+
+/**
+ * Torneos jugados y partidos ganados por jugador en la MISMA liga (otros torneos).
+ * Dos consultas agregadas para todos los jugadores a la vez.
+ */
+async function historialJugadores(torneo, jugadorIds) {
+  if (!jugadorIds.length) return { torneos: new Map(), ganados: new Map() };
+  const r = { ids: jugadorIds, liga: torneo.liga_id, torneo: torneo.id };
+  const [torneos, ganados] = await Promise.all([
+    sequelize.query(`SELECT j.jugador_id, COUNT(DISTINCT p.torneo_id) n
+      FROM torneo_jugadores j JOIN torneo_parejas p ON p.id = j.pareja_id JOIN torneos t ON t.id = p.torneo_id
+      WHERE j.jugador_id IN (:ids) AND t.liga_id = :liga AND t.id <> :torneo AND p.estado_pago = 'pagado'
+      GROUP BY j.jugador_id`, { replacements: r, type: sequelize.QueryTypes.SELECT }),
+    sequelize.query(`SELECT j.jugador_id, COUNT(*) n
+      FROM torneo_jugadores j JOIN torneo_resultados res ON res.ganador_id = j.pareja_id
+      JOIN torneo_partidos m ON m.id = res.partido_id JOIN torneos t ON t.id = m.torneo_id
+      WHERE j.jugador_id IN (:ids) AND t.liga_id = :liga AND t.id <> :torneo AND m.es_bye = 0
+      GROUP BY j.jugador_id`, { replacements: r, type: sequelize.QueryTypes.SELECT }),
+  ]);
+  return {
+    torneos: new Map(torneos.map(x => [x.jugador_id, Number(x.n)])),
+    ganados: new Map(ganados.map(x => [x.jugador_id, Number(x.n)])),
+  };
+}
+
+/** Vista previa de las zonas (no guarda nada). */
+async function previsualizarZonas(torneo, opts = {}) {
+  const { cat, zonas, firma, parejas } = await prepararSiembra(torneo, opts);
+  return {
+    categoria_id: cat, metodo: 'snake_seeding', firma, cantidad_zonas: zonas.length, parejas: parejas.length,
+    zonas: zonas.map(z => ({
+      zona: z.zona,
+      parejas: z.parejas.map(p => ({
+        id: p.id, nombre: p.nombre, siembra: p.siembra, numero_zona: p.numero_zona, cabeza_serie: p.cabeza_serie,
+        puntos_totales: p.puntos_totales, torneos_jugados: p.torneos_jugados, partidos_ganados: p.partidos_ganados,
+      })),
+    })),
+  };
+}
+
+async function generarZonas(torneo, { categoria_id, incluirPendientes = false, notificar = true, firma, usuario } = {}) {
+  const { tc, cat, parejas, zonas: siembra, firma: actual } = await prepararSiembra(torneo, { categoria_id, incluirPendientes });
+  if (firma && firma !== actual) {
+    throw httpError(409, 'Cambiaron las inscripciones o los puntos desde la vista previa: revisá la nueva distribución antes de confirmar.');
+  }
+  const grupos = siembra.map(z => z.parejas);
   const slots = await slotsDisponibles(torneo);
   const porId = new Map(parejas.map(p => [p.id, p]));
   // Horarios ya tomados por las OTRAS categorías del torneo (canchas compartidas)
@@ -411,7 +484,7 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     for (const [i, grupo] of grupos.entries()) {
       const zona = await TorneoZona.create({ torneo_id: torneo.id, categoria_id: cat, nombre: fx.nombreZona(i) }, { transaction: t });
       for (const p of grupo) {
-        await TorneoPareja.update({ zona_id: zona.id, numero_zona: p.numero_zona, puntos_totales: p.puntos_totales },
+        await TorneoPareja.update({ zona_id: zona.id, numero_zona: p.numero_zona, puntos_totales: p.puntos_totales, siembra: p.siembra },
           { where: { id: p.id }, transaction: t });
       }
       const ids = grupo.map(p => p.id);   // ya vienen en orden de numero_zona
@@ -473,6 +546,12 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     await sincronizarEstado(torneo, t);
     const zonas = await TorneoZona.findAll({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     for (const z of zonas) await recalcularTablaZona(z.id, t);
+    // Auditoría del armado (en la misma transacción)
+    await TorneoZonaHistorial.create({
+      torneo_id: torneo.id, categoria_id: cat, metodo: 'snake_seeding', zonas: siembra.length, parejas: parejas.length,
+      reparto: siembra.map(z => ({ zona: z.zona, parejas: z.parejas.map(p => ({ id: p.id, siembra: p.siembra, puntos: p.puntos_totales })) })),
+      usuario_id: usuario?.id || null, usuario: usuario?.nombre || null,
+    }, { transaction: t });
     await sincronizarAgenda(torneo, t);
     return pendientes;
   });
@@ -485,7 +564,8 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     parejas: parejas.length,
     sin_programar: sinProgramar,
     // Reparto final (para mostrar el sorteo / los cabezas de serie)
-    reparto: grupos.map((g, i) => ({ zona: fx.nombreZona(i), parejas: g.map(p => ({ id: p.id, numero: p.numero_zona, puntos: p.puntos_totales })) })),
+    metodo: 'snake_seeding',
+    reparto: siembra.map(z => ({ zona: z.zona, parejas: z.parejas.map(p => ({ id: p.id, nombre: p.nombre, numero: p.numero_zona, siembra: p.siembra, cabeza_serie: p.cabeza_serie, puntos: p.puntos_totales })) })),
   };
 }
 
@@ -587,6 +667,7 @@ async function tablasDeZonas(torneo, publico = false, categoriaId = null) {
       dif_sets: r.diferencia_sets, dif_games: r.diferencia_games,
       pareja: notifier.nombrePareja(parejaDe(r.pareja_id)),
       numero_zona: parejaDe(r.pareja_id)?.numero_zona ?? null,
+      siembra: parejaDe(r.pareja_id)?.siembra ?? null,
       puntos_ranking: parejaDe(r.pareja_id)?.puntos_totales ?? 0,
     }));
     return { zona_id: z.id, categoria_id: z.categoria_id, nombre: z.nombre, tabla, completa: z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)) };
@@ -1006,4 +1087,10 @@ module.exports = {
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, PUNTOS_INSTANCIA, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
+  previsualizarZonas, prepararSiembra, historialZonas,
 };
+
+/** Historial de armados de zonas del torneo (auditoría). */
+function historialZonas(torneo) {
+  return TorneoZonaHistorial.findAll({ where: { torneo_id: torneo.id }, order: [['id', 'DESC']], limit: 100 });
+}

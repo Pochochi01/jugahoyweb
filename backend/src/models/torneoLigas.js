@@ -72,6 +72,15 @@ const TorneoPuntajeHistorial = sequelize.define('TorneoPuntajeHistorial', {
   automatico: { type: T.BOOLEAN, defaultValue: false }, motivo: T.STRING(255), usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'torneo_puntajes_historial', updatedAt: false });
 
+// Auditoría de cada armado de zonas (método, cantidades y reparto)
+const TorneoZonaHistorial = sequelize.define('TorneoZonaHistorial', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, categoria_id: T.TINYINT,
+  metodo: { type: T.STRING(30), defaultValue: 'snake_seeding' },
+  zonas: { type: T.INTEGER, allowNull: false }, parejas: { type: T.INTEGER, allowNull: false },
+  reparto: T.JSON, usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_zonas_historial', updatedAt: false });
+
 function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador }) {
   Complex.hasMany(TorneoLiga, { foreignKey: 'id_tenant', as: 'ligas' });
   TorneoLiga.hasMany(Torneo, { foreignKey: 'liga_id', as: 'torneos' });
@@ -89,4 +98,4 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
   RankingAjuste.belongsTo(TorneoLiga, { foreignKey: 'liga_id', as: 'liga' });
 }
 
-module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial }, asociar, GENEROS };
+module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial }, asociar, GENEROS };

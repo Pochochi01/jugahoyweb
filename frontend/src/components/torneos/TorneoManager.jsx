@@ -296,18 +296,26 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
 
   const anual = torneo.tipo === 'anual';
   const estadoCat = fx?.categorias?.find(c => c.categoria_id === fx.categoria_id)?.estado;
+  // Paso 1: vista previa de la siembra (no guarda). Paso 2: confirmar con la firma de esa vista.
+  const [preview, setPreview] = useState(null);
+  const [cargandoPrev, setCargandoPrev] = useState(false);
+  const verPreview = async () => {
+    setMsg({}); setCargandoPrev(true);
+    try { setPreview(await svc.previewZonas(torneo.id, { incluir_pendientes: incluirPend, categoria_id: categoria })); }
+    catch (e) { setPreview(null); setMsg({ error: errMsg(e) }); } finally { setCargandoPrev(false); }
+  };
   const armarZonas = async () => {
-    const txt = anual
-      ? 'Se ordenan las parejas por ranking anual: los primeros son cabezas de serie (1→A, 2→B…) y el resto se reparte en serpentina.'
-      : 'Las parejas se sortean al azar entre las zonas.';
-    if (!confirm(`${txt}\nLuego se programan todos los partidos y se avisa por WhatsApp. ¿Continuar?`)) return;
     setMsg({});
     try {
-      const r = await svc.generarZonas(torneo.id, { incluir_pendientes: incluirPend, categoria_id: categoria });
-      setReparto(r.reparto);
-      setMsg({ ok: `${r.zonas} zonas con ${r.parejas} parejas (${anual ? 'por ranking' : 'por sorteo'}).${r.sin_programar ? ` ⚠️ ${r.sin_programar} partidos sin lugar: programalos a mano.` : ''}` });
+      const r = await svc.generarZonas(torneo.id, { incluir_pendientes: incluirPend, categoria_id: categoria, firma: preview.firma });
+      setReparto(r.reparto); setPreview(null);
+      setMsg({ ok: `${r.zonas} zonas con ${r.parejas} parejas por siembra en serpiente.${r.sin_programar ? ` ⚠️ ${r.sin_programar} partidos sin lugar: programalos a mano.` : ''}` });
       onChange(); cargar();
-    } catch (e) { setMsg({ error: errMsg(e) }); }
+    } catch (e) {
+      setMsg({ error: errMsg(e) });
+      // Si cambiaron las inscripciones, se recalcula la vista previa
+      if (/vista previa/i.test(errMsg(e))) verPreview();
+    }
   };
   const abrirHorario = async (p) => {
     setEditando({ id: p.id, modo: 'horario' });
@@ -360,21 +368,23 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
             <span className="badge-blue">{TIPO_TORNEO[torneo.tipo]?.label}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            {anual
-              ? <>Zonas de {torneo.parejas_por_zona} por <strong>ranking anual</strong>: la pareja suma los puntos de sus dos jugadores. Los primeros son cabezas de serie (1→Zona A, 2→Zona B…) y el resto se reparte en serpentina (ida y vuelta).</>
-              : <>Zonas de {torneo.parejas_por_zona} por <strong>sorteo</strong>.</>}
+            Zonas de {torneo.parejas_por_zona} por <strong>siembra en serpiente</strong>: cada pareja suma los puntos de sus dos jugadores en el ranking de la liga y la categoría.
+            Las mejores son cabezas de serie (1→Zona A, 2→Zona B…) y el resto se reparte ida y vuelta (N→1, 1→N…). Empates: más torneos jugados, más partidos ganados, inscripción más antigua.
             {' '}En zonas de 4 se juega 1v3 y 2v4; después ganador P1 vs perdedor P2 y ganador P2 vs perdedor P1. Cada partido se programa respetando canchas y horarios preferidos.
           </p>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirPend} onChange={e => setIncluirPend(e.target.checked)} /> Incluir parejas con pago pendiente</label>
-          <button className="btn-primary text-sm" onClick={armarZonas}>{fx.zonas.length ? 'Rearmar' : 'Armar zonas'}</button>
+          <button className="btn-primary text-sm" onClick={verPreview} disabled={cargandoPrev}>{cargandoPrev ? 'Calculando…' : fx.zonas.length ? 'Ver nueva distribución' : 'Generar zonas'}</button>
         </div>
+      )}
+      {preview && (
+        <PreviewZonas preview={preview} onConfirmar={armarZonas} onRecalcular={verPreview} onCancelar={() => setPreview(null)} rearmar={fx.zonas.length > 0} />
       )}
       <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>
       {reparto && (
         <div className="card text-xs space-y-1">
-          <div className="font-semibold text-sm mb-1">{anual ? 'Cabezas de serie y reparto' : 'Resultado del sorteo'}</div>
+          <div className="font-semibold text-sm mb-1">Cabezas de serie y reparto (serpiente)</div>
           {reparto.map(z => (
-            <div key={z.zona}><span className="font-medium">{z.zona}:</span> {z.parejas.map(p => `#${p.numero}${anual ? ` (${p.puntos} pts)` : ''}`).join(' · ')}</div>
+            <div key={z.zona}><span className="font-medium">{z.zona}:</span> {z.parejas.map(p => `${p.cabeza_serie ? '🏆 ' : ''}#${p.siembra ?? p.numero} ${p.nombre || ''} (${p.puntos} pts)`).join(' · ')}</div>
           ))}
         </div>
       )}
@@ -504,6 +514,51 @@ function HorarioForm({ p, slots, onSave, onCancel }) {
       }}>Reprogramar y avisar</button>
       <button className="p-2 rounded hover:bg-muted" onClick={onCancel} aria-label="Cancelar"><X className="w-4 h-4" /></button>
       {error && <div className="w-full"><Aviso>{error}</Aviso></div>}
+    </div>
+  );
+}
+
+/**
+ * Vista previa de la siembra en serpiente: zonas con posición de ranking, pareja y puntos.
+ * Confirmar guarda exactamente esta distribución (si cambió algo, el backend pide recalcular).
+ */
+function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar }) {
+  const [enviando, setEnviando] = useState(false);
+  const confirmar = async () => {
+    if (rearmar && !confirm('Se borran las zonas y partidos actuales de esta categoría y se arman con esta distribución. ¿Continuar?')) return;
+    setEnviando(true);
+    try { await onConfirmar(); } finally { setEnviando(false); }
+  };
+  return (
+    <div className="card space-y-3 border-primary/40">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="font-semibold text-sm mr-auto">Vista previa · {preview.cantidad_zonas} zonas · {preview.parejas} parejas · siembra en serpiente</div>
+        <button className="btn-ghost text-sm" onClick={onRecalcular}><RefreshCw className="w-4 h-4" /> Recalcular</button>
+      </div>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {preview.zonas.map(z => (
+          <div key={z.zona} className="rounded-xl border border-border overflow-hidden">
+            <div className="px-3 py-2 font-semibold text-sm bg-muted/50">{z.zona}</div>
+            <ul className="divide-y divide-border text-sm">
+              {z.parejas.map(p => (
+                <li key={p.id} className="px-3 py-2 flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-muted-foreground w-7 shrink-0" title="Posición en el ranking">#{p.siembra}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{p.nombre}</span>
+                    {p.cabeza_serie && <span className="text-[11px] text-primary font-medium">🏆 Cabeza de serie</span>}
+                  </span>
+                  <span className="font-semibold shrink-0">{p.puntos_totales} pts</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground">Al confirmar se guardan las zonas, se programan los partidos y se avisa a los jugadores. Si alguien se inscribe o se da de baja antes, se recalcula la distribución.</p>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary text-sm" onClick={confirmar} disabled={enviando}><Check className="w-4 h-4" /> {enviando ? 'Armando…' : 'Confirmar y armar zonas'}</button>
+        <button className="btn-outline text-sm" onClick={onCancelar}>Cancelar</button>
+      </div>
     </div>
   );
 }

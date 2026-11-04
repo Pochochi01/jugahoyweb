@@ -291,6 +291,8 @@ async function generarZonas(req, res) {
   try {
     const r = await svc.generarZonas(req.torneo, {
       categoria_id: req.body?.categoria_id,
+      firma: req.body?.firma,
+      usuario: req.user ? autor(req) : { nombre: req.organizador ? `Organizador ${req.organizador.nombre || req.organizador.usuario || req.organizador.id}` : null },
       incluirPendientes: Boolean(req.body?.incluir_pendientes),
       notificar: req.body?.notificar !== false,
     });
@@ -313,6 +315,17 @@ async function fixture(req, res) {
 
 async function ranking(req, res) {
   try { res.json(await svc.rankingJugadores(req.torneo, req.query.categoria_id)); } catch (err) { send(res, err); }
+}
+
+/** POST /torneos/:torneoId/zonas/preview — vista previa de la siembra en serpiente (no guarda). */
+async function previewZonas(req, res) {
+  try { res.json(await svc.previsualizarZonas(req.torneo, { categoria_id: req.body?.categoria_id, incluirPendientes: Boolean(req.body?.incluir_pendientes) })); }
+  catch (err) { send(res, err); }
+}
+
+/** GET /torneos/:torneoId/zonas/historial — auditoría de armados. */
+async function historialZonas(req, res) {
+  try { res.json(await svc.historialZonas(req.torneo)); } catch (err) { send(res, err); }
 }
 
 /** Quién modifica (para la auditoría). */
@@ -341,7 +354,7 @@ async function reprogramar(req, res) {
 }
 
 module.exports = {
-  conCategorias, modificarPuntaje, historialPuntajes,
+  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,

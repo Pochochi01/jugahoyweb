@@ -35,8 +35,8 @@ export const setsTxt = (sets, tbs = []) =>
   (sets || []).map(([a, b], i) => `${a}-${b}${tbs?.[i] ? `(${Math.min(...tbs[i])})` : ''}`).join('  ');
 
 export const TIPO_TORNEO = {
-  unico: { label: 'Único', hint: 'Zonas por sorteo' },
-  anual: { label: 'Anual (suma puntos)', hint: 'Zonas por ranking: cabezas de serie + serpentina' },
+  unico: { label: 'Único', hint: 'Zonas por ranking de la liga: cabezas de serie + serpiente' },
+  anual: { label: 'Anual (suma puntos)', hint: 'Zonas por ranking de la liga: cabezas de serie + serpiente' },
 };
 
 // ── Validación de resultados (misma regla que el backend) ─────

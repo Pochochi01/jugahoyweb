@@ -18,6 +18,8 @@ const TorneoPareja = sequelize.define('TorneoPareja', {
   puntos_totales: { type: DataTypes.INTEGER, defaultValue: 0 },
   // Número de la pareja dentro de su zona (1 = cabeza de serie). Define los cruces.
   numero_zona: { type: DataTypes.TINYINT, allowNull: true },
+  // Posición en el ranking de la categoría al armar las zonas (Snake Seeding; 1 = mejor)
+  siembra: { type: DataTypes.SMALLINT, allowNull: true },
 }, { tableName: 'torneo_parejas' });
 
 module.exports = TorneoPareja;

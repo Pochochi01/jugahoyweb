@@ -83,6 +83,7 @@ export function torneosStaff(client, cid) {
     setPago:       (tid, pid, d) => client.put(`${t(tid)}/parejas/${pid}/pago`, d),
 
     // Fixture y resultados
+    previewZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/preview`, d),   // siembra en serpiente, sin guardar
     generarZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/generar`, d),
     generarLlave:  (tid, d)    => client.post(`${t(tid)}/llave/generar`, d),
     fixture:       (tid, categoria_id) => client.get(`${t(tid)}/fixture`, { params: categoria_id ? { categoria_id } : {} }),
