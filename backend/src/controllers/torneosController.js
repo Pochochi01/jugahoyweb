@@ -7,7 +7,8 @@
 const fs = require('fs');
 const path = require('path');
 const { Op } = require('sequelize');
-const { Torneo, TorneoCancha, TorneoPareja, Field, Profesor } = require('../models');
+const { Torneo, TorneoCancha, TorneoPareja, TorneoCategoria, TorneoLiga, Field, Profesor, sequelize } = require('../models');
+const rk = require('../services/torneos/rankingService');
 const { DEPORTES } = require('../models/Escuela');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
@@ -35,7 +36,6 @@ function validarTorneo(body, actual = {}) {
   const err = (m) => Object.assign(new Error(m), { status: 400 });
   if (!v.nombre || String(v.nombre).trim().length < 3) throw err('Nombre requerido.');
   if (v.deporte != null && !DEPORTES.includes(v.deporte)) throw err('Deporte inválido.');
-  if (!(Number(v.categoria) >= 1 && Number(v.categoria) <= 8)) throw err('Categoría inválida (1ª a 8ª).');
   if (!['masculino', 'femenino', 'mixto'].includes(v.genero)) throw err('Género inválido.');
   if (!v.fecha_inicio || !v.fecha_fin || v.fecha_fin < v.fecha_inicio) throw err('Fechas inválidas.');
   if (Number(v.cupo_parejas) < 2) throw err('El cupo mínimo es 2 parejas.');
@@ -46,6 +46,51 @@ function validarTorneo(body, actual = {}) {
   if (v.tipo != null && !['unico', 'anual'].includes(v.tipo)) throw err('Tipo de torneo inválido (único o anual).');
   if (v.tercer_set != null && !['set', 'super_tiebreak'].includes(v.tercer_set)) throw err('Tercer set inválido.');
   return d;
+}
+
+/**
+ * Liga + categorías del body. Compatibilidad: un cliente viejo que manda solo
+ * `categoria` (número) se toma como categorias = [categoria].
+ */
+async function validarLigaYCategorias(clubId, body, actual = null) {
+  const out = {};
+  if (body.liga_id !== undefined || !actual) out.liga = await rk.ligaDelClub(clubId, body.liga_id, { activa: !actual || Number(body.liga_id) !== actual.liga_id });
+  const lista = body.categorias ?? (body.categoria != null ? [body.categoria] : (actual ? undefined : []));
+  if (lista !== undefined) out.categorias = await rk.validarCategorias(lista);
+  return out;
+}
+
+/** Agrega categorías (con su estado) y liga a cada torneo de la respuesta. */
+async function conCategorias(torneos) {
+  const lista = Array.isArray(torneos) ? torneos : [torneos];
+  const ids = lista.map(t => t.id);
+  const [cats, ligas] = await Promise.all([
+    TorneoCategoria.findAll({ where: { torneo_id: ids }, order: [['categoria_id', 'DESC']], raw: true }),
+    TorneoLiga.findAll({ where: { id: [...new Set(lista.map(t => t.liga_id))] }, attributes: ['id', 'nombre', 'estado'], raw: true }),
+  ]);
+  const out = lista.map(t => ({
+    ...(t.toJSON ? t.toJSON() : t),
+    liga: ligas.find(l => l.id === t.liga_id) || null,
+    categorias: cats.filter(c => c.torneo_id === t.id).map(c => ({ categoria_id: c.categoria_id, nombre: rk.nombreCat(c.categoria_id), estado: c.estado, puntos_asignados: !!c.puntos_asignados })),
+  }));
+  return Array.isArray(torneos) ? out : out[0];
+}
+
+/** Reemplaza las categorías del torneo (solo si ninguna armó fixture; no se quita una con parejas). */
+async function guardarCategorias(torneo, categorias, transaction) {
+  const actuales = await TorneoCategoria.findAll({ where: { torneo_id: torneo.id }, transaction });
+  const quitar = actuales.filter(c => !categorias.includes(c.categoria_id));
+  const agregar = categorias.filter(n => !actuales.some(c => c.categoria_id === n));
+  if (!quitar.length && !agregar.length) return;
+  if (actuales.some(c => c.estado !== 'pendiente') && quitar.length) throw Object.assign(new Error('No se pueden quitar categorías con el fixture armado.'), { status: 409 });
+  for (const c of quitar) {
+    const n = await TorneoPareja.count({ where: { torneo_id: torneo.id, categoria_id: c.categoria_id }, transaction });
+    if (n) throw Object.assign(new Error(`La categoría ${rk.nombreCat(c.categoria_id)} tiene ${n} pareja(s) inscripta(s): no se puede quitar.`), { status: 409 });
+    await c.destroy({ transaction });
+  }
+  if (agregar.length) await TorneoCategoria.bulkCreate(agregar.map(n => ({ torneo_id: torneo.id, categoria_id: n, estado: 'pendiente' })), { transaction });
+  // categoria = principal (compatibilidad: mensajes, listados viejos)
+  await torneo.update({ categoria: Math.max(...categorias) }, { transaction });
 }
 
 /** ¿El club tiene canchas activas del deporte? (sin deporte: de cualquiera) */
@@ -68,10 +113,11 @@ async function list(req, res) {
       attributes: ['torneo_id', 'estado_pago', [Torneo.sequelize.fn('COUNT', '*'), 'n']],
       group: ['torneo_id', 'estado_pago'], raw: true,
     });
+    const enriquecidos = await conCategorias(torneos);
     res.json({
       habilitado: await clubTieneDeporte(req.clubId, 'padel'),
-      torneos: torneos.map(t => ({
-        ...t.toJSON(),
+      torneos: enriquecidos.map(t => ({
+        ...t,
         inscriptas: conteos.filter(c => c.torneo_id === t.id && ['pendiente', 'pagado'].includes(c.estado_pago)).reduce((a, c) => a + Number(c.n), 0),
         pagadas: conteos.filter(c => c.torneo_id === t.id && c.estado_pago === 'pagado').reduce((a, c) => a + Number(c.n), 0),
       })),
@@ -80,15 +126,21 @@ async function list(req, res) {
 }
 
 async function get(req, res) {
-  res.json(req.torneo);
+  try { res.json(await conCategorias(req.torneo)); } catch (err) { send(res, err); }
 }
 
 async function create(req, res) {
   try {
     // Deporte fijo en pádel y canchas de pádel validadas por requireTorneoPadel
     const data = { ...validarTorneo(req.body), deporte: 'padel' };
-    const torneo = await Torneo.create({ ...data, id_tenant: req.clubId, estado: 'borrador' });
-    res.status(201).json(torneo);
+    const { liga, categorias } = await validarLigaYCategorias(req.clubId, req.body);
+    const torneo = await sequelize.transaction(async (t) => {
+      const nuevo = await Torneo.create({ ...data, categoria: Math.max(...categorias), liga_id: liga.id, id_tenant: req.clubId, estado: 'borrador' }, { transaction: t });
+      await guardarCategorias(nuevo, categorias, t);
+      return nuevo;
+    });
+    console.log(`[torneos] torneo ${torneo.id} creado · liga "${liga.nombre}" · categorías ${categorias.map(rk.nombreCat).join(', ')}`);
+    res.status(201).json(await conCategorias(torneo));
   } catch (err) { send(res, err); }
 }
 
@@ -96,9 +148,13 @@ async function update(req, res) {
   try {
     const t = req.torneo;
     const data = validarTorneo(req.body, t.toJSON());
+    const { liga, categorias } = await validarLigaYCategorias(req.clubId, req.body, t);
+    // La liga define el ranking: no se cambia una vez asignados puntos
+    if (liga && liga.id !== t.liga_id && t.puntos_asignados) return res.status(409).json({ message: 'El torneo ya asignó puntos en su liga: no se puede cambiar de liga.' });
     // Con fixture armado no se tocan los parámetros que lo determinan
     if (!['borrador', 'inscripcion'].includes(t.estado)) {
-      for (const k of ['deporte', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
+      if (liga && liga.id !== t.liga_id) return res.status(409).json({ message: 'No se puede cambiar la liga con el fixture armado.' });
+      for (const k of ['deporte', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
         if (data[k] !== undefined && String(data[k]) !== String(t[k])) {
           return res.status(409).json({ message: `No se puede cambiar "${k}" con el fixture armado.` });
         }
@@ -108,8 +164,12 @@ async function update(req, res) {
       // (que haya canchas del nuevo deporte lo valida requireDeporteDisponible)
       if (await TorneoCancha.count({ where: { torneo_id: t.id } })) return res.status(409).json({ message: 'Quitá las canchas asignadas antes de cambiar el deporte.' });
     }
-    await t.update(data);
-    res.json(t);
+    delete data.categoria;   // se deriva de las categorías del torneo
+    await sequelize.transaction(async (tx) => {
+      await t.update({ ...data, ...(liga && { liga_id: liga.id }) }, { transaction: tx });
+      if (categorias) await guardarCategorias(t, categorias, tx);
+    });
+    res.json(await conCategorias(t));
   } catch (err) { send(res, err); }
 }
 
@@ -230,6 +290,7 @@ async function getSlots(req, res) {
 async function generarZonas(req, res) {
   try {
     const r = await svc.generarZonas(req.torneo, {
+      categoria_id: req.body?.categoria_id,
       incluirPendientes: Boolean(req.body?.incluir_pendientes),
       notificar: req.body?.notificar !== false,
     });
@@ -239,19 +300,19 @@ async function generarZonas(req, res) {
 
 async function generarLlave(req, res) {
   try {
-    const r = await svc.generarLlave(req.torneo, { forzar: Boolean(req.body?.forzar), notificar: req.body?.notificar !== false });
+    const r = await svc.generarLlave(req.torneo, { categoria_id: req.body?.categoria_id, forzar: Boolean(req.body?.forzar), notificar: req.body?.notificar !== false });
     res.json(r);
   } catch (err) { send(res, err); }
 }
 
 async function fixture(req, res) {
   try {
-    res.json({ torneo: req.torneo, ...(await svc.fixture(req.torneo, { publico: false })) });
+    res.json({ torneo: await conCategorias(req.torneo), ...(await svc.fixture(req.torneo, { publico: false, categoria_id: req.query.categoria_id })) });
   } catch (err) { send(res, err); }
 }
 
 async function ranking(req, res) {
-  try { res.json(await svc.rankingJugadores(req.torneo)); } catch (err) { send(res, err); }
+  try { res.json(await svc.rankingJugadores(req.torneo, req.query.categoria_id)); } catch (err) { send(res, err); }
 }
 
 async function reprogramar(req, res) {
@@ -264,6 +325,7 @@ async function reprogramar(req, res) {
 }
 
 module.exports = {
+  conCategorias,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,

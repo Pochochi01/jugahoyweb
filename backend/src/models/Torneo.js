@@ -5,6 +5,9 @@ const sequelize = require('../config/database');
 const Torneo = sequelize.define('Torneo', {
   id:                 { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   id_tenant:          { type: DataTypes.INTEGER, allowNull: false },   // complexes.id
+  // Liga obligatoria (torneo_ligas). Sus categorías están en torneo_categorias;
+  // `categoria` queda como categoría principal (la de menor nivel) por compatibilidad.
+  liga_id:            { type: DataTypes.INTEGER, allowNull: false },
   nombre:             { type: DataTypes.STRING(150), allowNull: false },
   deporte:            { type: DataTypes.ENUM('futbol', 'padel', 'tenis', 'basquet', 'voley', 'squash', 'otro'), allowNull: false, defaultValue: 'padel' },
   descripcion:        { type: DataTypes.TEXT },

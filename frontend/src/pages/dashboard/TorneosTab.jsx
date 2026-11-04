@@ -5,7 +5,7 @@ import api from '../../services/api';
 import { torneosStaff } from '../../services/torneosService';
 import TorneoManager from '../../components/torneos/TorneoManager';
 import TorneoForm from '../../components/torneos/TorneoForm';
-import { ESTADO_TORNEO, GENEROS, catLabel, fechaCorta, errMsg } from '../../utils/torneos';
+import { ESTADO_TORNEO, GENEROS, catsTexto, fechaCorta, errMsg } from '../../utils/torneos';
 
 /**
  * Tab "Torneos Pádel" del panel del club. Exclusivo de pádel: solo aparece en
@@ -54,7 +54,7 @@ export function ListaTorneos({ svc, onOpen }) {
         <button className="btn-primary text-sm flex items-center gap-1" onClick={() => setCreando(true)}><Plus className="w-4 h-4" /> Nuevo torneo</button>
       )}
       {creando && (
-        <TorneoForm onCancel={() => setCreando(false)} onSave={async (d) => {
+        <TorneoForm svc={svc} onCancel={() => setCreando(false)} onSave={async (d) => {
           const t = await svc.create(d); setCreando(false); onOpen(t.id);
         }} />
       )}
@@ -66,7 +66,7 @@ export function ListaTorneos({ svc, onOpen }) {
               <span className="font-semibold">{t.nombre}</span>
               <span className={ESTADO_TORNEO[t.estado].cls}>{ESTADO_TORNEO[t.estado].label}</span>
             </div>
-            <div className="text-xs text-muted-foreground">{t.tipo === 'anual' ? 'Anual · ' : ''}{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
+            <div className="text-xs text-muted-foreground">{t.liga?.nombre && <span className="font-medium text-foreground">{t.liga.nombre} · </span>}{t.tipo === 'anual' ? 'Anual · ' : ''}{catsTexto(t)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
             <div className="text-xs">{t.inscriptas}/{t.cupo_parejas} parejas · {t.pagadas} pagadas</div>
           </button>
         ))}

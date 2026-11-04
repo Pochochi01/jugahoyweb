@@ -88,3 +88,17 @@ export function diasTorneo(desde, hasta) {
 }
 
 export const errMsg = (e, fallback = 'Ocurrió un error') => e?.message || fallback;
+
+// ── Ligas y categorías ────────────────────────────────────────
+/** "7ma", "1ra", "8va" (nombre de catálogo de la categoría). */
+export const catNombre = (c) => `${c}${{ 1: 'ra', 2: 'da', 3: 'ra', 4: 'ta', 5: 'ta', 6: 'ta', 7: 'ma', 8: 'va' }[c] || 'ª'}`;
+/** Categorías de un torneo (multi-categoría); compatibilidad con torneos de una sola. */
+export const categoriasDe = (t) => (t?.categorias?.length ? t.categorias.map(c => c.categoria_id) : (t?.categoria ? [t.categoria] : []));
+/** "8va · 7ma · 5ta" */
+export const catsTexto = (t) => categoriasDe(t).map(catNombre).join(' · ');
+export const ESTADO_CATEGORIA = {
+  pendiente:  { label: 'Sin fixture', cls: 'badge-neutral' },
+  zonas:      { label: 'Zonas',       cls: 'badge-blue' },
+  llaves:     { label: 'Llave',       cls: 'badge-blue' },
+  finalizado: { label: 'Finalizada',  cls: 'badge-green' },
+};

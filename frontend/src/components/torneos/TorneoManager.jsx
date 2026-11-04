@@ -9,10 +9,11 @@ import InscripcionForm from './InscripcionForm';
 import TelefonoEntidad from '../TelefonoEntidad';
 import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores } from './FixtureViews';
+import { CategoriaTabs } from './CategoriasSelect';
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL,
-  errorResultado,
+  errorResultado, catNombre, catsTexto,
 } from '../../utils/torneos';
 
 const SECCIONES = [
@@ -41,12 +42,21 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
   const [torneo, setTorneo] = useState(null);
   const [seccion, setSeccion] = useState('datos');
   const [error, setError] = useState('');
+  // Cuadro (categoría) sobre el que trabajan Inscripciones / Partidos / Llave / Posiciones
+  const [categoria, setCategoria] = useState(null);
 
   const recargar = useCallback(() => svc.get(torneoId).then(setTorneo).catch(e => setError(errMsg(e))), [svc, torneoId]);
   useEffect(() => { recargar(); }, [recargar]);
+  useEffect(() => {
+    if (!torneo?.categorias?.length) return;
+    if (!torneo.categorias.some(c => c.categoria_id === categoria)) {
+      setCategoria((torneo.categorias.find(c => c.estado !== 'pendiente' && c.estado !== 'finalizado') || torneo.categorias[0]).categoria_id);
+    }
+  }, [torneo, categoria]);
 
   if (!torneo) return error ? <Aviso>{error}</Aviso> : <Loader />;
   const est = ESTADO_TORNEO[torneo.estado];
+  const porCategoria = ['inscripciones', 'fixture', 'llave', 'posiciones'].includes(seccion);
 
   const cambiarEstado = async (estado, confirmMsg) => {
     if (confirmMsg && !confirm(confirmMsg)) return;
@@ -64,7 +74,8 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
           <div className="text-sm text-muted-foreground flex flex-wrap gap-x-3 items-center">
             <span className={est.cls}>{est.label}</span>
             <span className="badge-blue">{TIPO_TORNEO[torneo.tipo]?.label}</span>
-            <span>{catLabel(torneo.categoria)} {GENEROS[torneo.genero]}</span>
+            {torneo.liga && <span className="badge-neutral">{torneo.liga.nombre}</span>}
+            <span>{catsTexto(torneo)} · {GENEROS[torneo.genero]}</span>
             <span>{fechaCorta(torneo.fecha_inicio)} → {fechaCorta(torneo.fecha_fin)}</span>
           </div>
         </div>
@@ -90,12 +101,14 @@ export default function TorneoManager({ svc, torneoId, onBack }) {
         ))}
       </div>
 
+      {porCategoria && <CategoriaTabs categorias={torneo.categorias} value={categoria} onChange={setCategoria} />}
+
       {seccion === 'datos'         && <DatosSeccion svc={svc} torneo={torneo} onSaved={setTorneo} />}
       {seccion === 'canchas'       && <CanchasSeccion svc={svc} torneo={torneo} />}
-      {seccion === 'inscripciones' && <InscripcionesSeccion svc={svc} torneo={torneo} />}
-      {seccion === 'fixture'       && <PartidosSeccion svc={svc} torneo={torneo} onChange={recargar} />}
-      {seccion === 'llave'         && <LlaveSeccion svc={svc} torneo={torneo} onChange={recargar} />}
-      {seccion === 'posiciones'    && <PosicionesSeccion svc={svc} torneo={torneo} />}
+      {seccion === 'inscripciones' && <InscripcionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} />}
+      {seccion === 'fixture'       && categoria && <PartidosSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
+      {seccion === 'llave'         && categoria && <LlaveSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
+      {seccion === 'posiciones'    && categoria && <PosicionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} />}
       {seccion === 'comunicacion'  && <ComunicacionSeccion svc={svc} torneo={torneo} />}
       {seccion === 'whatsapp'      && <TelefonoEntidad svc={svc.telefono(torneo.id)} quienes="inscriptos" />}
     </div>
@@ -113,7 +126,7 @@ function DatosSeccion({ svc, torneo, onSaved }) {
   };
   return (
     <div className="grid lg:grid-cols-[1fr_280px] gap-5">
-      <TorneoForm key={torneo.updatedAt} initial={torneo} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
+      <TorneoForm key={torneo.updatedAt} svc={svc} initial={torneo} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
         onSave={async (d) => onSaved(await svc.update(torneo.id, d))} />
       <div className="card space-y-3 h-fit">
         <div className="font-semibold text-sm">Imagen del evento</div>
@@ -188,13 +201,14 @@ function CanchasSeccion({ svc, torneo }) {
 }
 
 // ── Inscripciones y pagos ─────────────────────────────────────
-function InscripcionesSeccion({ svc, torneo }) {
+function InscripcionesSeccion({ svc, torneo, categoria }) {
   const [data, setData] = useState(null);
   const [filtro, setFiltro] = useState('');
+  const multi = (torneo.categorias || []).length > 1;
   const [alta, setAlta] = useState(false);
   const [pagado, setPagado] = useState(false);
 
-  const cargar = useCallback(() => svc.listParejas(torneo.id).then(setData).catch(() => {}), [svc, torneo.id]);
+  const cargar = useCallback(() => svc.listParejas(torneo.id, multi && categoria ? { categoria_id: categoria } : {}).then(setData).catch(() => {}), [svc, torneo.id, categoria, multi]);
   useEffect(() => { cargar(); }, [cargar]);
   if (!data) return <Loader />;
 
@@ -211,7 +225,7 @@ function InscripcionesSeccion({ svc, torneo }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[['Cupo', data.cupo], ['Inscriptas', data.ocupados], ['Libres', data.libres], ['Recaudado', money(data.recaudado)]].map(([l, v]) => (
+        {[['Cupo del torneo', data.cupo], [multi ? `Inscriptas ${catNombre(categoria)}` : 'Inscriptas', multi ? data.parejas.filter(p => ['pendiente', 'pagado'].includes(p.estado_pago)).length : data.ocupados], ['Libres (torneo)', data.libres], ['Recaudado', money(data.recaudado)]].map(([l, v]) => (
           <div key={l} className="card py-3"><div className="text-xl font-bold">{v}</div><div className="text-xs text-muted-foreground">{l}</div></div>
         ))}
       </div>
@@ -225,7 +239,7 @@ function InscripcionesSeccion({ svc, torneo }) {
       </div>
 
       {alta && (
-        <InscripcionForm torneo={torneo}
+        <InscripcionForm torneo={torneo} svc={svc} categoriaInicial={categoria}
           extra={Number(torneo.precio_inscripcion) > 0 && (
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pagado} onChange={e => setPagado(e.target.checked)} /> Ya pagó (efectivo / transferencia)</label>
           )}
@@ -239,6 +253,7 @@ function InscripcionesSeccion({ svc, torneo }) {
             <div className="flex-1 min-w-0">
               <div className="font-medium">
                 {nombrePareja(p)}
+                {multi && p.categoria_id && <span className="ml-2 badge-neutral">{catNombre(p.categoria_id)}</span>}
                 {anual && <span className="ml-2 text-xs text-primary font-semibold">{p.puntos_ranking || 0} pts ranking</span>}
               </div>
               <div className="text-xs text-muted-foreground">
@@ -268,7 +283,7 @@ function InscripcionesSeccion({ svc, torneo }) {
 }
 
 // ── Partidos: armado de zonas, programación y resultados ──────
-function PartidosSeccion({ svc, torneo, onChange }) {
+function PartidosSeccion({ svc, torneo, onChange, categoria }) {
   const [fx, setFx] = useState(null);
   const [msg, setMsg] = useState({});
   const [reparto, setReparto] = useState(null);
@@ -276,10 +291,11 @@ function PartidosSeccion({ svc, torneo, onChange }) {
   const [editando, setEditando] = useState(null);   // { id, modo: 'resultado' | 'horario' }
   const [slots, setSlots] = useState([]);
 
-  const cargar = useCallback(() => svc.fixture(torneo.id).then(setFx).catch(e => setMsg({ error: errMsg(e) })), [svc, torneo.id]);
+  const cargar = useCallback(() => svc.fixture(torneo.id, categoria).then(setFx).catch(e => setMsg({ error: errMsg(e) })), [svc, torneo.id, categoria]);
   useEffect(() => { cargar(); }, [cargar, torneo.estado]);
 
   const anual = torneo.tipo === 'anual';
+  const estadoCat = fx?.categorias?.find(c => c.categoria_id === fx.categoria_id)?.estado;
   const armarZonas = async () => {
     const txt = anual
       ? 'Se ordenan las parejas por ranking anual: los primeros son cabezas de serie (1→A, 2→B…) y el resto se reparte en serpentina.'
@@ -287,7 +303,7 @@ function PartidosSeccion({ svc, torneo, onChange }) {
     if (!confirm(`${txt}\nLuego se programan todos los partidos y se avisa por WhatsApp. ¿Continuar?`)) return;
     setMsg({});
     try {
-      const r = await svc.generarZonas(torneo.id, { incluir_pendientes: incluirPend });
+      const r = await svc.generarZonas(torneo.id, { incluir_pendientes: incluirPend, categoria_id: categoria });
       setReparto(r.reparto);
       setMsg({ ok: `${r.zonas} zonas con ${r.parejas} parejas (${anual ? 'por ranking' : 'por sorteo'}).${r.sin_programar ? ` ⚠️ ${r.sin_programar} partidos sin lugar: programalos a mano.` : ''}` });
       onChange(); cargar();
@@ -321,7 +337,7 @@ function PartidosSeccion({ svc, torneo, onChange }) {
           {p.resultado ? 'Corregir' : 'Resultado'}
         </button>
       )}
-      {p.resultado && p.ronda === 'zona' && torneo.estado === 'zonas' && (
+      {p.resultado && p.ronda === 'zona' && estadoCat === 'zonas' && (
         <button className="p-1.5 rounded hover:bg-red-500/10 text-red-400" title="Borrar resultado" onClick={() => borrarResultado(p)}><X className="w-4 h-4" /></button>
       )}
       {!p.resultado && (
@@ -337,10 +353,10 @@ function PartidosSeccion({ svc, torneo, onChange }) {
 
   return (
     <div className="space-y-4">
-      {['borrador', 'inscripcion', 'zonas'].includes(torneo.estado) && (
+      {['pendiente', 'zonas'].includes(estadoCat) && !['finalizado', 'cancelado'].includes(torneo.estado) && (
         <div className="card space-y-2">
           <div className="font-semibold text-sm flex items-center gap-2">
-            {fx.zonas.length ? 'Rearmar zonas' : 'Armar zonas y fixture'}
+            {fx.zonas.length ? 'Rearmar zonas' : 'Armar zonas y fixture'}{(torneo.categorias || []).length > 1 && ` de ${catNombre(categoria)}`}
             <span className="badge-blue">{TIPO_TORNEO[torneo.tipo]?.label}</span>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -493,26 +509,27 @@ function HorarioForm({ p, slots, onSave, onCancel }) {
 }
 
 // ── Llave ─────────────────────────────────────────────────────
-function LlaveSeccion({ svc, torneo, onChange }) {
+function LlaveSeccion({ svc, torneo, onChange, categoria }) {
   const [fx, setFx] = useState(null);
   const [msg, setMsg] = useState({});
-  const cargar = useCallback(() => svc.fixture(torneo.id).then(setFx).catch(() => {}), [svc, torneo.id]);
+  const cargar = useCallback(() => svc.fixture(torneo.id, categoria).then(setFx).catch(() => {}), [svc, torneo.id, categoria]);
   useEffect(() => { cargar(); }, [cargar, torneo.estado]);
   if (!fx) return <Loader />;
 
   const generar = async (forzar) => {
     if (forzar && !confirm('Faltan resultados de zona. ¿Generar la llave con las posiciones actuales?')) return;
     try {
-      const r = await svc.generarLlave(torneo.id, { forzar });
+      const r = await svc.generarLlave(torneo.id, { forzar, categoria_id: categoria });
       setMsg({ ok: `Llave de ${r.tam} con ${r.clasificados} clasificados (${r.byes} byes a los mejores).` });
       onChange(); cargar();
     } catch (e) { setMsg({ error: errMsg(e) }); }
   };
   const zonasCompletas = fx.zonas.length > 0 && fx.zonas.every(z => z.completa);
+  const estadoCat = fx.categorias?.find(c => c.categoria_id === fx.categoria_id)?.estado;
 
   return (
     <div className="space-y-4">
-      {torneo.estado === 'zonas' && (
+      {estadoCat === 'zonas' && (
         <div className="card flex flex-wrap items-center gap-3">
           <p className="text-sm flex-1">
             {zonasCompletas ? 'Todas las zonas terminaron.' : 'La llave se arma sola al cargar el último resultado de zona.'} Clasifican {torneo.clasifican_por_zona} por zona;
@@ -528,14 +545,14 @@ function LlaveSeccion({ svc, torneo, onChange }) {
 }
 
 // ── Posiciones ────────────────────────────────────────────────
-function PosicionesSeccion({ svc, torneo }) {
+function PosicionesSeccion({ svc, torneo, categoria }) {
   const [fx, setFx] = useState(null);
   const [ranking, setRanking] = useState(null);
   const [vista, setVista] = useState('zonas');
   useEffect(() => {
-    svc.fixture(torneo.id).then(setFx).catch(() => {});
-    svc.ranking(torneo.id).then(setRanking).catch(() => setRanking([]));
-  }, [svc, torneo.id]);
+    svc.fixture(torneo.id, categoria).then(setFx).catch(() => {});
+    svc.ranking(torneo.id, categoria).then(setRanking).catch(() => setRanking([]));
+  }, [svc, torneo.id, categoria]);
   if (!fx) return <Loader />;
   return (
     <div className="space-y-4">

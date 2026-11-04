@@ -45,9 +45,19 @@ export function torneosStaff(client, cid) {
     validarTicket:      (codigo)    => client.post(`${b}/tickets/validar`, { codigo }),
 
     // Ranking anual (temporada + categoría + género)
+    // Ranking anual por liga + categoría + año (+ género del circuito)
     ranking_list:   (params)    => client.get(`${b}/ranking`, { params }),
     ranking_upsert: (d)         => client.put(`${b}/ranking`, d),
     ranking_delete: (id)        => client.delete(`${b}/ranking/${id}`),
+    ranking_ajuste: (d)         => client.post(`${b}/ranking/ajustes`, d),
+    ranking_historial: (params) => client.get(`${b}/ranking/ajustes`, { params }),
+    // Ligas, categorías y jugadores del club
+    ligas:         (params)    => client.get(`${b}/ligas`, { params }),
+    createLiga:    (d)         => client.post(`${b}/ligas`, d),
+    updateLiga:    (id, d)     => client.put(`${b}/ligas/${id}`, d),
+    deleteLiga:    (id)        => client.delete(`${b}/ligas/${id}`),
+    categorias:    ()          => client.get(`${b}/categorias`),
+    jugadores:     (params)    => client.get(`${b}/jugadores`, { params }),
 
     // Torneos
     list:          ()          => client.get(`${b}/torneos`),
@@ -75,8 +85,8 @@ export function torneosStaff(client, cid) {
     // Fixture y resultados
     generarZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/generar`, d),
     generarLlave:  (tid, d)    => client.post(`${t(tid)}/llave/generar`, d),
-    fixture:       (tid)       => client.get(`${t(tid)}/fixture`),
-    ranking:       (tid)       => client.get(`${t(tid)}/ranking`),
+    fixture:       (tid, categoria_id) => client.get(`${t(tid)}/fixture`, { params: categoria_id ? { categoria_id } : {} }),
+    ranking:       (tid, categoria_id) => client.get(`${t(tid)}/ranking`, { params: categoria_id ? { categoria_id } : {} }),
     reprogramar:   (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/programacion`, d),
     partidos:      (tid, params) => client.get(`${t(tid)}/partidos`, { params }),
     setResultado:  (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/resultado`, d),
@@ -98,8 +108,8 @@ export const organizadorAuth = {
 export const torneosPublic = {
   list:       (complexId) => api.get(complexId ? `/torneos/public/club/${complexId}` : '/torneos/public'),
   get:        (tid)       => api.get(`/torneos/public/${tid}`),
-  fixture:    (tid)       => api.get(`/torneos/public/${tid}/fixture`),
-  ranking:    (tid)       => api.get(`/torneos/public/${tid}/ranking`),
+  fixture:    (tid, categoria_id) => api.get(`/torneos/public/${tid}/fixture`, { params: categoria_id ? { categoria_id } : {} }),
+  ranking:    (tid, categoria_id) => api.get(`/torneos/public/${tid}/ranking`, { params: categoria_id ? { categoria_id } : {} }),
   miPareja:   (tid, dni)  => api.get(`/torneos/public/${tid}/mi-pareja`, { params: { dni } }),
   inscribir:  (tid, d)    => api.post(`/torneos/public/${tid}/inscripciones`, d),
   pagar:      (parejaId)  => api.post(`/torneos/public/parejas/${parejaId}/pagar`),

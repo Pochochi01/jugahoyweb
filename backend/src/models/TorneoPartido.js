@@ -6,6 +6,7 @@ const sequelize = require('../config/database');
 const TorneoPartido = sequelize.define('TorneoPartido', {
   id:         { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   torneo_id:  { type: DataTypes.INTEGER, allowNull: false },
+  categoria_id: { type: DataTypes.TINYINT, allowNull: true },   // cuadro (categoría) al que pertenece
   zona_id:    { type: DataTypes.INTEGER, allowNull: true },
   ronda:      { type: DataTypes.ENUM('zona', 'octavos', 'cuartos', 'semifinal', 'final'), allowNull: false },
   orden:      { type: DataTypes.INTEGER, defaultValue: 0 },

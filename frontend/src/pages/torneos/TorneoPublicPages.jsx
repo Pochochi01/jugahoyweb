@@ -4,8 +4,9 @@ import { Trophy, CalendarDays, Users, CreditCard, Download, MapPin } from 'lucid
 import { torneosPublic, uploadUrl } from '../../services/torneosService';
 import InscripcionForm from '../../components/torneos/InscripcionForm';
 import { TablaZona, ZonaGrilla, Bracket, RankingJugadores } from '../../components/torneos/FixtureViews';
+import { CategoriaTabs } from '../../components/torneos/CategoriasSelect';
 import {
-  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, setsTxt, RONDA_LABEL, errMsg,
+  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, setsTxt, RONDA_LABEL, errMsg, catsTexto,
 } from '../../utils/torneos';
 
 const Wrap = ({ children }) => <div className="min-h-screen bg-background"><div className="max-w-5xl mx-auto p-4 md:p-6 space-y-5">{children}</div></div>;
@@ -30,7 +31,7 @@ export function TorneosListPage() {
           <Link key={t.id} to={`/torneos/${t.id}`} className="card hover:border-primary/50 transition-colors space-y-1">
             <div className="flex justify-between gap-2"><span className="font-semibold">{t.nombre}</span><span className={ESTADO_TORNEO[t.estado].cls}>{ESTADO_TORNEO[t.estado].label}</span></div>
             <div className="text-sm text-muted-foreground">{t.club?.nombre} · {t.club?.ciudad}</div>
-            <div className="text-xs">{catLabel(t.categoria)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
+            <div className="text-xs">{t.liga?.nombre && <>{t.liga.nombre} · </>}{catsTexto(t)} {GENEROS[t.genero]} · {fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}</div>
           </Link>
         ))}
       </div>
@@ -47,12 +48,13 @@ export function TorneoPublicPage() {
   const [ranking, setRanking] = useState([]);
   const [tab, setTab] = useState(params.get('pareja') ? 'mi' : 'info');
   const [error, setError] = useState('');
+  const [categoria, setCategoria] = useState(null);   // cuadro visible (torneos con varias categorías)
 
+  useEffect(() => { torneosPublic.get(id).then(setTorneo).catch(e => setError(errMsg(e))); }, [id]);
   useEffect(() => {
-    torneosPublic.get(id).then(setTorneo).catch(e => setError(errMsg(e)));
-    torneosPublic.fixture(id).then(setFx).catch(() => {});
-    torneosPublic.ranking(id).then(setRanking).catch(() => {});
-  }, [id]);
+    torneosPublic.fixture(id, categoria).then(r => { setFx(r); if (!categoria && r.categoria_id) setCategoria(r.categoria_id); }).catch(() => {});
+    torneosPublic.ranking(id, categoria).then(setRanking).catch(() => {});
+  }, [id, categoria]);
 
   if (error) return <Wrap><div className="card text-red-400">{error}</div></Wrap>;
   if (!torneo) return <Loader />;
@@ -77,7 +79,7 @@ export function TorneoPublicPage() {
             <span className={ESTADO_TORNEO[torneo.estado].cls}>{ESTADO_TORNEO[torneo.estado].label}</span>
           </div>
           <div className="text-sm text-muted-foreground flex items-center gap-1"><MapPin className="w-4 h-4" /> {torneo.club?.nombre} · {torneo.club?.direccion}</div>
-          <div className="text-sm">{catLabel(torneo.categoria)} {GENEROS[torneo.genero]} · {fechaCorta(torneo.fecha_inicio)} → {fechaCorta(torneo.fecha_fin)}</div>
+          <div className="text-sm">{torneo.liga?.nombre && <>{torneo.liga.nombre} · </>}{catsTexto(torneo)} {GENEROS[torneo.genero]} · {fechaCorta(torneo.fecha_inicio)} → {fechaCorta(torneo.fecha_fin)}</div>
         </div>
       </div>
 
@@ -98,6 +100,7 @@ export function TorneoPublicPage() {
           {torneo.descripcion && <div className="card md:col-span-3 text-sm whitespace-pre-line">{torneo.descripcion}</div>}
         </div>
       )}
+      {['fixture', 'llave', 'posiciones'].includes(tab) && <CategoriaTabs categorias={fx?.categorias || torneo.categorias} value={categoria} onChange={setCategoria} />}
       {tab === 'inscripcion' && <Inscripcion torneo={torneo} />}
       {tab === 'mi' && <MisPartidos torneoId={id} />}
       {tab === 'fixture' && (fx?.zonas?.length

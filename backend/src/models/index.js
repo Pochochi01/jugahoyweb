@@ -292,6 +292,10 @@ EscuelaAviso.belongsTo(EscuelaCategoria, { foreignKey: 'categoria_id', as: 'cate
 Profesor.belongsToMany(EscuelaCategoria, { through: EscuelaProfesorCategoria, foreignKey: 'profesor_id', otherKey: 'categoria_id', as: 'categoriasEscuela' });
 EscuelaCategoria.belongsToMany(Profesor, { through: EscuelaProfesorCategoria, foreignKey: 'categoria_id', otherKey: 'profesor_id', as: 'profesores' });
 
+// ── Torneos: ligas, categorías, jugadores y ranking por liga ──
+const torneoLigas = require('./torneoLigas');
+torneoLigas.asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador });
+
 // ── Gym / Fitness center ──
 const gym = require('./gym');
 gym.asociar();
@@ -299,6 +303,7 @@ Complex.hasOne(gym.modelos.GymConfig, { foreignKey: 'complex_id', as: 'gymConfig
 
 module.exports = {
   ...gym.modelos,
+  ...torneoLigas.modelos,
   sequelize,
   User, Complex, Field, Agenda, Operation,
   CashRegister, CashTransaction, Collaborator, Image,

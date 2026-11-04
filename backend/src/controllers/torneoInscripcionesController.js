@@ -16,6 +16,7 @@ async function list(req, res) {
   try {
     const where = { torneo_id: req.torneo.id };
     if (req.query.estado_pago) where.estado_pago = req.query.estado_pago;
+    if (req.query.categoria_id) where.categoria_id = Number(req.query.categoria_id);
     const parejas = await TorneoPareja.findAll({
       where,
       include: [
@@ -26,10 +27,13 @@ async function list(req, res) {
     });
     const activas = parejas.filter(p => ['pendiente', 'pagado'].includes(p.estado_pago)).length;
     // Anual: puntos de ranking EN VIVO (suma de ambos jugadores) → así quedarán los cabezas de serie
+    // (puntos de la combinación liga + categoría de CADA pareja; nunca se mezclan categorías)
     if (req.torneo.tipo === 'anual') {
-      const pts = await svc.puntosRanking(req.torneo);
+      const porCat = new Map();
       for (const p of parejas) {
-        p.setDataValue('puntos_ranking', p.jugadores.reduce((a, j) => a + (pts.get(j.dni) || 0), 0));
+        const cat = p.categoria_id || req.torneo.categoria;
+        if (!porCat.has(cat)) porCat.set(cat, await svc.puntosRanking(req.torneo, cat));
+        p.setDataValue('puntos_ranking', p.jugadores.reduce((a, j) => a + (porCat.get(cat).get(j.dni) || 0), 0));
       }
     }
     res.json({
@@ -77,7 +81,7 @@ async function update(req, res) {
       if (j.email !== undefined) patch.email = j.email || null;
       if (j.categoria) {
         const c = parseInt(j.categoria, 10);
-        if (!(c >= req.torneo.categoria && c <= 8)) return res.status(400).json({ message: 'Categoría inválida para este torneo.' });
+        if (!(c >= (pareja.categoria_id || req.torneo.categoria) && c <= 8)) return res.status(400).json({ message: 'Categoría inválida para la categoría en la que juega la pareja.' });
         patch.categoria = c;
       }
       await actual.update(patch);

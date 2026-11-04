@@ -7,6 +7,7 @@ const TorneoPareja = sequelize.define('TorneoPareja', {
   id:          { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   torneo_id:   { type: DataTypes.INTEGER, allowNull: false },
   zona_id:     { type: DataTypes.INTEGER, allowNull: true },
+  categoria_id: { type: DataTypes.TINYINT, allowNull: true },   // categoría del torneo en la que juega
   horarios_preferidos: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
   estado_pago: { type: DataTypes.ENUM('pendiente', 'pagado', 'cancelado', 'reembolsado'), defaultValue: 'pendiente' },
   metodo_pago: { type: DataTypes.STRING(20) },

@@ -68,7 +68,7 @@ export function OrganizadorPanel() {
       </header>
       <main className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
         {tickets && <ValidarTicket svc={svc} />}
-        {ranking && <RankingAnual svc={svc} />}
+        {ranking && <RankingAnual svc={svc} admin={false} />}
         {abierto
           ? <TorneoManager svc={svc} torneoId={abierto} onBack={() => setAbierto(null)} />
           : <ListaTorneos svc={svc} onOpen={setAbierto} />}

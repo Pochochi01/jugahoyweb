@@ -116,7 +116,7 @@ const mensajes = {
       ? '✅ Inscripción confirmada.'
       : `💳 Para confirmar tu lugar aboná la inscripción ($${Number(torneo.precio_inscripcion).toLocaleString('es-AR')}) desde:\n${linkTorneo(torneo)}?pareja=${pareja.id}`;
     return `🎾 *${torneo.nombre}*\n\n¡Hola! Recibimos la inscripción de la pareja *${nombrePareja(pareja)}* ` +
-      `(${torneo.categoria}ª ${torneo.genero}).\n\n${pago}`;
+      `(${pareja.categoria_id || torneo.categoria}ª ${torneo.genero}).\n\n${pago}`;
   },
   pagoConfirmado(torneo, pareja, jugador, ticketUrl) {
     return `✅ *Pago confirmado — ${torneo.nombre}*\n\n${jugador.nombre}, tu inscripción con *${nombrePareja(pareja)}* está confirmada.\n\n` +
@@ -140,7 +140,7 @@ const mensajes = {
   },
   campeon(torneo, pareja) {
     return `🏆 *¡CAMPEONES!* 🏆\n\n${nombrePareja(pareja)}, ganaron *${torneo.nombre}* ` +
-      `(${torneo.categoria}ª ${torneo.genero}). ¡Felicitaciones de todo el club!`;
+      `(${pareja.categoria_id || torneo.categoria}ª ${torneo.genero}). ¡Felicitaciones de todo el club!`;
   },
   subcampeon(torneo, pareja) {
     return `🥈 *¡Felicitaciones, ${nombrePareja(pareja)}!*\n\nSon subcampeones de *${torneo.nombre}*. ` +

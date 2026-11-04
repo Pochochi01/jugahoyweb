@@ -12,14 +12,21 @@
  *                          recalcula la tabla persistida y dispara los avisos
  *   reprogramarPartido()   cambio manual de cancha / horario con control de choques
  *   fixture()              vista completa (zonas, tablas, llave) para las pantallas
+ *
+ * MULTI-CATEGORÍA: un torneo juega 1..N categorías (torneo_categorias). Cada categoría
+ * arma su propio cuadro (zonas → llave → final) con su estado y sus puntos; las canchas
+ * del torneo se comparten (los partidos de una categoría bloquean los horarios de las
+ * otras). El estado global del torneo se deriva de sus categorías (sincronizarEstado).
+ * Los puntos anuales van a ranking_puntos por liga + categoría (services/torneos/rankingService).
  */
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
   TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
-  TorneoTablaPosicion, RankingJugador,
+  TorneoTablaPosicion, TorneoCategoria,
 } = require('../../models');
+const rk = require('./rankingService');
 const fx = require('./fixtureService');
 const notifier = require('./torneoNotifier');
 const { frontendUrl } = require('../../config/urls');
@@ -51,6 +58,40 @@ async function cargarPartido(id, transaction) {
 
 const canchaLabel = (field) => field ? `${field.nombre}${field.identificador ? ` (${field.identificador})` : ''}` : null;
 
+// ── Categorías del torneo ─────────────────────────────────────
+/** Categorías del torneo (8va → 1ra). */
+function categoriasDe(torneo, transaction) {
+  return TorneoCategoria.findAll({ where: { torneo_id: torneo.id }, order: [['categoria_id', 'DESC']], transaction });
+}
+
+/**
+ * Categoría sobre la que se opera: la pedida (debe ser del torneo) o, si el torneo
+ * tiene una sola, esa. Con varias categorías es obligatorio indicarla.
+ */
+async function resolverCategoria(torneo, categoriaId, transaction) {
+  const cats = await categoriasDe(torneo, transaction);
+  if (!cats.length) throw httpError(409, 'El torneo no tiene categorías asignadas.');
+  if (categoriaId == null || categoriaId === '') {
+    if (cats.length === 1) return cats[0];
+    throw httpError(400, `Indicá la categoría: el torneo juega ${cats.map(c => rk.nombreCat(c.categoria_id)).join(', ')}.`);
+  }
+  const tc = cats.find(c => c.categoria_id === Number(categoriaId));
+  if (!tc) throw httpError(400, `El torneo no juega la categoría ${rk.nombreCat(Number(categoriaId))}.`);
+  return tc;
+}
+
+/** Estado global del torneo según sus categorías (no toca borrador/inscripción/cancelado salvo al empezar). */
+async function sincronizarEstado(torneo, transaction) {
+  if (torneo.estado === 'cancelado') return;
+  const estados = (await categoriasDe(torneo, transaction)).map(c => c.estado);
+  let estado = torneo.estado;
+  if (estados.length && estados.every(e => e === 'finalizado')) estado = 'finalizado';
+  else if (estados.includes('zonas')) estado = 'zonas';
+  else if (estados.includes('llaves')) estado = 'llaves';
+  else if (['zonas', 'llaves', 'finalizado'].includes(torneo.estado)) estado = 'inscripcion';
+  if (estado !== torneo.estado) await torneo.update({ estado }, { transaction });
+}
+
 // ── Inscripción ───────────────────────────────────────────────
 const GENERO_OK = {
   masculino: (g) => g.every(x => x === 'masculino'),
@@ -72,6 +113,10 @@ async function inscribirPareja(torneo, data, opts = {}) {
 
   const jugadores = Array.isArray(data.jugadores) ? data.jugadores : [];
   if (jugadores.length !== 2) throw httpError(400, 'Una pareja son exactamente 2 jugadores.');
+  // Categoría del torneo en la que juega la pareja (obligatoria si el torneo tiene varias)
+  const tc = await resolverCategoria(torneo, data.categoria_id);
+  if (tc.estado !== 'pendiente' && !opts.porOrganizador) throw httpError(409, `La categoría ${rk.nombreCat(tc.categoria_id)} ya armó su fixture.`);
+  const catTorneo = tc.categoria_id;
 
   const limpios = jugadores.map((j, i) => {
     const nombre = String(j.nombre || '').trim();
@@ -84,8 +129,8 @@ async function inscribirPareja(torneo, data, opts = {}) {
     if (!(categoria >= 1 && categoria <= 8)) throw httpError(400, `Jugador ${i + 1}: categoría inválida (1ª a 8ª).`);
     if (!['masculino', 'femenino'].includes(j.genero)) throw httpError(400, `Jugador ${i + 1}: género inválido.`);
     // Se puede jugar la categoría propia o una superior (número menor), nunca una inferior
-    if (categoria < torneo.categoria) {
-      throw httpError(400, `${nombre} es de ${categoria}ª y no puede jugar un torneo de ${torneo.categoria}ª.`);
+    if (categoria < catTorneo) {
+      throw httpError(400, `${nombre} es de ${categoria}ª y no puede jugar la categoría ${catTorneo}ª.`);
     }
     return { nombre, dni, whatsapp, categoria, genero: j.genero, email: j.email?.trim() || null };
   });
@@ -117,13 +162,17 @@ async function inscribirPareja(torneo, data, opts = {}) {
 
     const p = await TorneoPareja.create({
       torneo_id: torneo.id,
+      categoria_id: catTorneo,
       horarios_preferidos: horarios,
       estado_pago: gratis ? 'pagado' : 'pendiente',
       metodo_pago: gratis ? 'sin_cargo' : (opts.metodoPago || null),
       monto: torneo.precio_inscripcion,
       user_id: opts.userId || null,
     }, { transaction: t });
-    await TorneoJugador.bulkCreate(limpios.map(j => ({ ...j, pareja_id: p.id })), { transaction: t });
+    // Registro único del jugador en el club (base del ranking por liga)
+    const registros = [];
+    for (const j of limpios) registros.push(await rk.upsertJugador(torneo.id_tenant, j, t));
+    await TorneoJugador.bulkCreate(limpios.map((j, i) => ({ ...j, pareja_id: p.id, jugador_id: registros[i].id })), { transaction: t });
     return p;
   });
 
@@ -283,6 +332,7 @@ async function eliminarTorneo(torneo) {
     await TorneoPareja.destroy({ where: { torneo_id: torneo.id }, ...o });
     await TorneoZona.destroy({ where: { torneo_id: torneo.id }, ...o });
     await TorneoCancha.destroy({ where: { torneo_id: torneo.id }, ...o });
+    await TorneoCategoria.destroy({ where: { torneo_id: torneo.id }, ...o });
     await Torneo.destroy({ where: { id: torneo.id }, ...o });
   });
 }
@@ -320,20 +370,24 @@ async function estadoAgenda(torneo, slots, whereExtra = {}) {
  * Arma zonas + partidos de zona y los programa.
  * Sólo entran las parejas PAGADAS (o también pendientes con incluirPendientes).
  */
-async function generarZonas(torneo, { incluirPendientes = false, notificar = true } = {}) {
-  if (!['borrador', 'inscripcion', 'zonas'].includes(torneo.estado)) {
-    throw httpError(409, 'Las zonas sólo se pueden (re)armar antes de la fase de llaves.');
+async function generarZonas(torneo, { categoria_id, incluirPendientes = false, notificar = true } = {}) {
+  if (['finalizado', 'cancelado'].includes(torneo.estado)) throw httpError(409, `El torneo está ${torneo.estado}.`);
+  const tc = await resolverCategoria(torneo, categoria_id);
+  const cat = tc.categoria_id;
+  if (!['pendiente', 'zonas'].includes(tc.estado)) {
+    throw httpError(409, `Las zonas de ${rk.nombreCat(cat)} sólo se pueden (re)armar antes de la fase de llaves.`);
   }
-  const jugados = await TorneoPartido.count({ where: { torneo_id: torneo.id, estado: ['jugado', 'walkover'], es_bye: false } });
+  const jugados = await TorneoPartido.count({ where: { torneo_id: torneo.id, categoria_id: cat, estado: ['jugado', 'walkover'], es_bye: false } });
   if (jugados > 0) throw httpError(409, 'Ya hay resultados cargados: no se pueden rearmar las zonas.');
 
   const parejas = await TorneoPareja.findAll({
-    where: { torneo_id: torneo.id, estado_pago: incluirPendientes ? PAREJAS_ACTIVAS : 'pagado' },
+    where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: incluirPendientes ? PAREJAS_ACTIVAS : 'pagado' },
     include: [{ model: TorneoJugador, as: 'jugadores' }],
   });
+  if (parejas.length < 2) throw httpError(409, `${rk.nombreCat(cat)}: se necesitan al menos 2 parejas ${incluirPendientes ? 'inscriptas' : 'pagadas'}.`);
 
-  // Anual: puntos de la pareja = suma del ranking de sus dos jugadores
-  const puntosPorDni = torneo.tipo === 'anual' ? await puntosRanking(torneo) : new Map();
+  // Anual: puntos de la pareja = suma del ranking de sus dos jugadores (liga + categoría + año)
+  const puntosPorDni = torneo.tipo === 'anual' ? await puntosRanking(torneo, cat) : new Map();
   const conPuntos = parejas.map(p => ({
     id: p.id,
     horarios_preferidos: p.horarios_preferidos,
@@ -342,17 +396,20 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
   const grupos = fx.armarZonas(conPuntos, { tipo: torneo.tipo, parejasPorZona: torneo.parejas_por_zona });
   const slots = await slotsDisponibles(torneo);
   const porId = new Map(parejas.map(p => [p.id, p]));
+  // Horarios ya tomados por las OTRAS categorías del torneo (canchas compartidas)
+  const deOtras = await estadoAgenda(torneo, slots, { categoria_id: { [Op.ne]: cat } });
 
   const sinProgramar = await conTransaccion(async (t) => {
-    await borrarPartidos({ torneo_id: torneo.id }, t);
-    await TorneoTablaPosicion.destroy({ where: { torneo_id: torneo.id }, transaction: t });
-    await TorneoPareja.update({ zona_id: null, numero_zona: null }, { where: { torneo_id: torneo.id }, transaction: t });
-    await TorneoZona.destroy({ where: { torneo_id: torneo.id }, transaction: t });
+    const zonasViejas = (await TorneoZona.findAll({ where: { torneo_id: torneo.id, categoria_id: cat }, attributes: ['id'], transaction: t })).map(z => z.id);
+    await borrarPartidos({ torneo_id: torneo.id, categoria_id: cat }, t);
+    if (zonasViejas.length) await TorneoTablaPosicion.destroy({ where: { zona_id: zonasViejas }, transaction: t });
+    await TorneoPareja.update({ zona_id: null, numero_zona: null }, { where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
+    await TorneoZona.destroy({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
 
     // Cruces por zona: 4 parejas → formato 1v3 / 2v4 / G1vP2 / G2vP1; resto → todos contra todos
     const cruces = [];
     for (const [i, grupo] of grupos.entries()) {
-      const zona = await TorneoZona.create({ torneo_id: torneo.id, nombre: fx.nombreZona(i) }, { transaction: t });
+      const zona = await TorneoZona.create({ torneo_id: torneo.id, categoria_id: cat, nombre: fx.nombreZona(i) }, { transaction: t });
       for (const p of grupo) {
         await TorneoPareja.update({ zona_id: zona.id, numero_zona: p.numero_zona, puntos_totales: p.puntos_totales },
           { where: { id: p.id }, transaction: t });
@@ -377,8 +434,8 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
     // 1ª pasada: partidos con parejas definidas (los más restringidos primero);
     // 2ª pasada: G1vP2 / G2vP1, siempre después de sus dos partidos previos.
     const primeros = cruces.filter(c => !c.despuesDe.length);
-    const asignacion1 = fx.programar(primeros, slots, porId, { descanso: torneo.descanso_minimo });
-    const usados = new Set([...asignacion1.values()].filter(Boolean).map(a => `${a.field_id}|${a.abs}`));
+    const asignacion1 = fx.programar(primeros, slots, porId, { descanso: torneo.descanso_minimo, usados: new Set(deOtras.usados) });
+    const usados = new Set([...deOtras.usados, ...[...asignacion1.values()].filter(Boolean).map(a => `${a.field_id}|${a.abs}`)]);
     const agenda = new Map();
     for (const c of primeros) {
       const a = asignacion1.get(c.key);
@@ -399,7 +456,7 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
       const a = asignacion.get(c.key);
       if (!a) pendientes++;
       const creado = await TorneoPartido.create({
-        torneo_id: torneo.id, zona_id: c.zona_id, ronda: 'zona', orden: c.orden,
+        torneo_id: torneo.id, categoria_id: cat, zona_id: c.zona_id, ronda: 'zona', orden: c.orden,
         pareja1_id: c.pareja1_id, pareja2_id: c.pareja2_id,
         siguiente_partido_id: c.ganador ? idPorKey.get(c.ganador.key) : null,
         siguiente_slot: c.ganador?.slot ?? null,
@@ -412,15 +469,17 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
       idPorKey.set(c.key, creado.id);
     }
 
-    await torneo.update({ estado: 'zonas' }, { transaction: t });
-    const zonas = await TorneoZona.findAll({ where: { torneo_id: torneo.id }, transaction: t });
+    await tc.update({ estado: 'zonas' }, { transaction: t });
+    await sincronizarEstado(torneo, t);
+    const zonas = await TorneoZona.findAll({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     for (const z of zonas) await recalcularTablaZona(z.id, t);
     await sincronizarAgenda(torneo, t);
     return pendientes;
   });
 
-  if (notificar) await notificarProximos(torneo);
+  if (notificar) await notificarProximos(torneo, { parejaIds: parejas.map(p => p.id) });
   return {
+    categoria_id: cat,
     tipo: torneo.tipo,
     zonas: grupos.length,
     parejas: parejas.length,
@@ -433,13 +492,9 @@ async function generarZonas(torneo, { incluirPendientes = false, notificar = tru
 // ── Ranking anual ─────────────────────────────────────────────
 const temporadaDe = (torneo) => Number(String(torneo.fecha_inicio).slice(0, 4));
 
-/** Puntos de ranking por DNI para la categoría + género + temporada del torneo. */
-async function puntosRanking(torneo) {
-  const filas = await RankingJugador.findAll({
-    where: { id_tenant: torneo.id_tenant, categoria: torneo.categoria, genero: torneo.genero, temporada: temporadaDe(torneo) },
-    attributes: ['dni', 'puntos'], raw: true,
-  });
-  return new Map(filas.map(f => [f.dni, f.puntos]));
+/** Puntos de ranking por DNI para la liga + categoría + género + temporada del torneo. */
+function puntosRanking(torneo, categoriaId = torneo.categoria) {
+  return rk.puntosPorDni(torneo.id_tenant, { liga_id: torneo.liga_id, categoria_id: Number(categoriaId), genero: torneo.genero, temporada: temporadaDe(torneo) });
 }
 
 /**
@@ -448,14 +503,15 @@ async function puntosRanking(torneo) {
  */
 const PUNTOS_INSTANCIA = { campeon: 100, final: 70, semifinal: 50, cuartos: 35, octavos: 25, zona: 10 };
 
-async function asignarPuntosAnuales(torneo, transaction) {
-  if (torneo.tipo !== 'anual' || torneo.puntos_asignados) return;
+async function asignarPuntosAnuales(torneo, tc, transaction) {
+  if (torneo.tipo !== 'anual' || tc.puntos_asignados) return;
+  const cat = tc.categoria_id;
   const partidos = await TorneoPartido.findAll({
-    where: { torneo_id: torneo.id, es_bye: false },
+    where: { torneo_id: torneo.id, categoria_id: cat, es_bye: false },
     include: [{ model: TorneoResultado, as: 'resultado' }], transaction,
   });
   const parejas = await TorneoPareja.findAll({
-    where: { torneo_id: torneo.id, zona_id: { [Op.ne]: null } },
+    where: { torneo_id: torneo.id, categoria_id: cat, zona_id: { [Op.ne]: null } },
     include: [{ model: TorneoJugador, as: 'jugadores' }], transaction,
   });
   // Instancia máxima alcanzada por cada pareja
@@ -468,18 +524,24 @@ async function asignarPuntosAnuales(torneo, transaction) {
     if (m.ronda === 'final' && m.resultado?.ganador_id) instancia.set(m.resultado.ganador_id, 'campeon');
   }
   // Byes: una pareja que pasó directo figura en la ronda siguiente → ya queda contemplada
-  const temporada = temporadaDe(torneo);
+  // Cada jugador suma SOLO en la combinación liga + categoría + género + año del cuadro
+  const combinacion = { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) };
   for (const p of parejas) {
-    const pts = PUNTOS_INSTANCIA[instancia.get(p.id)] || 0;
+    const inst = instancia.get(p.id);
+    const pts = PUNTOS_INSTANCIA[inst] || 0;
+    if (!pts) continue;
     for (const j of p.jugadores) {
-      const [fila] = await RankingJugador.findOrCreate({
-        where: { id_tenant: torneo.id_tenant, temporada, categoria: torneo.categoria, genero: torneo.genero, dni: j.dni },
-        defaults: { nombre: j.nombre, puntos: 0 }, transaction,
-      });
-      await fila.update({ puntos: fila.puntos + pts, nombre: j.nombre }, { transaction });
+      const jugadorId = j.jugador_id || (await rk.upsertJugador(torneo.id_tenant, j, transaction)).id;
+      if (!j.jugador_id) await j.update({ jugador_id: jugadorId }, { transaction });
+      await rk.moverPuntos(torneo.id_tenant, { jugador_id: jugadorId, ...combinacion }, {
+        tipo: 'torneo', valor: pts, motivo: `${torneo.nombre} (${rk.nombreCat(cat)}): ${inst}`, torneo_id: torneo.id, usuario: { nombre: 'sistema' },
+      }, transaction);
     }
   }
-  await torneo.update({ puntos_asignados: true }, { transaction });
+  await tc.update({ puntos_asignados: true }, { transaction });
+  const pendientes = await TorneoCategoria.count({ where: { torneo_id: torneo.id, puntos_asignados: false }, transaction });
+  if (!pendientes) await torneo.update({ puntos_asignados: true }, { transaction });
+  console.log(`[torneos] puntos anuales asignados · torneo ${torneo.id} · ${rk.nombreCat(cat)} · liga ${torneo.liga_id} · ${parejas.length} parejas`);
 }
 
 // ── Tablas ────────────────────────────────────────────────────
@@ -507,9 +569,9 @@ async function recalcularTablaZona(zonaId, transaction) {
 }
 
 /** Tablas de todas las zonas (leídas de la tabla persistida). */
-async function tablasDeZonas(torneo, publico = false) {
+async function tablasDeZonas(torneo, publico = false, categoriaId = null) {
   const zonas = await TorneoZona.findAll({
-    where: { torneo_id: torneo.id },
+    where: { torneo_id: torneo.id, ...(categoriaId && { categoria_id: Number(categoriaId) }) },
     include: [
       incluirPareja('parejas', publico),
       { model: TorneoPartido, as: 'partidos', attributes: ['id', 'estado'] },
@@ -527,20 +589,21 @@ async function tablasDeZonas(torneo, publico = false) {
       numero_zona: parejaDe(r.pareja_id)?.numero_zona ?? null,
       puntos_ranking: parejaDe(r.pareja_id)?.puntos_totales ?? 0,
     }));
-    return { zona_id: z.id, nombre: z.nombre, tabla, completa: z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)) };
+    return { zona_id: z.id, categoria_id: z.categoria_id, nombre: z.nombre, tabla, completa: z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)) };
   });
 }
 
 /** Posiciones por jugador (cada jugador hereda los números de su pareja). */
-async function rankingJugadores(torneo) {
-  const zonas = await tablasDeZonas(torneo, true);
+async function rankingJugadores(torneo, categoriaId = null) {
+  const cat = categoriaId ? (await resolverCategoria(torneo, categoriaId)).categoria_id : null;
+  const zonas = await tablasDeZonas(torneo, true, cat);
   const parejas = await TorneoPareja.findAll({
-    where: { torneo_id: torneo.id, zona_id: { [Op.ne]: null } },
+    where: { torneo_id: torneo.id, zona_id: { [Op.ne]: null }, ...(cat && { categoria_id: cat }) },
     include: [{ model: TorneoJugador, as: 'jugadores', attributes: JUGADORES_PUBLICOS }],
   });
   // Partidos de llave ganados suman al ranking general
   const llave = await TorneoPartido.findAll({
-    where: { torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' }, es_bye: false, estado: ['jugado', 'walkover'] },
+    where: { torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' }, es_bye: false, estado: ['jugado', 'walkover'], ...(cat && { categoria_id: cat }) },
     include: [{ model: TorneoResultado, as: 'resultado' }],
   });
   const filas = [];
@@ -550,7 +613,7 @@ async function rankingJugadores(torneo) {
     const pgLlave = extra.filter(m => m.resultado?.ganador_id === r.pareja_id).length;
     for (const j of p?.jugadores || []) {
       filas.push({
-        jugador_id: j.id, jugador: j.nombre, pareja: r.pareja, zona: z.nombre,
+        jugador_id: j.id, jugador: j.nombre, pareja: r.pareja, zona: z.nombre, categoria_id: z.categoria_id,
         pj: r.pj + extra.length, pg: r.pg + pgLlave, pp: r.pp + (extra.length - pgLlave),
         puntos: r.puntos + pgLlave * fx.PUNTOS_VICTORIA + (extra.length - pgLlave) * fx.PUNTOS_DERROTA,
         dif_sets: r.dif_sets, dif_games: r.dif_games,
@@ -563,17 +626,22 @@ async function rankingJugadores(torneo) {
 }
 
 // ── Llave ─────────────────────────────────────────────────────
-async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
-  if (torneo.estado !== 'zonas') throw httpError(409, 'La llave se genera al terminar la fase de zonas.');
-  const zonas = await tablasDeZonas(torneo);
+async function generarLlave(torneo, { categoria_id, forzar = false, notificar = true } = {}) {
+  const tc = await resolverCategoria(torneo, categoria_id);
+  const cat = tc.categoria_id;
+  if (tc.estado !== 'zonas') throw httpError(409, `La llave de ${rk.nombreCat(cat)} se genera al terminar su fase de zonas.`);
+  const zonas = await tablasDeZonas(torneo, false, cat);
   if (zonas.length === 0) throw httpError(409, 'Primero armá las zonas.');
   if (!forzar && zonas.some(z => !z.completa)) throw httpError(409, 'Faltan resultados de zona.');
 
   const clasificados = fx.rankingClasificados(zonas, torneo.clasifican_por_zona);
   const cuadro = fx.armarLlave(clasificados);
   const slots = await slotsDisponibles(torneo);
-  const { agenda, usados, maxAbs } = await estadoAgenda(torneo, slots);
-  const parejas = new Map((await TorneoPareja.findAll({ where: { torneo_id: torneo.id } })).map(p => [p.id, p]));
+  // Ocupación: todo el torneo menos la llave vieja de esta categoría (se reescribe);
+  // la llave arranca después de la fase de zonas DE ESTA categoría.
+  const { agenda, usados } = await estadoAgenda(torneo, slots, { [Op.or]: [{ categoria_id: { [Op.ne]: cat } }, { ronda: 'zona' }] });
+  const { maxAbs } = await estadoAgenda(torneo, slots, { categoria_id: cat, ronda: 'zona' });
+  const parejas = new Map((await TorneoPareja.findAll({ where: { torneo_id: torneo.id, categoria_id: cat } })).map(p => [p.id, p]));
 
   // Programación ronda por ronda, siempre después de la fase de zonas
   const todos = cuadro.rondas.flatMap(r => r.partidos.map(p => ({ ...p, ronda: r.ronda })));
@@ -583,13 +651,13 @@ async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
   });
 
   await conTransaccion(async (t) => {
-    await borrarPartidos({ torneo_id: torneo.id, ronda: { [Op.ne]: 'zona' } }, t);
+    await borrarPartidos({ torneo_id: torneo.id, categoria_id: cat, ronda: { [Op.ne]: 'zona' } }, t);
     const idPorKey = new Map();
     // De la final hacia atrás, para conocer el id del partido siguiente
     for (const p of [...todos].reverse()) {
       const a = asignacion.get(p.key);
       const creado = await TorneoPartido.create({
-        torneo_id: torneo.id, ronda: p.ronda, orden: p.orden,
+        torneo_id: torneo.id, categoria_id: cat, ronda: p.ronda, orden: p.orden,
         pareja1_id: p.pareja1_id, pareja2_id: p.pareja2_id, es_bye: p.es_bye,
         siguiente_partido_id: p.siguiente_key ? idPorKey.get(p.siguiente_key) : null,
         siguiente_slot: p.siguiente_slot ?? null,
@@ -599,7 +667,8 @@ async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
       }, { transaction: t });
       idPorKey.set(p.key, creado.id);
     }
-    await torneo.update({ estado: 'llaves' }, { transaction: t });
+    await tc.update({ estado: 'llaves' }, { transaction: t });
+    await sincronizarEstado(torneo, t);
     await sincronizarAgenda(torneo, t);
   });
 
@@ -607,13 +676,13 @@ async function generarLlave(torneo, { forzar = false, notificar = true } = {}) {
     // Agradecimiento a los que quedaron afuera en zonas
     const clasif = new Set(clasificados.slice(0, 16).map(c => c.pareja_id));
     const afuera = await TorneoPareja.findAll({
-      where: { torneo_id: torneo.id, zona_id: { [Op.ne]: null }, id: { [Op.notIn]: [...clasif] } },
+      where: { torneo_id: torneo.id, categoria_id: cat, zona_id: { [Op.ne]: null }, id: { [Op.notIn]: [...clasif] } },
       include: [{ model: TorneoJugador, as: 'jugadores' }],
     });
     for (const p of afuera) notifier.aPareja(torneo.id_tenant, p, notifier.mensajes.eliminados(torneo, p));
-    await notificarProximos(torneo);
+    await notificarProximos(torneo, { parejaIds: [...parejas.keys()] });
   }
-  return { tam: cuadro.tam, clasificados: clasificados.length, byes: cuadro.tam - Math.min(16, clasificados.length) };
+  return { categoria_id: cat, tam: cuadro.tam, clasificados: clasificados.length, byes: cuadro.tam - Math.min(16, clasificados.length) };
 }
 
 // ── Resultados ────────────────────────────────────────────────
@@ -650,7 +719,8 @@ async function registrarResultado(torneo, partidoId, data) {
     if (!partido) throw httpError(404, 'Partido no encontrado');
     if (partido.es_bye) throw httpError(400, 'Un bye no lleva resultado.');
     if (!partido.pareja1_id || !partido.pareja2_id) throw httpError(409, 'Todavía no están definidas las dos parejas.');
-    if (partido.ronda === 'final' && torneo.puntos_asignados) {
+    const tc = await resolverCategoria(torneo, partido.categoria_id, t);
+    if (partido.ronda === 'final' && tc.puntos_asignados) {
       throw httpError(409, 'Los puntos anuales de este torneo ya se asignaron: corregí el ranking a mano.');
     }
 
@@ -689,8 +759,9 @@ async function registrarResultado(torneo, partidoId, data) {
     } else {
       if (partido.ronda === 'final') {
         avisos.push({ tipo: 'campeon', parejaId: ganadorId }, { tipo: 'subcampeon', parejaId: perdedorId });
-        await torneo.update({ estado: 'finalizado' }, { transaction: t });
-        await asignarPuntosAnuales(torneo, t);
+        await tc.update({ estado: 'finalizado' }, { transaction: t });
+        await sincronizarEstado(torneo, t);
+        await asignarPuntosAnuales(torneo, tc, t);
       } else {
         avisos.push({ tipo: 'eliminados', parejaId: perdedorId });
         if (partido.ronda === 'semifinal') avisos.push({ tipo: 'finalistas', parejaId: ganadorId });
@@ -701,12 +772,14 @@ async function registrarResultado(torneo, partidoId, data) {
 
   await despacharAvisos(torneo, avisos);
 
-  // Zona terminada → armar la llave automáticamente
+  // Zona de la categoría terminada → armar SU llave automáticamente
   let llave = null;
   const fresh = await Torneo.findByPk(torneo.id);
-  if (fresh.estado === 'zonas') {
-    const pendientes = await TorneoPartido.count({ where: { torneo_id: torneo.id, ronda: 'zona', estado: { [Op.notIn]: ['jugado', 'walkover'] } } });
-    if (pendientes === 0) llave = await generarLlave(fresh).catch(err => ({ error: err.message }));
+  const jugado = await TorneoPartido.findByPk(partidoId, { attributes: ['categoria_id'] });
+  const tcFresh = await TorneoCategoria.findOne({ where: { torneo_id: torneo.id, categoria_id: jugado.categoria_id } });
+  if (tcFresh?.estado === 'zonas') {
+    const pendientes = await TorneoPartido.count({ where: { torneo_id: torneo.id, categoria_id: jugado.categoria_id, ronda: 'zona', estado: { [Op.notIn]: ['jugado', 'walkover'] } } });
+    if (pendientes === 0) llave = await generarLlave(fresh, { categoria_id: jugado.categoria_id }).catch(err => ({ error: err.message }));
   }
   return { ok: true, llave };
 }
@@ -717,10 +790,11 @@ async function registrarResultado(torneo, partidoId, data) {
  * (si esos partidos ya se jugaron, no se puede).
  */
 async function quitarResultado(torneo, partidoId) {
-  if (torneo.estado !== 'zonas') throw httpError(409, 'Solo se pueden borrar resultados de zona antes de generar la llave.');
   await sequelize.transaction(async (t) => {
     const p = await TorneoPartido.findOne({ where: { id: partidoId, torneo_id: torneo.id }, lock: t.LOCK.UPDATE, transaction: t });
     if (!p) throw httpError(404, 'Partido no encontrado');
+    const tc = await resolverCategoria(torneo, p.categoria_id, t);
+    if (tc.estado !== 'zonas') throw httpError(409, 'Solo se pueden borrar resultados de zona antes de generar la llave.');
     if (p.ronda !== 'zona') throw httpError(409, 'Solo se pueden borrar resultados de zona.');
     for (const { dest, slot } of await dependientes(p, t)) {
       await dest.update({ [`pareja${slot}_id`]: null }, { transaction: t });
@@ -812,13 +886,17 @@ async function reprogramarPartido(torneo, partidoId, { field_id, fecha, hora }, 
 }
 
 // ── Vista completa ────────────────────────────────────────────
-async function fixture(torneo, { publico = true } = {}) {
+async function fixture(torneo, { publico = true, categoria_id } = {}) {
+  const cats = await categoriasDe(torneo);
+  // Sin categoría pedida: la primera que tenga fixture (o la primera del torneo)
+  const elegida = categoria_id ? await resolverCategoria(torneo, categoria_id) : (cats.find(c => c.estado !== 'pendiente') || cats[0]);
+  const cat = elegida?.categoria_id ?? null;
   const partidos = await TorneoPartido.findAll({
-    where: { torneo_id: torneo.id },
+    where: { torneo_id: torneo.id, ...(cat && { categoria_id: cat }) },
     include: incluirPartido(publico),
     order: [['fecha', 'ASC'], ['hora', 'ASC'], ['orden', 'ASC']],
   });
-  const zonas = await tablasDeZonas(torneo, publico);
+  const zonas = await tablasDeZonas(torneo, publico, cat);
   // Lugar todavía vacío que llega de otro partido de la zona → "Ganador P1" / "Perdedor P2"
   const origen = (p, slot) => {
     const g = partidos.find(x => x.siguiente_partido_id === p.id && x.siguiente_slot === slot && x.ronda === 'zona');
@@ -845,6 +923,8 @@ async function fixture(torneo, { publico = true } = {}) {
     .map(r => ({ ronda: r, partidos: partidos.filter(p => p.ronda === r).sort((a, b) => a.orden - b.orden).map(serial) }))
     .filter(r => r.partidos.length);
   return {
+    categoria_id: cat,
+    categorias: cats.map(c => ({ categoria_id: c.categoria_id, nombre: rk.nombreCat(c.categoria_id), estado: c.estado, puntos_asignados: c.puntos_asignados })),
     zonas: zonas.map(z => ({
       ...z,
       partidos: partidos.filter(p => p.zona_id === z.zona_id).sort((a, b) => a.orden - b.orden).map(serial),
@@ -859,4 +939,5 @@ module.exports = {
   inscribirPareja, confirmarPago, emitirTickets, sincronizarAgenda, conTransaccion, eliminarTorneo,
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, PUNTOS_INSTANCIA, notificarProximos, reprogramarPartido, fixture,
+  categoriasDe, resolverCategoria, sincronizarEstado,
 };

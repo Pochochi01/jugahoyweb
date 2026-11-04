@@ -83,10 +83,20 @@ club.post  ('/organizadores',     requireClubAdmin, orgs.create);
 club.put   ('/organizadores/:id', requireClubAdmin, orgs.update);
 club.delete('/organizadores/:id', requireClubAdmin, orgs.remove);
 
-// Ranking anual (base de los cabezas de serie en torneos 'anual')
-club.get   ('/ranking',     ranking.list);
-club.put   ('/ranking',     ranking.upsert);
-club.delete('/ranking/:id', ranking.remove);
+// Ligas y categorías (cada torneo pertenece a una liga; el ranking nunca mezcla ligas)
+club.get   ('/ligas',       ranking.ligas);
+club.post  ('/ligas',       requireClubAdmin, ranking.crearLiga);
+club.put   ('/ligas/:id',   requireClubAdmin, ranking.actualizarLiga);
+club.delete('/ligas/:id',   requireClubAdmin, ranking.eliminarLiga);
+club.get   ('/categorias',  ranking.categorias);
+// Jugadores del club (todos, también con 0 puntos) para inscribir
+club.get   ('/jugadores',   ranking.jugadores);
+// Ranking anual por liga + categoría + año; ajustes manuales con auditoría (solo admin del club)
+club.get   ('/ranking',          ranking.list);
+club.get   ('/ranking/ajustes',  requireClubAdmin, ranking.historial);
+club.post  ('/ranking/ajustes',  requireClubAdmin, ranking.ajuste);
+club.put   ('/ranking',          requireClubAdmin, ranking.upsert);
+club.delete('/ranking/:id',      requireClubAdmin, ranking.remove);
 
 // Tickets: validación en la entrada
 club.post('/tickets/validar', inscr.validarTicket);

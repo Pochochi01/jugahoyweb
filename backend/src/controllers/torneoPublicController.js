@@ -10,6 +10,7 @@ const {
   Torneo, TorneoPareja, TorneoJugador, TorneoTicket, TorneoPartido, TorneoCancha, Complex,
 } = require('../models');
 const svc = require('../services/torneos/torneoService');
+const { conCategorias } = require('./torneosController');
 const notifier = require('../services/torneos/torneoNotifier');
 const { frontendUrl } = require('../config/urls');
 
@@ -35,7 +36,7 @@ async function listar(req, res) {
       include: [{ model: Complex, as: 'club', attributes: ['id', 'nombre', 'ciudad'] }],
       order: [['fecha_inicio', 'ASC']],
     });
-    res.json(torneos);
+    res.json(await conCategorias(torneos));
   } catch (err) { send(res, err); }
 }
 
@@ -45,21 +46,21 @@ async function detalle(req, res) {
     const ocupados = await TorneoPareja.count({ where: { torneo_id: t.id, estado_pago: ['pendiente', 'pagado'] } });
     const canchas = await TorneoCancha.findAll({ where: { torneo_id: t.id }, attributes: ['field_id', 'disponibilidad_horaria'] });
     // Franjas en las que se juega: sirven de guía para los horarios preferidos
-    res.json({ ...t.toJSON(), cupos_libres: Math.max(0, t.cupo_parejas - ocupados), franjas_juego: canchas.flatMap(c => c.disponibilidad_horaria) });
+    res.json({ ...(await conCategorias(t)), cupos_libres: Math.max(0, t.cupo_parejas - ocupados), franjas_juego: canchas.flatMap(c => c.disponibilidad_horaria) });
   } catch (err) { send(res, err); }
 }
 
 async function fixture(req, res) {
   try {
     const t = await torneoVisible(req.params.torneoId);
-    res.json({ torneo: t, ...(await svc.fixture(t, { publico: true })) });
+    res.json({ torneo: await conCategorias(t), ...(await svc.fixture(t, { publico: true, categoria_id: req.query.categoria_id })) });
   } catch (err) { send(res, err); }
 }
 
 async function ranking(req, res) {
   try {
     const t = await torneoVisible(req.params.torneoId);
-    res.json(await svc.rankingJugadores(t));
+    res.json(await svc.rankingJugadores(t, req.query.categoria_id));
   } catch (err) { send(res, err); }
 }
 

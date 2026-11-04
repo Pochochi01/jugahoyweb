@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { CATEGORIAS, catLabel, GENEROS, TIPO_TORNEO, errMsg } from '../../utils/torneos';
+import { useState, useEffect } from 'react';
+import { GENEROS, TIPO_TORNEO, errMsg, categoriasDe } from '../../utils/torneos';
+import { CategoriasMultiSelect } from './CategoriasSelect';
 
 const INICIAL = {
   deporte: 'padel', tipo: 'unico', tercer_set: 'set',
-  nombre: '', descripcion: '', categoria: 6, genero: 'masculino', fecha_inicio: '', fecha_fin: '',
+  nombre: '', descripcion: '', liga_id: '', categorias: [], genero: 'masculino', fecha_inicio: '', fecha_fin: '',
   cupo_parejas: 16, precio_inscripcion: 0, parejas_por_zona: 3, clasifican_por_zona: 2,
   duracion_partido: 90, descanso_minimo: 60,
 };
@@ -20,9 +21,15 @@ const Campo = ({ label, children }) => (
  * Alta / edición de los datos de un torneo. `bloqueado` = fixture armado.
  * Los torneos son exclusivos de pádel: no hay selector de deporte, se envía
  * siempre deporte='padel' (el backend lo exige igual).
+ * Liga obligatoria (una por torneo) y una o varias categorías (cada una arma su cuadro).
+ * `svc` (torneosStaff) se usa para cargar las ligas del club.
  */
-export default function TorneoForm({ initial, onSave, onCancel, bloqueado = false }) {
-  const [f, setF] = useState(() => ({ ...INICIAL, ...initial, deporte: 'padel' }));
+export default function TorneoForm({ initial, onSave, onCancel, bloqueado = false, svc }) {
+  const [f, setF] = useState(() => ({ ...INICIAL, ...initial, deporte: 'padel', liga_id: initial?.liga_id || '', categorias: categoriasDe(initial) }));
+  const [ligas, setLigas] = useState(null);
+  useEffect(() => { svc?.ligas().then(setLigas).catch(() => setLigas([])); }, [svc]);
+  // Categorías que ya tienen fixture no se pueden quitar
+  const bloqueadas = (initial?.categorias || []).filter(c => c.estado && c.estado !== 'pendiente').map(c => c.categoria_id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
@@ -30,13 +37,25 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!f.liga_id) return setError('Elegí la liga del torneo.');
+    if (!f.categorias.length) return setError('Elegí al menos una categoría.');
     setSaving(true); setError('');
-    try { await onSave({ ...f, deporte: 'padel' }); } catch (err) { setError(errMsg(err)); } finally { setSaving(false); }
+    const { liga, ...datos } = f;   // liga (objeto) viene del backend; se envía liga_id
+    try { await onSave({ ...datos, liga_id: Number(f.liga_id), categorias: f.categorias, deporte: 'padel' }); } catch (err) { setError(errMsg(err)); } finally { setSaving(false); }
   };
 
   return (
     <form onSubmit={submit} className="card space-y-4">
       <div className="grid md:grid-cols-2 gap-4">
+        <Campo label="Liga *">
+          <select className="input" value={f.liga_id} disabled={bloqueado || initial?.puntos_asignados} onChange={e => set('liga_id', e.target.value)} required>
+            <option value="">{ligas === null ? 'Cargando ligas…' : ligas.length ? 'Elegí la liga' : 'No hay ligas: creá una en "Ligas"'}</option>
+            {(ligas || []).filter(l => l.estado === 'activa' || l.id === Number(f.liga_id)).map(l => <option key={l.id} value={l.id}>{l.nombre}{l.estado === 'inactiva' ? ' (inactiva)' : ''}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Categorías *">
+          <CategoriasMultiSelect value={f.categorias} onChange={v => set('categorias', v)} bloqueadas={bloqueadas} />
+        </Campo>
         <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
           <Campo label="Nombre del torneo"><input className="input" value={f.nombre} onChange={e => set('nombre', e.target.value)} required /></Campo>
           <span className="badge-green mb-2.5" title="Los torneos son exclusivos de pádel">Pádel</span>
@@ -55,14 +74,9 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
           </Campo>
         </div>
         <p className="md:col-span-2 -mt-2 text-[11px] text-muted-foreground">
-          {TIPO_TORNEO[f.tipo]?.hint}. {f.tipo === 'anual' && 'Los puntos de cada pareja salen del ranking anual (suma de ambos jugadores) y al finalizar se suman los nuevos.'}
+          {TIPO_TORNEO[f.tipo]?.hint}. {f.tipo === 'anual' && 'Los puntos de cada pareja salen del ranking anual de la liga y la categoría en la que juega (suma de ambos jugadores); al finalizar cada categoría se suman en esa misma liga y categoría.'}
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <Campo label="Categoría">
-            <select className="input" value={f.categoria} disabled={bloqueado} onChange={num('categoria')}>
-              {CATEGORIAS.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
-            </select>
-          </Campo>
           <Campo label="Género">
             <select className="input" value={f.genero} disabled={bloqueado} onChange={e => set('genero', e.target.value)}>
               {Object.entries(GENEROS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
