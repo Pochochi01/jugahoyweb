@@ -93,6 +93,13 @@ function destinosPareja(pareja, texto) {
 /** Envía el mismo texto a los dos jugadores de una pareja. */
 async function aPareja(clubId, pareja, texto, opts) {
   const jugadores = pareja?.jugadores || [];
+  // Copia por Web Push a los dispositivos del Portal de Jugador (en segundo plano; no altera el envío por WhatsApp)
+  try {
+    require('../playerPushService').enviarADnisAsync(jugadores.map(j => j.dni), {
+      tipo: 'torneo', titulo: 'JugaHoy · Torneo', body: String(texto || '').replace(/[*_~]/g, '').slice(0, 240),
+      url: pareja?.torneo_id ? `/jugador/torneo/${pareja.torneo_id}` : '/jugador/dashboard',
+    });
+  } catch (err) { console.error('[push jugador]', err.message); }
   return Promise.all(jugadores.map(j => enviar(clubId, j.whatsapp, texto, { torneoId: pareja?.torneo_id, ...opts })));
 }
 

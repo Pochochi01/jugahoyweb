@@ -35,5 +35,15 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Portal de Jugador: manifest propio (start_url /jugador/login, scope /jugador/) para instalarlo como app
+      (function () {
+        if (location.pathname.indexOf('/jugador') !== 0) return;
+        var l = document.querySelector('link[rel="manifest"]');
+        if (!l) { l = document.createElement('link'); l.rel = 'manifest'; document.head.appendChild(l); }
+        l.href = '/manifest-jugador.webmanifest';
+        var m = document.createElement('meta'); m.name = 'apple-mobile-web-app-title'; m.content = 'JugaHoy'; document.head.appendChild(m);
+      })();
+    </script>
   </body>
 </html>

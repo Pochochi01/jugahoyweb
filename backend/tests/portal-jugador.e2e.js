@@ -139,6 +139,20 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     const acc = (a) => logs.filter(l => l.accion === a).length;
     ok(acc('login_ok') >= 2 && acc('login_fail') >= 1 && acc('view') >= 10 && acc('denied') >= 4 && acc('write_blocked') >= 5 && acc('password_change') === 1, `auditoría: ${['login_ok', 'login_fail', 'view', 'denied', 'write_blocked'].map(a => `${a}=${acc(a)}`).join(' ')}`);
 
+    // ── Push del dispositivo ──
+    const sub = { endpoint: `https://push.test.local/${s}`, keys: { p256dh: 'BPx', auth: 'aa' } };
+    ok((await req('GET', '/player/push/vapid-public-key')).status === 200, 'push: clave VAPID pública');
+    ok((await req('POST', '/player/push/subscribe', { subscription: sub })).status === 401, 'push: suscribir sin sesión → 401');
+    ok((await req('POST', '/player/push/subscribe', { subscription: { endpoint: 'x' } }, tk)).status === 400, 'push: suscripción inválida → 400');
+    ok((await req('POST', '/player/push/subscribe', { subscription: sub }, tk)).status === 201 && (await req('POST', '/player/push/subscribe', { subscription: sub }, tk)).status === 201, 'push: suscripción guardada (idempotente)');
+    ok(await m.PlayerPushSubscription.count({ where: { dni: DNI } }) === 1, 'push: 1 dispositivo por DNI');
+    const notifier = require('../src/services/torneos/torneoNotifier');
+    const parT1 = await m.TorneoPareja.findOne({ where: { torneo_id: T1 }, include: [{ model: m.TorneoJugador, as: 'jugadores' }] });
+    let pushOk = true; try { await notifier.aPareja(club.id, parT1, 'Prueba *aviso*'); } catch { pushOk = false; }
+    ok(pushOk, 'aviso de torneo a la pareja: también intenta push sin romper el envío');
+    ok((await req('POST', '/player/push/unsubscribe', { endpoint: sub.endpoint }, tk)).status === 200 && await m.PlayerPushSubscription.count({ where: { dni: DNI } }) === 0, 'push: desuscribir');
+    ok(JSON.stringify(antes) === JSON.stringify(await conteo()), 'push no modificó datos de torneos');
+
     // ── Recuperación ──
     ok((await req('POST', '/player/auth/forgot', { dni: DNI })).status === 200, 'forgot: respuesta genérica 200');
     ok((await req('POST', '/player/auth/forgot', { dni: '123' })).status === 200, 'forgot con DNI inexistente: misma respuesta (no revela)');
@@ -160,6 +174,7 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     await m.PlayerTournamentIndex.destroy({ where: { dni: DNI } });
     await m.PlayerAccessLog.destroy({ where: { dni: DNI } });
     await m.PlayerAccess.destroy({ where: { dni: DNI } });
+    await m.PlayerPushSubscription.destroy({ where: { dni: DNI } });
     await m.PadelJugador.destroy({ where: { id_tenant: club.id } });
     await m.TorneoLiga.destroy({ where: { id_tenant: club.id } });
     await m.TimeSlot.destroy({ where: { field_id: [c1.id] } });

@@ -42,4 +42,12 @@ const PlayerAccessLog = sequelize.define('PlayerAccessLog', {
   user_agent: T.STRING(255),
 }, { tableName: 'player_access_logs', underscored: true, updatedAt: false });
 
-module.exports = { modelos: { PlayerAccess, PlayerTournamentIndex, PlayerAccessLog } };
+const PlayerPushSubscription = sequelize.define('PlayerPushSubscription', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  dni: { type: T.STRING(20), allowNull: false },
+  endpoint: { type: T.TEXT, allowNull: false },
+  keys: { type: T.JSON, allowNull: false },   // { p256dh, auth }
+  user_agent: T.STRING(255),
+}, { tableName: 'player_push_subscriptions', underscored: true });
+
+module.exports = { modelos: { PlayerAccess, PlayerTournamentIndex, PlayerAccessLog, PlayerPushSubscription } };

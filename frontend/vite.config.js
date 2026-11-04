@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       // ── PWA ────────────────────────────────────────────────
       VitePWA({
         registerType: 'autoUpdate',        // actualiza el SW solo al haber nueva versión
-        includeAssets: ['apple-touch-icon.png', 'pwa-192.png', 'pwa-512.png', 'logo.png', 'emblem.png'],
+        includeAssets: ['apple-touch-icon.png', 'pwa-192.png', 'pwa-512.png', 'logo.png', 'emblem.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'manifest-jugador.webmanifest'],
         manifest: {
           name: 'JugaHoy – Gestión de Complejos Deportivos',
           short_name: 'JugaHoy',
@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
               // Datos de la API: red primero, cache como respaldo offline.
               // Las mutaciones (POST/PUT/DELETE) no se cachean.
               urlPattern: ({ url, request }) =>
-                url.pathname.startsWith('/api/') && request.method === 'GET',
+                url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/player/') && request.method === 'GET',   // datos personales del portal de jugador: nunca en caché compartida
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'api-cache',

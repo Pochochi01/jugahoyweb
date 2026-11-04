@@ -7,6 +7,7 @@
  *   POST /auth/change-password   { actual, nueva }  (obligatorio tras el primer ingreso)
  *   POST /auth/forgot            { dni }            → email con enlace de recuperación
  *   POST /auth/reset             { token, nueva }
+ *   GET  /push/vapid-public-key · POST /push/subscribe { subscription } · POST /push/unsubscribe { endpoint }
  *
  * Lectura (ROLE_PLAYER; 403 si no participa en el torneo ni en su liga):
  *   GET /me · /dashboard · /tournaments?page&limit&liga_id&estado&todos=1
@@ -18,7 +19,8 @@ const jwt = require('jsonwebtoken');
 const svc = require('../services/playerPortalService');
 const { authJugador, claveAlDia, puedeVer, signJugador, ROLE_PLAYER, PERMISOS_JUGADOR } = require('../middlewares/playerAuth');
 
-const AUTH = new Set(['/auth/login', '/auth/change-password', '/auth/forgot', '/auth/reset']);
+// Escrituras permitidas: solo credenciales y suscripción push del propio dispositivo (tablas del portal)
+const AUTH = new Set(['/auth/login', '/auth/change-password', '/auth/forgot', '/auth/reset', '/push/subscribe', '/push/unsubscribe']);
 
 // Candado de solo lectura: fuera de las credenciales, cualquier método que no sea GET → 405
 router.use((req, res, next) => {
@@ -49,6 +51,15 @@ router.post('/auth/reset', async (req, res) => {
 });
 router.post('/auth/change-password', authJugador, async (req, res) => {
   try { await svc.cambiarClave(req.playerAccess, req.body?.actual, req.body?.nueva, req); res.json(sesion(req.playerAccess)); } catch (e) { send(req, res, e, 'change-password'); }
+});
+// Web Push del dispositivo (no modifica datos de torneos)
+const push = require('../services/playerPushService');
+router.get('/push/vapid-public-key', (req, res) => res.json({ key: require('../services/notification.service').getVapidPublicKey() }));
+router.post('/push/subscribe', authJugador, async (req, res) => {
+  try { await push.suscribir(req.jugadorDni, req.body?.subscription, req.headers['user-agent']); svc.log(req, 'push_subscribe', { status: 201 }); res.status(201).json({ ok: true }); } catch (e) { send(req, res, e, 'push'); }
+});
+router.post('/push/unsubscribe', authJugador, async (req, res) => {
+  try { await push.desuscribir(req.jugadorDni, req.body?.endpoint); res.json({ ok: true }); } catch (e) { send(req, res, e, 'push'); }
 });
 router.get('/me', authJugador, (req, res) => res.json({ dni: req.jugadorDni, rol: ROLE_PLAYER, permisos: PERMISOS_JUGADOR, must_change_password: req.playerAccess.must_change_password }));
 

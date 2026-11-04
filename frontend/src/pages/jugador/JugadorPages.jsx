@@ -5,8 +5,9 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Trophy, User, Medal, ListOrdered, CalendarDays, LogOut, ShieldAlert, KeyRound, ChevronRight, ChevronLeft, MapPin, Swords, History, Layers } from 'lucide-react';
-import { jugador, jugadorAuth } from '../../services/playerPortalService';
+import { Bell, BellOff, Trophy, User, Medal, ListOrdered, CalendarDays, LogOut, ShieldAlert, KeyRound, ChevronRight, ChevronLeft, MapPin, Swords, History, Layers } from 'lucide-react';
+import { jugador, jugadorAuth, jugadorPush } from '../../services/playerPortalService';
+import InstallPWA from '../../components/pwa/InstallPWA';
 import { TablaZona, ZonaGrilla, Bracket, RankingJugadores, Cronograma } from '../../components/torneos/FixtureViews';
 import { CategoriaTabs } from '../../components/torneos/CategoriasSelect';
 import { ESTADO_TORNEO, GENEROS, fechaCorta, errMsg } from '../../utils/torneos';
@@ -89,6 +90,7 @@ function Layout({ children }) {
         </div>
       </header>
       <main className="max-w-5xl mx-auto p-4 md:p-6 space-y-5">{children}</main>
+      <InstallPWA className="max-md:!bottom-20" />
       {/* Menú inferior en móvil */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border grid grid-cols-5" aria-label="Menú del jugador" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {MENU.map(([to, l, Icon]) => (
@@ -166,7 +168,9 @@ export function JugadorLogin() {
         {olvido && <p className="text-sm text-emerald-400">{olvido}</p>}
         <button className="btn-primary w-full" disabled={loading}>{loading ? 'Ingresando…' : 'Ingresar'}</button>
         <button type="button" className="btn-ghost w-full text-sm" onClick={recuperar}>Olvidé mi contraseña</button>
+        <InstallPWA variante="boton" />
       </form>
+      <InstallPWA />
     </Centro>
   );
 }
@@ -224,6 +228,34 @@ export function JugadorRecuperar() {
   }} />;
 }
 
+// ── Notificaciones push ───────────────────────────────────────
+function AvisosPush() {
+  const [activo, setActivo] = useState(null);
+  const [msg, setMsg] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  useEffect(() => { jugadorPush.activo().then(setActivo).catch(() => setActivo(false)); }, []);
+  if (!jugadorPush.soportado() || activo === null) return null;
+  const cambiar = async () => {
+    setOcupado(true); setMsg('');
+    try {
+      if (activo) { await jugadorPush.desactivar(); setActivo(false); setMsg('Notificaciones desactivadas en este dispositivo.'); }
+      else { await jugadorPush.activar(); setActivo(true); setMsg('Listo: te avisamos de horarios, resultados y cambios de tus partidos.'); }
+    } catch (e) { setMsg(errMsg(e)); } finally { setOcupado(false); }
+  };
+  return (
+    <div className="card flex flex-col sm:flex-row sm:items-center gap-3">
+      {activo ? <Bell className="w-6 h-6 text-primary shrink-0" /> : <BellOff className="w-6 h-6 text-muted-foreground shrink-0" />}
+      <div className="flex-1 min-w-0">
+        <div className="font-medium">{activo ? 'Notificaciones activadas' : 'Activá las notificaciones'}</div>
+        <p className="text-sm text-muted-foreground">{msg || 'Recibí en este dispositivo los avisos de tus partidos: horarios, reprogramaciones y resultados.'}</p>
+      </div>
+      <button className={activo ? 'btn-ghost text-sm' : 'btn-primary text-sm'} disabled={ocupado || jugadorPush.permiso() === 'denied'} onClick={cambiar}>
+        {jugadorPush.permiso() === 'denied' ? 'Bloqueadas en el navegador' : ocupado ? 'Un momento…' : activo ? 'Desactivar' : 'Activar'}
+      </button>
+    </div>
+  );
+}
+
 // ── Mi Perfil (dashboard) ─────────────────────────────────────
 export function JugadorDashboard() {
   const c = useCarga(() => jugador.dashboard(), []);
@@ -243,6 +275,8 @@ export function JugadorDashboard() {
               <div className="rounded-lg bg-muted/50 px-4 py-2"><div className="text-xl font-bold">{d.resumen.ligas}</div><div className="text-[11px] text-muted-foreground">Ligas</div></div>
             </div>
           </div>
+
+          <AvisosPush />
 
           <section className="space-y-2">
             <h2 className="font-semibold flex items-center gap-2"><Medal className="w-4 h-4 text-primary" /> Mi ranking</h2>
