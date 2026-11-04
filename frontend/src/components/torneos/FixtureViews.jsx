@@ -46,7 +46,7 @@ export function TablaZona({ zona, mostrarRanking = false }) {
   );
 }
 
-const resultadoTxt = (p) => (p.estado === 'walkover' && !p.es_bye ? 'W.O.' : setsTxt(p.resultado?.sets, p.resultado?.tie_breaks));
+export const resultadoTxt = (p) => (p.estado === 'walkover' && !p.es_bye ? 'W.O.' : setsTxt(p.resultado?.sets, p.resultado?.tie_breaks));
 
 /** Nombre de una pareja en un partido; los lugares a definir ("Ganador P1") van en cursiva. */
 function NombrePareja({ par, gano, fallback = 'A definir' }) {
@@ -135,6 +135,117 @@ export function ZonaGrilla({ zona, accionesDe }) {
       </div>
     </div>
   );
+}
+
+// ── Cronograma: partidos por día, horario y cancha ────────────
+const fechaLarga = (f) => new Date(`${f}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+/** Etiqueta del partido: "Zona A · P2" o la ronda de la llave. */
+export const instanciaDe = (p) => (p.ronda === 'zona' ? `${p.zona || 'Zona'} · P${p.orden}` : (RONDA_LABEL[p.ronda] || p.ronda));
+const nombreDe = (par, p, fallback = 'A definir') => par?.nombre || (p.es_bye ? 'BYE' : fallback);
+
+/**
+ * Agrupa los partidos por día (ascendente) y dentro de cada día los ordena por
+ * horario y luego por cancha. Los partidos sin programar van al final.
+ */
+export function agruparPorDia(partidos) {
+  const lista = partidos.filter(p => !p.es_bye);
+  const programados = lista.filter(p => p.fecha && p.hora)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora) || String(a.cancha || '').localeCompare(String(b.cancha || ''), 'es', { numeric: true }));
+  const dias = [];
+  for (const p of programados) {
+    const d = dias.at(-1);
+    if (d?.fecha === p.fecha) d.partidos.push(p); else dias.push({ fecha: p.fecha, partidos: [p] });
+  }
+  const sinProgramar = lista.filter(p => !p.fecha || !p.hora);
+  return { dias, sinProgramar };
+}
+
+/** Listado de partidos por día → horario → cancha (pantalla Partidos y página pública). */
+export function Cronograma({ partidos, accionesDe }) {
+  const { dias, sinProgramar } = agruparPorDia(partidos);
+  if (!dias.length && !sinProgramar.length) return <p className="text-sm text-muted-foreground">Todavía no hay partidos.</p>;
+  const fila = (p) => {
+    const g = (l) => p.resultado?.ganador_id && p.resultado.ganador_id === p[`pareja${l}`]?.id;
+    const res = resultadoTxt(p);
+    return (
+      <li key={p.id} className="px-4 py-3 grid grid-cols-[4.5rem_1fr] sm:grid-cols-[4.5rem_9rem_1fr_auto] gap-x-3 gap-y-1 items-start">
+        <div className="font-mono font-semibold text-base leading-tight">{p.hora || '—'}<span className="block sm:hidden text-[11px] font-sans font-normal text-muted-foreground">{p.cancha || 'Sin cancha'}</span></div>
+        <div className="hidden sm:block text-sm text-muted-foreground leading-snug">{p.cancha || 'Sin cancha'}</div>
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{instanciaDe(p)}</div>
+          <div className="text-[15px] leading-snug break-words"><span className={g(1) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja1, p)}</span> <span className="text-muted-foreground text-xs">vs</span> <span className={g(2) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja2, p)}</span></div>
+          {res && <div className="font-mono text-sm sm:hidden">{res}</div>}
+        </div>
+        <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2">
+          {res && <span className="hidden sm:inline font-mono text-sm">{res}</span>}
+          {accionesDe?.(p)}
+        </div>
+      </li>
+    );
+  };
+  return (
+    <div className="space-y-4">
+      {dias.map(d => (
+        <section key={d.fecha} className="card !p-0 overflow-hidden">
+          <h4 className="px-4 py-2.5 border-b border-border font-semibold capitalize bg-muted/40">{fechaLarga(d.fecha)} <span className="text-xs font-normal text-muted-foreground normal-case">· {d.partidos.length} partido(s)</span></h4>
+          <ul className="divide-y divide-border">{d.partidos.map(fila)}</ul>
+        </section>
+      ))}
+      {sinProgramar.length > 0 && (
+        <section className="card !p-0 overflow-hidden">
+          <h4 className="px-4 py-2.5 border-b border-border font-semibold text-amber-400">Sin programar · {sinProgramar.length}</h4>
+          <ul className="divide-y divide-border">{sinProgramar.map(fila)}</ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * PDF del fixture: abre una página imprimible (Guardar como PDF) con los partidos
+ * por zona (parejas + partidos) y por día → horario → cancha, como en la pantalla.
+ */
+export function imprimirFixture({ torneo, fx, categoria }) {
+  const e = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const llave = (fx.llave || []).flatMap(r => r.partidos).filter(p => !p.es_bye);
+  const todos = [...fx.zonas.flatMap(z => z.partidos), ...llave];
+  const { dias, sinProgramar } = agruparPorDia(todos);
+  const vs = (p) => `${e(nombreDe(p.pareja1, p))} <span class="vs">vs</span> ${e(nombreDe(p.pareja2, p))}`;
+  const cuando = (p) => (p.fecha ? `${e(fechaCorta(p.fecha))} · ${e(p.hora)} hs${p.cancha ? ` · ${e(p.cancha)}` : ''}` : 'Sin programar');
+  const zonasHtml = fx.zonas.map(z => {
+    const parejas = [...z.tabla].sort((a, b) => (a.numero_zona ?? 99) - (b.numero_zona ?? 99));
+    return `<div class="zona"><h3>${e(z.nombre)}</h3>
+      <ol class="parejas">${parejas.map(p => `<li><b>${e(p.numero_zona)}.</b> ${p.numero_zona === 1 ? '🏆 ' : ''}${e(p.pareja)}</li>`).join('')}</ol>
+      <table><thead><tr><th>#</th><th>Partido</th><th>Día · hora · cancha</th><th>Resultado</th></tr></thead><tbody>
+      ${z.partidos.map(p => `<tr><td>P${e(p.orden)}</td><td>${vs(p)}</td><td>${cuando(p)}</td><td class="mono">${e(resultadoTxt(p) || '')}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }).join('');
+  const tablaDia = (lista) => `<table><thead><tr><th>Hora</th><th>Cancha</th><th>Instancia</th><th>Partido</th><th>Resultado</th></tr></thead><tbody>
+    ${lista.map(p => `<tr><td class="mono">${e(p.hora || '—')}</td><td>${e(p.cancha || '—')}</td><td>${e(instanciaDe(p))}</td><td>${vs(p)}</td><td class="mono">${e(resultadoTxt(p) || '')}</td></tr>`).join('')}
+    </tbody></table>`;
+  const diasHtml = dias.map(d => `<div class="dia"><h3>${e(fechaLarga(d.fecha))}</h3>${tablaDia(d.partidos)}</div>`).join('')
+    + (sinProgramar.length ? `<div class="dia"><h3>Sin programar</h3>${tablaDia(sinProgramar)}</div>` : '');
+  const titulo = `${torneo.nombre}${categoria ? ` · ${categoria}` : ''}`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Fixture · ${e(titulo)}</title>
+<style>
+  *{box-sizing:border-box} body{font:12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:20px}
+  h1{font-size:18px;margin:0} .sub{color:#555;margin:2px 0 16px} h2{font-size:15px;margin:22px 0 8px;border-bottom:2px solid #111;padding-bottom:3px}
+  h3{font-size:13px;margin:0 0 6px;text-transform:capitalize} .zona,.dia{break-inside:avoid;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top} th{background:#f2f2f2;font-size:11px}
+  .parejas{margin:0 0 6px;padding:0;list-style:none;columns:2;column-gap:16px} .parejas li{margin:1px 0}
+  .vs{color:#888;font-size:10px} .mono{font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+  .pagina{break-before:page} button{float:right;padding:6px 12px} @media print{button{display:none} body{margin:10mm}}
+</style></head><body>
+<button onclick="print()">Imprimir / Guardar PDF</button>
+<h1>${e(titulo)}</h1>
+<p class="sub">${e(fechaCorta(torneo.fecha_inicio))} → ${e(fechaCorta(torneo.fecha_fin))} · ${todos.length} partidos · generado ${e(new Date().toLocaleString('es-AR'))}</p>
+<h2>Partidos por zona</h2>${zonasHtml || '<p>Sin zonas.</p>'}
+${llave.length ? `<h3>Llave</h3><table><thead><tr><th>Instancia</th><th>Partido</th><th>Día · hora · cancha</th><th>Resultado</th></tr></thead><tbody>${llave.map(p => `<tr><td>${e(instanciaDe(p))}</td><td>${vs(p)}</td><td>${cuando(p)}</td><td class="mono">${e(resultadoTxt(p) || '')}</td></tr>`).join('')}</tbody></table>` : ''}
+<h2 class="pagina">Partidos por día y horario</h2>${diasHtml || '<p>Sin partidos programados.</p>'}
+<script>setTimeout(function(){print()},300)</script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permití las ventanas emergentes para generar el PDF.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 /** Cuadro eliminatorio en columnas (scroll horizontal en mobile). */

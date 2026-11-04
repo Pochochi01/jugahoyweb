@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Settings, MapPin, Users, CalendarDays, GitBranch, BarChart2, MessageCircle,
-  ImagePlus, ExternalLink, RefreshCw, Check, X, Pencil, Send, Smartphone,
+  ImagePlus, ExternalLink, RefreshCw, Check, X, Pencil, Send, Smartphone, Download,
 } from 'lucide-react';
 import TorneoForm from './TorneoForm';
 import HorariosEditor from './HorariosEditor';
 import InscripcionForm from './InscripcionForm';
 import TelefonoEntidad from '../TelefonoEntidad';
 import CompartirMensaje from '../CompartirMensaje';
-import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores } from './FixtureViews';
+import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores, Cronograma, imprimirFixture } from './FixtureViews';
 import { CategoriaTabs } from './CategoriasSelect';
 import { uploadUrl } from '../../services/torneosService';
 import {
@@ -299,6 +299,7 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
   // Paso 1: vista previa de la siembra (no guarda). Paso 2: confirmar con la firma de esa vista.
   const [preview, setPreview] = useState(null);
   const [cargandoPrev, setCargandoPrev] = useState(false);
+  const [vistaPartidos, setVistaPartidos] = useState('zonas');   // zonas | dias
   const verPreview = async () => {
     setMsg({}); setCargandoPrev(true);
     try { setPreview(await svc.previewZonas(torneo.id, { incluir_pendientes: incluirPend, categoria_id: categoria })); }
@@ -391,24 +392,48 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
       {sinProgramar > 0 && <Aviso>{sinProgramar} partidos sin cancha/horario asignado.</Aviso>}
       {todos.length === 0 && <div className="card text-sm text-muted-foreground text-center py-6">Todavía no hay partidos.</div>}
 
-      {/* Zonas: grilla por zona con parejas numeradas y P1…Pn */}
-      <div className="grid 2xl:grid-cols-2 gap-4 items-start">
-        {fx.zonas.map(z => (
-          <div key={z.zona_id} className="space-y-2">
-            <ZonaGrilla zona={z} accionesDe={acciones} />
-            {z.partidos.map(p => <div key={p.id}>{editor(p)}</div>)}
+      {todos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1" role="tablist" aria-label="Vista de partidos">
+            {[['zonas', 'Por zona'], ['dias', 'Por día y horario']].map(([k, l]) => (
+              <button key={k} role="tab" aria-selected={vistaPartidos === k} onClick={() => setVistaPartidos(k)}
+                className={`px-3 py-1.5 rounded-lg text-sm ${vistaPartidos === k ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{l}</button>
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Llave */}
-      {llave.length > 0 && <h3 className="font-semibold pt-2">Llave</h3>}
-      {llave.map(p => (
-        <div key={p.id} className="space-y-2">
-          <PartidoRow p={p} etiqueta={RONDA_LABEL[p.ronda]} acciones={acciones(p)} />
-          {editor(p)}
+          <button className="btn-outline text-sm ml-auto flex items-center gap-1.5"
+            onClick={() => imprimirFixture({ torneo, fx, categoria: (torneo.categorias || []).length > 1 ? catNombre(categoria) : null })}>
+            <Download className="w-4 h-4" /> Descargar PDF
+          </button>
         </div>
-      ))}
+      )}
+
+      {vistaPartidos === 'dias' ? (
+        <div className="space-y-2">
+          <Cronograma partidos={todos} accionesDe={acciones} />
+          {todos.map(p => editando?.id === p.id && <div key={p.id}>{editor(p)}</div>)}
+        </div>
+      ) : (
+        <>
+          {/* Zonas: grilla por zona con parejas numeradas y P1…Pn */}
+          <div className="grid 2xl:grid-cols-2 gap-4 items-start">
+            {fx.zonas.map(z => (
+              <div key={z.zona_id} className="space-y-2">
+                <ZonaGrilla zona={z} accionesDe={acciones} />
+                {z.partidos.map(p => <div key={p.id}>{editor(p)}</div>)}
+              </div>
+            ))}
+          </div>
+
+          {/* Llave */}
+          {llave.length > 0 && <h3 className="font-semibold pt-2">Llave</h3>}
+          {llave.map(p => (
+            <div key={p.id} className="space-y-2">
+              <PartidoRow p={p} etiqueta={RONDA_LABEL[p.ronda]} acciones={acciones(p)} />
+              {editor(p)}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
