@@ -345,6 +345,11 @@ async function historialPuntajes(req, res) {
   try { res.json(await svc.historialPuntajes(req.torneo, { jugadorId: req.query.jugador_id })); } catch (err) { send(res, err); }
 }
 
+/** PUT /torneos/:torneoId/categorias/:categoriaId/llave-inicio  { fecha, hora } (vacíos = sin inicio fijo) */
+async function inicioLlave(req, res) {
+  try { res.json(await svc.configurarInicioLlave(req.torneo, req.params.categoriaId, req.body || {})); } catch (err) { send(res, err); }
+}
+
 /** GET /torneos/:torneoId/partidos/:partidoId/historial — reprogramaciones del partido. */
 async function historialPartido(req, res) {
   try { res.json(await svc.historialPartido(req.torneo, req.params.partidoId)); } catch (err) { send(res, err); }
@@ -366,7 +371,7 @@ async function reprogramar(req, res) {
 }
 
 module.exports = {
-  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido,
+  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido, inicioLlave,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,

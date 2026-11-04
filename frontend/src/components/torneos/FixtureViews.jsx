@@ -252,8 +252,48 @@ ${llave.length ? `<h3>Llave</h3><table><thead><tr><th>Instancia</th><th>Partido<
   w.document.open(); w.document.write(html); w.document.close();
 }
 
+/** Cuadro de referencia: mismos cruces que la llave real; cada lugar se completa con la pareja al terminar su zona. */
+function BracketReferencia({ prevista }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        <strong className="text-foreground">Llave de referencia</strong> · {prevista.clasificados} clasificados de {prevista.zonas} zonas{prevista.estimada ? ' (estimadas con las parejas inscriptas)' : ''}
+        {' '}→ empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong>{prevista.byes ? ` · ${prevista.byes} BYE para los primeros de zona` : ''}.
+        Al terminar cada zona su lugar se reemplaza por la pareja que quedó en esa posición.
+      </p>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex gap-4 min-w-max">
+          {prevista.rondas.map(r => (
+            <div key={r.ronda} className="w-60 flex flex-col">
+              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{RONDA_LABEL[r.ronda]}</div>
+              <div className="flex flex-col justify-around flex-1 gap-3">
+                {r.partidos.map(p => (
+                  <div key={p.id} className="rounded-lg border border-dashed border-border bg-card text-xs overflow-hidden">
+                    {[1, 2].map(l => {
+                      const par = p[`pareja${l}`];
+                      return (
+                        <div key={l} className={`px-2.5 py-1.5 ${l === 2 ? 'border-t border-dashed border-border' : ''}`}>
+                          {par
+                            ? <span className={par.pendiente ? 'italic text-muted-foreground' : 'font-medium'} title={par.referencia && !par.pendiente ? par.referencia : undefined}>{par.nombre}{!par.pendiente && par.referencia && <span className="ml-1 text-[10px] text-muted-foreground not-italic">({par.referencia})</span>}</span>
+                            : <span className="italic text-muted-foreground">BYE</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Cuadro eliminatorio en columnas (scroll horizontal en mobile). */
-export function Bracket({ llave, campeonId }) {
+export function Bracket({ llave, campeonId, prevista }) {
+  // Sin llave generada: cuadro de referencia por zonas ("1° Zona A vs 2° Zona D")
+  if (!llave?.length && prevista?.rondas?.length) return <BracketReferencia prevista={prevista} />;
   if (!llave?.length) return <p className="text-sm text-muted-foreground">La llave se genera al terminar la fase de zonas.</p>;
   const campeon = campeonId && llave.at(-1).partidos[0];
   const nombreCampeon = campeon && (campeon.pareja1?.id === campeonId ? campeon.pareja1 : campeon.pareja2)?.nombre;

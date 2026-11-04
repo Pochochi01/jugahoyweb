@@ -106,7 +106,7 @@ export function TorneoPublicPage() {
       {tab === 'fixture' && (fx?.zonas?.length
         ? <div className="grid xl:grid-cols-2 gap-4 items-start">{fx.zonas.map(z => <ZonaGrilla key={z.zona_id} zona={z} />)}</div>
         : <p className="text-sm text-muted-foreground">El fixture se publica al cerrar la inscripción.</p>)}
-      {tab === 'llave' && <Bracket llave={fx?.llave} campeonId={fx?.campeon} />}
+      {tab === 'llave' && <Bracket llave={fx?.llave} campeonId={fx?.campeon} prevista={fx?.llave_prevista} />}
       {tab === 'posiciones' && (
         <div className="space-y-5">
           <div className="grid lg:grid-cols-2 gap-4">{fx?.zonas?.map(z => <TablaZona key={z.zona_id} zona={z} mostrarRanking={torneo.tipo === 'anual'} />)}</div>

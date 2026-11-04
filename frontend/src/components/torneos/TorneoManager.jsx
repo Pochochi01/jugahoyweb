@@ -14,7 +14,7 @@ import ReprogramarModal from './ReprogramarModal';
 import PlantelModal from './PlantelModal';
 import { uploadUrl } from '../../services/torneosService';
 import {
-  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL,
+  ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL, diasTorneo,
   errorResultado, catNombre, catsTexto,
 } from '../../utils/torneos';
 
@@ -596,21 +596,70 @@ function LlaveSeccion({ svc, torneo, onChange, categoria }) {
     } catch (e) { setMsg({ error: errMsg(e) }); }
   };
   const zonasCompletas = fx.zonas.length > 0 && fx.zonas.every(z => z.completa);
-  const estadoCat = fx.categorias?.find(c => c.categoria_id === fx.categoria_id)?.estado;
+  const tc = fx.categorias?.find(c => c.categoria_id === fx.categoria_id);
+  const estadoCat = tc?.estado;
 
   return (
     <div className="space-y-4">
+      {['pendiente', 'zonas'].includes(estadoCat) && (
+        <InicioLlave svc={svc} torneo={torneo} tc={tc} prevista={fx.llave_prevista} onGuardado={(m) => { setMsg({ ok: m }); cargar(); }} onError={(m) => setMsg({ error: m })} />
+      )}
       {estadoCat === 'zonas' && (
         <div className="card flex flex-wrap items-center gap-3">
           <p className="text-sm flex-1">
             {zonasCompletas ? 'Todas las zonas terminaron.' : 'La llave se arma sola al cargar el último resultado de zona.'} Clasifican {torneo.clasifican_por_zona} por zona;
-            si no se completa el cuadro, los mejores reciben BYE.
+            los cruces son fijos por zona y posición (ver la llave de referencia); si no se completa el cuadro, los primeros de zona reciben BYE.
           </p>
           <button className="btn-primary text-sm" onClick={() => generar(!zonasCompletas)}>Generar llave{zonasCompletas ? '' : ' (forzar)'}</button>
         </div>
       )}
       <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>
-      <Bracket llave={fx.llave} campeonId={fx.campeon} />
+      <Bracket llave={fx.llave} campeonId={fx.campeon} prevista={fx.llave_prevista} />
+    </div>
+  );
+}
+
+/**
+ * Inicio de la llave (por categoría): según la cantidad de parejas se informa en qué ronda
+ * empieza (ej. 12 parejas → 4 zonas → cuartos) y se elige el día y la hora de comienzo.
+ */
+function InicioLlave({ svc, torneo, tc, prevista, onGuardado, onError }) {
+  const [fecha, setFecha] = useState(tc?.llave_inicio_fecha || '');
+  const [hora, setHora] = useState(tc?.llave_inicio_hora || '');
+  const [guardando, setGuardando] = useState(false);
+  const guardar = async (limpiar = false) => {
+    if (!limpiar && (!fecha || !hora)) return onError('Elegí el día y la hora de inicio de la llave.');
+    setGuardando(true);
+    try {
+      await svc.inicioLlave(torneo.id, tc.categoria_id, limpiar ? { fecha: null, hora: null } : { fecha, hora });
+      if (limpiar) { setFecha(''); setHora(''); }
+      onGuardado(limpiar ? 'La llave empieza apenas termine la fase de zonas.' : `La llave empieza el ${fechaCorta(fecha)} a las ${hora} hs.`);
+    } catch (e) { onError(errMsg(e)); } finally { setGuardando(false); }
+  };
+  return (
+    <div className="card space-y-3">
+      <div className="font-semibold text-sm">Inicio de la llave</div>
+      {prevista && (
+        <p className="text-sm text-muted-foreground">
+          Con {prevista.zonas} zona(s){prevista.estimada ? ' (estimadas con las parejas inscriptas)' : ''} y {Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona)} clasificado(s) por zona,
+          la llave empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong> ({prevista.clasificados} parejas{prevista.byes ? `, ${prevista.byes} BYE` : ''}).
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-muted-foreground">Día
+          <select className="input text-sm !w-auto" value={fecha} onChange={e => setFecha(e.target.value)}>
+            <option value="">Elegí el día</option>
+            {diasTorneo(torneo.fecha_inicio, torneo.fecha_fin).map(d => <option key={d} value={d}>{fechaCorta(d)}</option>)}
+          </select></label>
+        <label className="text-xs text-muted-foreground">Hora
+          <input className="input text-sm !w-auto" type="time" step="900" value={hora} onChange={e => setHora(e.target.value)} /></label>
+        <button className="btn-primary text-sm" disabled={guardando} onClick={() => guardar(false)}>Guardar</button>
+        {tc?.llave_inicio_fecha && <button className="btn-ghost text-sm" disabled={guardando} onClick={() => guardar(true)}>Quitar (empezar al terminar las zonas)</button>}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {tc?.llave_inicio_fecha ? `Configurado: ${fechaCorta(tc.llave_inicio_fecha)} · ${tc.llave_inicio_hora} hs. ` : 'Sin inicio fijo: la llave se programa a continuación de las zonas. '}
+        Al generar la llave ningún partido se programa antes de este momento.
+      </p>
     </div>
   );
 }

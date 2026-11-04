@@ -27,6 +27,9 @@ const TorneoCategoria = sequelize.define('TorneoCategoria', {
   categoria_id: { type: T.TINYINT, allowNull: false },
   estado: { type: T.ENUM('pendiente', 'zonas', 'llaves', 'finalizado'), defaultValue: 'pendiente' },
   puntos_asignados: { type: T.BOOLEAN, defaultValue: false },
+  // Inicio de la llave de esta categoría (null = después de la fase de zonas)
+  llave_inicio_fecha: { type: T.DATEONLY, allowNull: true },
+  llave_inicio_hora: { type: T.STRING(5), allowNull: true },
 }, { tableName: 'torneo_categorias' });
 
 // Registro único de jugadores del club (por DNI): base del ranking y de la inscripción

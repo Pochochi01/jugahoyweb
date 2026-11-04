@@ -94,6 +94,7 @@ export function torneosStaff(client, cid) {
     previewZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/preview`, d),   // siembra en serpiente, sin guardar
     generarZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/generar`, d),
     generarLlave:  (tid, d)    => client.post(`${t(tid)}/llave/generar`, d),
+    inicioLlave:   (tid, cat, d) => client.put(`${t(tid)}/categorias/${cat}/llave-inicio`, d),   // { fecha, hora } (vacíos = sin inicio fijo)
     fixture:       (tid, categoria_id) => client.get(`${t(tid)}/fixture`, { params: categoria_id ? { categoria_id } : {} }),
     ranking:       (tid, categoria_id) => client.get(`${t(tid)}/ranking`, { params: categoria_id ? { categoria_id } : {} }),
     // Puntaje manual de un jugador en las posiciones (solo admin del club) + historial

@@ -465,6 +465,7 @@ function rankingClasificados(zonas, clasificanPorZona) {
 function armarLlave(clasificados) {
   const lista = clasificados.slice(0, 16);
   if (lista.length < 2) throw badRequest('Se necesitan al menos 2 clasificados para armar la llave.');
+  // Un lugar sin pareja (pareja_id null) se trata como BYE
   let tam = 2;
   while (tam < lista.length) tam *= 2;
 
@@ -493,7 +494,7 @@ function armarLlave(clasificados) {
     actual.push({
       pareja1_id: p1?.pareja_id ?? null,
       pareja2_id: p2?.pareja_id ?? null,
-      es_bye: !p1 || !p2,
+      es_bye: !p1?.pareja_id || !p2?.pareja_id,
     });
   }
   let t = tam;
@@ -526,7 +527,44 @@ function armarLlave(clasificados) {
   return { tam, rondas };
 }
 
+// ── Llave por zonas (cuadro de referencia) ─────────────────────
+/**
+ * Lugares de la llave en orden de siembra: primero los 1° de cada zona (A, B, C…),
+ * después los 2° (A, B, C…), etc. Máximo 16 (octavos).
+ * Con la siembra estándar el k-ésimo 2° enfrenta al 1° de la zona N+1-k, y armarLlave
+ * evita cruces de la misma zona en primera ronda: el cuadro es FIJO y se conoce antes
+ * de jugar las zonas ("1° Zona A vs 2° Zona D").
+ */
+function plazasLlave(numZonas, clasificanPorZona) {
+  const out = [];
+  for (let pos = 1; pos <= clasificanPorZona; pos++) {
+    for (let z = 0; z < numZonas; z++) out.push({ zona_idx: z, posicion: pos, key: `${pos}-${z}`, etiqueta: `${pos}° ${nombreZona(z)}` });
+  }
+  return out.slice(0, 16);
+}
+
+/** Ronda en la que empieza la llave según zonas y clasificados (ej. 4 zonas × 2 → cuartos). */
+function rondaInicial(numZonas, clasificanPorZona) {
+  const clasificados = Math.min(16, numZonas * clasificanPorZona);
+  let tam = 2;
+  while (tam < clasificados) tam *= 2;
+  return { tam, ronda: RONDAS_POR_TAMANIO[tam], clasificados, byes: tam - clasificados };
+}
+
+/**
+ * Cuadro de la llave por zona y posición. `asignar(plaza)` devuelve el pareja_id real del
+ * lugar (o null = BYE); sin `asignar` el cuadro queda con las claves de los lugares
+ * (referencia). Placeholder y llave real salen del MISMO algoritmo → coinciden siempre.
+ */
+function armarLlavePorZonas(numZonas, clasificanPorZona, asignar = null) {
+  if (numZonas * clasificanPorZona < 2) throw badRequest('Se necesitan al menos 2 clasificados para armar la llave.');
+  const plazas = plazasLlave(numZonas, clasificanPorZona);
+  const lista = plazas.map(p => ({ pareja_id: asignar ? asignar(p) : p.key, zona_id: p.zona_idx, plaza: p }));
+  return { ...armarLlave(lista), plazas };
+}
+
 module.exports = {
+  plazasLlave, rondaInicial, armarLlavePorZonas,
   PUNTOS_VICTORIA, PUNTOS_DERROTA, ORDEN_RONDAS,
   toMin, toHHMM, diasEntre, validarFranjas,
   armarZonas, serpentina, cantidadZonas, generateSnakeSeedingZones, ordenarPorRanking, compararSiembra, crucesZona4, nombreZona, roundRobin,
