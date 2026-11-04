@@ -56,6 +56,8 @@ function validar(body, { parcial = false } = {}) {
   if (body.nombre !== undefined) out.nombre = String(body.nombre).trim() || null;
   if (body.whatsapp !== undefined) out.whatsapp = String(body.whatsapp).replace(/\D/g, '') || null;
   if (body.activo !== undefined) out.activo = Boolean(body.activo);
+  // Permisos granulares (reprogramar, editar plantel…); null = todos
+  if (body.permisos !== undefined) out.permisos = body.permisos === null ? null : require('../services/torneos/torneoPermisos').normalizar(body.permisos);
   return out;
 }
 

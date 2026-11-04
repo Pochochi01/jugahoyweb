@@ -111,6 +111,32 @@ const RankingResultado = sequelize.define('RankingResultado', {
   puntos: { type: T.INTEGER, defaultValue: 0 },
 }, { tableName: 'ranking_resultados' });
 
+// Reprogramaciones de partidos (match_reschedules) y cola de notificaciones preparada
+const TorneoReprogramacion = sequelize.define('TorneoReprogramacion', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  partido_id: { type: T.INTEGER, allowNull: false }, torneo_id: { type: T.INTEGER, allowNull: false },
+  old_fecha: T.DATEONLY, old_hora: T.STRING(5), old_field_id: T.INTEGER, old_estado: T.STRING(20),
+  new_fecha: T.DATEONLY, new_hora: T.STRING(5), new_field_id: T.INTEGER, new_estado: T.STRING(20),
+  motivo: T.STRING(255), usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_partido_reprogramaciones', updatedAt: false });
+
+const TorneoNotificacion = sequelize.define('TorneoNotificacion', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, partido_id: T.INTEGER,
+  tipo: { type: T.STRING(30), allowNull: false },
+  destinatario_tipo: { type: T.ENUM('pareja', 'jugador', 'delegado', 'arbitro'), allowNull: false },
+  destinatario_id: T.INTEGER, canal: { type: T.STRING(20), defaultValue: 'manual' },
+  estado: { type: T.ENUM('pendiente', 'enviada', 'descartada'), defaultValue: 'pendiente' }, payload: T.JSON,
+}, { tableName: 'torneo_notificaciones', updatedAt: false });
+
+// Historial del plantel (team_player_changes)
+const TorneoJugadorCambio = sequelize.define('TorneoJugadorCambio', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, pareja_id: { type: T.INTEGER, allowNull: false }, jugador_id: T.INTEGER,
+  accion: { type: T.ENUM('CREATE', 'UPDATE', 'DELETE'), allowNull: false },
+  datos_anteriores: T.JSON, datos_nuevos: T.JSON, usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_jugador_cambios', updatedAt: false });
+
 function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, TorneoJugador }) {
   Complex.hasMany(TorneoLiga, { foreignKey: 'id_tenant', as: 'ligas' });
   TorneoLiga.hasMany(Torneo, { foreignKey: 'liga_id', as: 'torneos' });
@@ -132,4 +158,4 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
 }
 
 module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial,
-  RankingTemporada, RankingConfiguracion, RankingResultado }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };
+  RankingTemporada, RankingConfiguracion, RankingResultado, TorneoReprogramacion, TorneoNotificacion, TorneoJugadorCambio }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };

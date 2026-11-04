@@ -36,6 +36,8 @@ const resultados  = require('../controllers/torneoResultadosController');
 const comunicacion = require('../controllers/torneoComunicacionController');
 const pub         = require('../controllers/torneoPublicController');
 const ranking     = require('../controllers/torneoRankingController');
+const plantel     = require('../controllers/torneoPlantelController');
+const { requireTorneoPermiso: puede } = require('../services/torneos/torneoPermisos');
 const { authTorneoStaff, requireClubAdmin, loadTorneo, optionalUser } = require('../middlewares/torneoAuth');
 const { requireCanchas, requireModulo } = require('../middlewares/canchas');
 const { rutasTelefono } = require('../controllers/entityPhoneController');
@@ -76,6 +78,7 @@ const club = require('express').Router({ mergeParams: true });
 router.use('/club/:complexId', authTorneoStaff, requireCanchas, requireModulo('torneos'), club);
 
 club.get('/organizador/me', orgs.me);
+club.get('/torneos-permisos', plantel.misPermisos);
 
 // Organizadores (solo admins del club)
 club.get   ('/organizadores',     requireClubAdmin, orgs.list);
@@ -143,7 +146,18 @@ club.get ('/torneos/:torneoId/ranking',                 loadTorneo, torneos.rank
 // Puntaje manual en las posiciones (solo administrador del club; queda en torneo_puntajes_historial)
 club.put ('/torneos/:torneoId/jugadores/:jugadorId/puntaje', requireClubAdmin, loadTorneo, torneos.modificarPuntaje);
 club.get ('/torneos/:torneoId/puntajes/historial',      requireClubAdmin, loadTorneo, torneos.historialPuntajes);
-club.put ('/torneos/:torneoId/partidos/:partidoId/programacion', loadTorneo, torneos.reprogramar);
+// Reprogramación auditada (permisos granulares; día / hora / cancha se validan en el servicio)
+club.put  ('/torneos/:torneoId/partidos/:partidoId/programacion', loadTorneo, puede('tournament.match.reschedule'), torneos.reprogramar);
+club.patch('/torneos/:torneoId/partidos/:partidoId/reschedule',   loadTorneo, puede('tournament.match.reschedule'), torneos.reprogramar);
+club.get  ('/torneos/:torneoId/partidos/:partidoId/historial',    loadTorneo, torneos.historialPartido);
+
+// Editar plantel de una inscripción (pareja)
+const pl = '/torneos/:torneoId/parejas/:parejaId/jugadores';
+club.get   (pl,                   loadTorneo, puede('tournament.team.edit_players'), plantel.listar);
+club.get   (`${pl}/historial`,     loadTorneo, puede('tournament.team.edit_players'), plantel.historial);
+club.post  (pl,                   loadTorneo, puede('tournament.team.edit_players', 'tournament.team.add_player'), plantel.agregar);
+club.put   (`${pl}/:jugadorId`,   loadTorneo, puede('tournament.team.edit_players', 'tournament.team.update_player'), plantel.modificar);
+club.delete(`${pl}/:jugadorId`,   loadTorneo, puede('tournament.team.edit_players', 'tournament.team.remove_player'), plantel.eliminar);
 
 // Resultados
 club.get   ('/torneos/:torneoId/partidos',                       loadTorneo, resultados.list);

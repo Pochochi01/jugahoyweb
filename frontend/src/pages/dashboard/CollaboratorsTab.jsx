@@ -9,6 +9,9 @@ const PERMISOS_DEF = {
   agenda: false, caja: false, operaciones: false,
   configuracion: false, colaboradores: false, estadisticas: false,
   cancelar_turnos: false, cantina_gestion: false, cantina_ventas: false, torneos: false, profesores: false, escuela: false,
+  // Torneos: permisos granulares (habilitados salvo que se desactiven; requieren 'torneos')
+  'tournament.match.reschedule': true, 'tournament.match.change_date': true, 'tournament.match.change_time': true, 'tournament.match.change_court': true,
+  'tournament.team.edit_players': true, 'tournament.team.add_player': true, 'tournament.team.update_player': true, 'tournament.team.remove_player': true,
 };
 const PERMISOS_LABELS = {
   agenda: 'Agenda', caja: 'Caja', operaciones: 'Operaciones',
@@ -19,6 +22,14 @@ const PERMISOS_LABELS = {
   torneos: 'Torneos de pádel',
   profesores: 'Profesores (pádel / fútbol)',
   escuela: 'Escuela de fútbol',
+  'tournament.match.reschedule': 'Torneos — Reprogramar partidos',
+  'tournament.match.change_date': 'Torneos — Cambiar día',
+  'tournament.match.change_time': 'Torneos — Cambiar horario',
+  'tournament.match.change_court': 'Torneos — Cambiar cancha',
+  'tournament.team.edit_players': 'Torneos — Editar plantel',
+  'tournament.team.add_player': 'Torneos — Agregar jugadores',
+  'tournament.team.update_player': 'Torneos — Modificar jugadores',
+  'tournament.team.remove_player': 'Torneos — Eliminar jugadores',
 };
 
 const FORM_INICIAL = {
@@ -325,7 +336,8 @@ function CollaboratorRow({ col, complexId, onUpdated, onDeleted }) {
               email:     col.user?.email || '',
               telefono:  col.user?.telefono || '',
               password:  '',
-              permisos:  col.permisos  || { ...PERMISOS_DEF },
+              // Permisos nuevos (granulares de torneos) toman su valor por defecto si no estaban guardados
+              permisos:  { ...PERMISOS_DEF, ...(col.permisos || {}) },
             }}
             onSave={handleSave}
             onCancel={() => setMode(null)}

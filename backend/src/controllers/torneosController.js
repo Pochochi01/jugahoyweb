@@ -9,6 +9,7 @@ const path = require('path');
 const { Op } = require('sequelize');
 const { Torneo, TorneoCancha, TorneoPareja, TorneoCategoria, TorneoLiga, Field, Profesor, sequelize } = require('../models');
 const rk = require('../services/torneos/rankingService');
+const permisos = require('../services/torneos/torneoPermisos');
 const { DEPORTES } = require('../models/Escuela');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
@@ -344,17 +345,28 @@ async function historialPuntajes(req, res) {
   try { res.json(await svc.historialPuntajes(req.torneo, { jugadorId: req.query.jugador_id })); } catch (err) { send(res, err); }
 }
 
+/** GET /torneos/:torneoId/partidos/:partidoId/historial — reprogramaciones del partido. */
+async function historialPartido(req, res) {
+  try { res.json(await svc.historialPartido(req.torneo, req.params.partidoId)); } catch (err) { send(res, err); }
+}
+
+/**
+ * PATCH|PUT /torneos/:torneoId/partidos/:partidoId/programacion
+ * body: { field_id, fecha, hora, estado?: 'programado'|'pendiente', motivo?, notificar? }
+ */
 async function reprogramar(req, res) {
   try {
-    const { field_id, fecha, hora, notificar } = req.body || {};
-    if (!field_id || !fecha || !hora) return res.status(400).json({ message: 'field_id, fecha y hora son requeridos.' });
-    const p = await svc.reprogramarPartido(req.torneo, req.params.partidoId, { field_id: Number(field_id), fecha, hora }, { notificar: notificar !== false });
-    res.json(p);
+    const { field_id, fecha, hora, estado, motivo, notificar } = req.body || {};
+    const usuario = req.user ? autor(req) : { nombre: req.organizador ? `Organizador ${req.organizador.nombre || req.organizador.usuario}` : null };
+    const r = await svc.reprogramarPartido(req.torneo, req.params.partidoId, { field_id, fecha, hora, estado }, {
+      motivo, usuario, notificar: notificar !== false, puede: (p) => permisos.puede(req, p),
+    });
+    res.json(r);
   } catch (err) { send(res, err); }
 }
 
 module.exports = {
-  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas,
+  conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
   generarZonas, generarLlave, fixture, ranking, reprogramar,

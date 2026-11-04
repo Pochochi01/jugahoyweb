@@ -25,6 +25,7 @@ const {
   sequelize, Torneo, TorneoCancha, TorneoZona, TorneoPareja, TorneoJugador,
   TorneoPartido, TorneoResultado, TorneoTicket, Field, Booking, TimeSlot,
   TorneoTablaPosicion, TorneoCategoria, TorneoPuntajeHistorial, TorneoZonaHistorial,
+  TorneoReprogramacion, TorneoNotificacion,
 } = require('../../models');
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
@@ -959,33 +960,98 @@ async function notificarProximos(torneo, { parejaIds } = {}) {
   return { parejas: avisadas.size, mensajes: enviados };
 }
 
-// ── Reprogramación manual ─────────────────────────────────────
-async function reprogramarPartido(torneo, partidoId, { field_id, fecha, hora }, { notificar = true } = {}) {
+// ── Reprogramación manual (auditada) ─────────────────────────
+const ISO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Reprograma un partido: nuevo día / horario / cancha, o lo deja "sin programar"
+ * (estado = 'pendiente'). Valida: partido no jugado, torneo en curso, cancha cedida al
+ * torneo, horario dentro de la franja de la cancha y libre en la agenda general
+ * (reservas, clases, otros torneos), sin otro partido del torneo en esa cancha y hora,
+ * y sin que las parejas pierdan el descanso mínimo.
+ * Registra el cambio (torneo_partido_reprogramaciones) y deja preparadas las notificaciones.
+ * @param {object} datos  { field_id, fecha, hora, estado?: 'programado'|'pendiente' }
+ * @param {object} opts   { motivo, usuario, puede?: (permiso) => boolean, notificar }
+ */
+async function reprogramarPartido(torneo, partidoId, datos = {}, { notificar = true, motivo = null, usuario = {}, puede = () => true } = {}) {
   const partido = await TorneoPartido.findOne({ where: { id: partidoId, torneo_id: torneo.id } });
   if (!partido) throw httpError(404, 'Partido no encontrado');
-  if (['jugado', 'walkover'].includes(partido.estado)) throw httpError(409, 'El partido ya se jugó.');
+  if (['jugado', 'walkover'].includes(partido.estado)) throw httpError(409, 'El partido ya se jugó: no se puede reprogramar.');
+  if (['finalizado', 'cancelado'].includes(torneo.estado)) throw httpError(409, `El torneo está ${torneo.estado}.`);
+  if (partido.es_bye) throw httpError(400, 'Un BYE no se programa.');
+  const mot = motivo ? String(motivo).trim().slice(0, 255) || null : null;
+  const antes = { fecha: partido.fecha, hora: partido.hora, field_id: partido.field_id, estado: partido.estado };
+  const estado = datos.estado === 'pendiente' ? 'pendiente' : 'programado';
 
-  const cancha = await TorneoCancha.findOne({ where: { torneo_id: torneo.id, field_id } });
-  if (!cancha) throw httpError(400, 'Esa cancha no está cedida al torneo.');
-  const slots = await slotsDisponibles(torneo);
-  const slot = slots.find(s => s.field_id === Number(field_id) && s.fecha === fecha && s.hora === hora);
-  if (!slot) throw httpError(409, 'Ese horario no está disponible en la cancha (fuera de franja o reservado).');
+  let cambios;
+  if (estado === 'pendiente') {
+    if (antes.estado === 'pendiente' && !antes.fecha) throw httpError(400, 'El partido ya está sin programar.');
+    cambios = { field_id: null, fecha: null, hora: null, estado: 'pendiente', fuera_preferencia: false };
+  } else {
+    const fieldId = Number(datos.field_id);
+    const { fecha, hora } = datos;
+    if (!Number.isInteger(fieldId) || fieldId <= 0) throw httpError(400, 'Elegí la cancha.');
+    if (!ISO_FECHA.test(String(fecha || ''))) throw httpError(400, 'Fecha inválida.');
+    if (!HHMM.test(String(hora || ''))) throw httpError(400, 'Horario inválido (HH:MM).');
+    if (fecha < torneo.fecha_inicio || fecha > torneo.fecha_fin) throw httpError(400, `La fecha debe estar entre el ${torneo.fecha_inicio} y el ${torneo.fecha_fin}.`);
+    if (fecha === antes.fecha && hora === antes.hora && fieldId === antes.field_id && antes.estado === 'programado') throw httpError(400, 'No hay cambios: es el mismo día, horario y cancha.');
+    // Permisos granulares por tipo de cambio
+    const faltan = [
+      fecha !== antes.fecha && 'tournament.match.change_date',
+      hora !== antes.hora && 'tournament.match.change_time',
+      fieldId !== antes.field_id && 'tournament.match.change_court',
+    ].filter(Boolean).filter(p => !puede(p));
+    if (faltan.length) throw Object.assign(httpError(403, `No tenés permiso para: ${faltan.map(p => ({ 'tournament.match.change_date': 'cambiar el día', 'tournament.match.change_time': 'cambiar el horario', 'tournament.match.change_court': 'cambiar la cancha' }[p])).join(', ')}.`), { permisos: faltan });
 
-  const { agenda, usados } = await estadoAgenda(torneo, slots, { id: { [Op.ne]: partido.id } });
-  if (usados.has(`${slot.field_id}|${slot.abs}`)) throw httpError(409, 'Ya hay otro partido en esa cancha y horario.');
-  const choca = [partido.pareja1_id, partido.pareja2_id].filter(Boolean).some(pid =>
-    (agenda.get(pid) || []).some(([a, b]) => slot.abs < b + torneo.descanso_minimo && a < slot.abs + slot.dur + torneo.descanso_minimo));
-  if (choca) throw httpError(409, 'Una de las parejas ya juega en ese horario (o sin el descanso mínimo).');
+    const cancha = await TorneoCancha.findOne({ where: { torneo_id: torneo.id, field_id: fieldId } });
+    if (!cancha) throw httpError(400, 'Esa cancha no está cedida al torneo.');
+    const slots = await slotsDisponibles(torneo);
+    const slot = slots.find(s => s.field_id === fieldId && s.fecha === fecha && s.hora === hora);
+    if (!slot) throw httpError(409, 'Ese horario no está disponible en la cancha: está fuera de la franja cedida al torneo o ya hay una reserva, clase u otro torneo.');
+    const { agenda, usados } = await estadoAgenda(torneo, slots, { id: { [Op.ne]: partido.id } });
+    if (usados.has(`${slot.field_id}|${slot.abs}`)) throw httpError(409, 'Ya hay otro partido del torneo en esa cancha y horario.');
+    const choca = [partido.pareja1_id, partido.pareja2_id].filter(Boolean).some(pid =>
+      (agenda.get(pid) || []).some(([a, b]) => slot.abs < b + torneo.descanso_minimo && a < slot.abs + slot.dur + torneo.descanso_minimo));
+    if (choca) throw httpError(409, 'Una de las parejas ya juega en ese horario (o sin el descanso mínimo).');
+    const parejas = await TorneoPareja.findAll({ where: { id: [partido.pareja1_id, partido.pareja2_id].filter(Boolean) } });
+    cambios = { field_id: fieldId, fecha, hora, estado: 'programado', fuera_preferencia: !parejas.every(p => fx.encajaPreferencia(p, slot)) };
+  }
 
-  const parejas = await TorneoPareja.findAll({ where: { id: [partido.pareja1_id, partido.pareja2_id].filter(Boolean) } });
-  const fuera = !parejas.every(p => fx.encajaPreferencia(p, slot));
+  let registro;
   await conTransaccion(async (t) => {
-    await partido.update({ field_id: slot.field_id, fecha, hora, estado: 'programado', fuera_preferencia: fuera }, { transaction: t });
+    await partido.update(cambios, { transaction: t });
+    registro = await TorneoReprogramacion.create({
+      partido_id: partido.id, torneo_id: torneo.id,
+      old_fecha: antes.fecha, old_hora: antes.hora, old_field_id: antes.field_id, old_estado: antes.estado,
+      new_fecha: cambios.fecha, new_hora: cambios.hora, new_field_id: cambios.field_id, new_estado: cambios.estado,
+      motivo: mot, usuario_id: usuario.id || null, usuario: usuario.nombre || null,
+    }, { transaction: t });
+    // Estructura preparada para avisos futuros (hoy no se envían: Torneos es canal manual)
+    const destinatarios = [partido.pareja1_id, partido.pareja2_id].filter(Boolean).map(id => ({ destinatario_tipo: 'pareja', destinatario_id: id }));
+    if (destinatarios.length) {
+      await TorneoNotificacion.bulkCreate(destinatarios.map(d => ({
+        ...d, torneo_id: torneo.id, partido_id: partido.id, tipo: 'reprogramacion', canal: 'manual', estado: 'pendiente',
+        payload: { antes, despues: { fecha: cambios.fecha, hora: cambios.hora, field_id: cambios.field_id, estado: cambios.estado }, motivo: mot },
+      })), { transaction: t });
+    }
     await sincronizarAgenda(torneo, t);
   });
+  console.log(`[torneos] partido ${partido.id} reprogramado · torneo ${torneo.id} · ${antes.fecha || '—'} ${antes.hora || ''} cancha ${antes.field_id || '—'} → ${cambios.fecha || 'sin programar'} ${cambios.hora || ''} cancha ${cambios.field_id || '—'} · ${usuario.nombre || '?'}${mot ? ` · "${mot}"` : ''}`);
 
-  if (notificar && partido.pareja1_id && partido.pareja2_id) await despacharAvisos(torneo, [{ tipo: 'proximo', partidoId: partido.id }]);
-  return partido;
+  if (notificar && estado === 'programado' && partido.pareja1_id && partido.pareja2_id) await despacharAvisos(torneo, [{ tipo: 'proximo', partidoId: partido.id }]);
+  return { partido: await cargarPartido(partido.id), reprogramacion: registro };
+}
+
+/** Historial de reprogramaciones de un partido (con nombres de cancha). */
+async function historialPartido(torneo, partidoId) {
+  const partido = await TorneoPartido.findOne({ where: { id: partidoId, torneo_id: torneo.id }, attributes: ['id'] });
+  if (!partido) throw httpError(404, 'Partido no encontrado');
+  const filas = await TorneoReprogramacion.findAll({ where: { partido_id: partido.id }, order: [['id', 'DESC']] });
+  const ids = [...new Set(filas.flatMap(f => [f.old_field_id, f.new_field_id]).filter(Boolean))];
+  const fields = ids.length ? await Field.findAll({ where: { id: ids }, attributes: ['id', 'nombre', 'identificador'] }) : [];
+  const nombre = (id) => canchaLabel(fields.find(f => f.id === id)) || null;
+  return filas.map(f => ({ ...f.toJSON(), old_cancha: nombre(f.old_field_id), new_cancha: nombre(f.new_field_id) }));
 }
 
 // ── Vista completa ────────────────────────────────────────────
@@ -1000,6 +1066,12 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     order: [['fecha', 'ASC'], ['hora', 'ASC'], ['orden', 'ASC']],
   });
   const zonas = await tablasDeZonas(torneo, publico, cat);
+  // Última reprogramación de cada partido (auditoría visible)
+  const ultimas = new Map();
+  if (!publico && partidos.length) {
+    const reps = await TorneoReprogramacion.findAll({ where: { partido_id: partidos.map(p => p.id) }, attributes: ['partido_id', 'usuario', 'createdAt', 'motivo'], order: [['id', 'DESC']] });
+    for (const r of reps) if (!ultimas.has(r.partido_id)) ultimas.set(r.partido_id, { usuario: r.usuario, fecha: r.createdAt, motivo: r.motivo });
+  }
   // Lugar todavía vacío que llega de otro partido de la zona → "Ganador P1" / "Perdedor P2"
   const origen = (p, slot) => {
     const g = partidos.find(x => x.siguiente_partido_id === p.id && x.siguiente_slot === slot && x.ronda === 'zona');
@@ -1020,6 +1092,7 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     es_bye: p.es_bye, estado: p.estado, fuera_preferencia: p.fuera_preferencia,
     fecha: p.fecha, hora: p.hora, field_id: p.field_id, cancha: canchaLabel(p.field),
     siguiente_partido_id: p.siguiente_partido_id,
+    ultima_modificacion: ultimas.get(p.id) || null,
     resultado: p.resultado ? { sets: p.resultado.sets, tie_breaks: p.resultado.tie_breaks || [], ganador_id: p.resultado.ganador_id } : null,
   });
   const llave = fx.ORDEN_RONDAS
@@ -1043,7 +1116,7 @@ module.exports = {
   slotsDisponibles, generarZonas, generarLlave, tablasDeZonas, rankingJugadores,
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
-  previsualizarZonas, prepararSiembra, historialZonas,
+  previsualizarZonas, prepararSiembra, historialZonas, historialPartido,
 };
 
 /** Historial de armados de zonas del torneo (auditoría). */

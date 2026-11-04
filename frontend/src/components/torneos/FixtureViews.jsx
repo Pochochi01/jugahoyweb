@@ -1,5 +1,6 @@
 import { Trophy, AlertTriangle, Pencil } from 'lucide-react';
 import { RONDA_LABEL, fechaCorta, setsTxt } from '../../utils/torneos';
+import { UltimaModificacion } from './ReprogramarModal';
 
 /** Tabla de posiciones de una zona (persistida en el backend). */
 export function TablaZona({ zona, mostrarRanking = false }) {
@@ -73,6 +74,7 @@ export function PartidoRow({ p, acciones, etiqueta }) {
             <AlertTriangle className="w-3 h-3" /> fuera de preferencia
           </span>
         )}
+        <UltimaModificacion p={p} />
       </div>
       <div className="flex-1 min-w-0 text-sm space-y-0.5">
         <div><NombrePareja par={p.pareja1} gano={gano(1)} /></div>
@@ -129,6 +131,7 @@ export function ZonaGrilla({ zona, accionesDe }) {
                 </div>
                 {accionesDe && <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 shrink-0">{accionesDe(p)}</div>}
               </div>
+              <UltimaModificacion p={p} />
             </div>
           );
         })}
@@ -175,6 +178,7 @@ export function Cronograma({ partidos, accionesDe }) {
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{instanciaDe(p)}</div>
           <div className="text-[15px] leading-snug break-words"><span className={g(1) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja1, p)}</span> <span className="text-muted-foreground text-xs">vs</span> <span className={g(2) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja2, p)}</span></div>
           {res && <div className="font-mono text-sm sm:hidden">{res}</div>}
+          <UltimaModificacion p={p} />
         </div>
         <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2">
           {res && <span className="hidden sm:inline font-mono text-sm">{res}</span>}

@@ -10,6 +10,8 @@ import TelefonoEntidad from '../TelefonoEntidad';
 import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores, Cronograma, imprimirFixture } from './FixtureViews';
 import { CategoriaTabs } from './CategoriasSelect';
+import ReprogramarModal from './ReprogramarModal';
+import PlantelModal from './PlantelModal';
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL,
@@ -44,6 +46,9 @@ export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
   const [error, setError] = useState('');
   // Cuadro (categoría) sobre el que trabajan Inscripciones / Partidos / Llave / Posiciones
   const [categoria, setCategoria] = useState(null);
+  // Permisos granulares (reprogramar / editar plantel): se validan también en el backend
+  const [permisos, setPermisos] = useState({});
+  useEffect(() => { svc.permisos?.().then(r => setPermisos(r.permisos || {})).catch(() => setPermisos({})); }, [svc]);
 
   const recargar = useCallback(() => svc.get(torneoId).then(setTorneo).catch(e => setError(errMsg(e))), [svc, torneoId]);
   useEffect(() => { recargar(); }, [recargar]);
@@ -105,8 +110,8 @@ export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
 
       {seccion === 'datos'         && <DatosSeccion svc={svc} torneo={torneo} onSaved={setTorneo} />}
       {seccion === 'canchas'       && <CanchasSeccion svc={svc} torneo={torneo} />}
-      {seccion === 'inscripciones' && <InscripcionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} />}
-      {seccion === 'fixture'       && categoria && <PartidosSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
+      {seccion === 'inscripciones' && <InscripcionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} permisos={permisos} />}
+      {seccion === 'fixture'       && categoria && <PartidosSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} permisos={permisos} />}
       {seccion === 'llave'         && categoria && <LlaveSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} onChange={recargar} />}
       {seccion === 'posiciones'    && categoria && <PosicionesSeccion key={categoria} svc={svc} torneo={torneo} categoria={categoria} admin={admin} />}
       {seccion === 'comunicacion'  && <ComunicacionSeccion svc={svc} torneo={torneo} />}
@@ -201,8 +206,9 @@ function CanchasSeccion({ svc, torneo }) {
 }
 
 // ── Inscripciones y pagos ─────────────────────────────────────
-function InscripcionesSeccion({ svc, torneo, categoria }) {
+function InscripcionesSeccion({ svc, torneo, categoria, permisos = {} }) {
   const [data, setData] = useState(null);
+  const [plantel, setPlantel] = useState(null);   // pareja en edición
   const [filtro, setFiltro] = useState('');
   const multi = (torneo.categorias || []).length > 1;
   const [alta, setAlta] = useState(false);
@@ -218,6 +224,7 @@ function InscripcionesSeccion({ svc, torneo, categoria }) {
     try { await svc.setPago(torneo.id, p.id, { estado_pago, metodo_pago }); cargar(); } catch (e) { alert(errMsg(e)); }
   };
   const anual = data.tipo === 'anual';
+  const modalPlantel = plantel && <PlantelModal svc={svc} torneo={torneo} pareja={plantel} permisos={permisos} onClose={() => { setPlantel(null); cargar(); }} onCambio={cargar} />;
   const lista = data.parejas.filter(p => !filtro || p.estado_pago === filtro)
     // Anual: ordenadas por puntos de ranking (así quedan los cabezas de serie)
     .sort((a, b) => (anual ? (b.puntos_ranking || 0) - (a.puntos_ranking || 0) : 0));
@@ -230,6 +237,7 @@ function InscripcionesSeccion({ svc, torneo, categoria }) {
         ))}
       </div>
 
+      {modalPlantel}
       <div className="flex flex-wrap gap-2 items-center">
         <select className="input !w-auto text-sm" value={filtro} onChange={e => setFiltro(e.target.value)}>
           <option value="">Todos los estados</option>
@@ -274,6 +282,9 @@ function InscripcionesSeccion({ svc, torneo, categoria }) {
               {p.estado_pago === 'pagado' && !p.zona && (
                 <button className="text-xs text-red-400 hover:underline" onClick={() => setPago(p, 'reembolsado')}>Reembolsar</button>
               )}
+              {['pendiente', 'pagado'].includes(p.estado_pago) && permisos['tournament.team.edit_players'] !== false && (
+                <button className="btn-outline text-xs !px-2 !py-1 flex items-center gap-1" onClick={() => setPlantel(p)}><Users className="w-3.5 h-3.5" /> Editar plantel</button>
+              )}
             </div>
           </div>
         ))}
@@ -283,13 +294,12 @@ function InscripcionesSeccion({ svc, torneo, categoria }) {
 }
 
 // ── Partidos: armado de zonas, programación y resultados ──────
-function PartidosSeccion({ svc, torneo, onChange, categoria }) {
+function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
   const [fx, setFx] = useState(null);
   const [msg, setMsg] = useState({});
   const [reparto, setReparto] = useState(null);
   const [incluirPend, setIncluirPend] = useState(false);
   const [editando, setEditando] = useState(null);   // { id, modo: 'resultado' | 'horario' }
-  const [slots, setSlots] = useState([]);
 
   const cargar = useCallback(() => svc.fixture(torneo.id, categoria).then(setFx).catch(e => setMsg({ error: errMsg(e) })), [svc, torneo.id, categoria]);
   useEffect(() => { cargar(); }, [cargar, torneo.estado]);
@@ -318,10 +328,8 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
       if (/vista previa/i.test(errMsg(e))) verPreview();
     }
   };
-  const abrirHorario = async (p) => {
-    setEditando({ id: p.id, modo: 'horario' });
-    try { setSlots(await svc.getSlots(torneo.id)); } catch { setSlots([]); }
-  };
+  const [reprogramando, setReprogramando] = useState(null);   // partido en el modal
+  const abrirHorario = (p) => setReprogramando(p);
   const guardarResultado = async (p, d) => {
     const r = await svc.setResultado(torneo.id, p.id, d);
     setEditando(null);
@@ -349,15 +357,15 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
       {p.resultado && p.ronda === 'zona' && estadoCat === 'zonas' && (
         <button className="p-1.5 rounded hover:bg-red-500/10 text-red-400" title="Borrar resultado" onClick={() => borrarResultado(p)}><X className="w-4 h-4" /></button>
       )}
-      {!p.resultado && (
-        <button className="p-1.5 rounded hover:bg-muted" title="Reprogramar" onClick={() => abrirHorario(p)}><Pencil className="w-4 h-4" /></button>
+      {!p.resultado && !p.es_bye && permisos['tournament.match.reschedule'] !== false && (
+        <button className="btn-ghost text-xs !px-2 !py-1 flex items-center gap-1" title="Reprogramar partido" onClick={() => abrirHorario(p)}><Pencil className="w-4 h-4" /><span className="hidden md:inline">Reprogramar</span></button>
       )}
     </div>
   );
   const editor = (p) => editando?.id === p.id && (
     editando.modo === 'resultado'
       ? <ResultadoForm p={p} tercerSet={torneo.tercer_set} onCancel={() => setEditando(null)} onSave={(d) => guardarResultado(p, d)} />
-      : <HorarioForm p={p} slots={slots} onCancel={() => setEditando(null)} onSave={async (d) => { await svc.reprogramar(torneo.id, p.id, d); setEditando(null); cargar(); }} />
+      : null
   );
 
   return (
@@ -390,6 +398,11 @@ function PartidosSeccion({ svc, torneo, onChange, categoria }) {
         </div>
       )}
       {sinProgramar > 0 && <Aviso>{sinProgramar} partidos sin cancha/horario asignado.</Aviso>}
+      {reprogramando && (
+        <ReprogramarModal svc={svc} torneo={torneo} partido={reprogramando} partidos={todos} permisos={permisos}
+          onClose={() => setReprogramando(null)}
+          onGuardado={(nueva) => { setReprogramando(null); setMsg({ ok: `Partido reprogramado: ${nueva}.` }); cargar(); onChange(); }} />
+      )}
       {todos.length === 0 && <div className="card text-sm text-muted-foreground text-center py-6">Todavía no hay partidos.</div>}
 
       {todos.length > 0 && (
@@ -516,29 +529,6 @@ function ResultadoForm({ p, tercerSet = 'set', onSave, onCancel }) {
         <button className="p-2 rounded hover:bg-muted" onClick={onCancel} aria-label="Cancelar"><X className="w-4 h-4" /></button>
       </div>
       <Aviso>{error || errorVivo}</Aviso>
-    </div>
-  );
-}
-
-function HorarioForm({ p, slots, onSave, onCancel }) {
-  const [valor, setValor] = useState('');
-  const [error, setError] = useState('');
-  return (
-    <div className="card border-primary/40 flex flex-wrap gap-2 items-center">
-      <select className="input !w-auto text-sm flex-1" value={valor} onChange={e => setValor(e.target.value)}>
-        <option value="">Elegí cancha y horario libre…</option>
-        {slots.map(s => {
-          const k = `${s.field_id}|${s.fecha}|${s.hora}`;
-          return <option key={k} value={k}>{fechaCorta(s.fecha)} {s.hora} — {s.cancha}</option>;
-        })}
-      </select>
-      <button className="btn-primary text-sm" disabled={!valor} onClick={async () => {
-        const [field_id, fecha, hora] = valor.split('|');
-        setError('');
-        try { await onSave({ field_id: Number(field_id), fecha, hora }); } catch (e) { setError(errMsg(e)); }
-      }}>Reprogramar y avisar</button>
-      <button className="p-2 rounded hover:bg-muted" onClick={onCancel} aria-label="Cancelar"><X className="w-4 h-4" /></button>
-      {error && <div className="w-full"><Aviso>{error}</Aviso></div>}
     </div>
   );
 }

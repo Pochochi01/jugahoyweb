@@ -7,6 +7,10 @@ const TorneoJugador = sequelize.define('TorneoJugador', {
   jugador_id: { type: DataTypes.INTEGER, allowNull: true },   // padel_jugadores (registro único del club)
   // Puntaje manual en las posiciones del torneo (NULL = el calculado por los partidos)
   puntos_manual: { type: DataTypes.INTEGER, allowNull: true, defaultValue: null },
+  // Datos opcionales del plantel
+  fecha_nacimiento: { type: DataTypes.DATEONLY, allowNull: true },
+  posicion:  { type: DataTypes.ENUM('drive', 'reves'), allowNull: true },   // lado de juego (único dentro de la pareja)
+  observaciones: { type: DataTypes.STRING(255), allowNull: true },
   nombre:    { type: DataTypes.STRING(150), allowNull: false },
   dni:       { type: DataTypes.STRING(15), allowNull: false },
   whatsapp:  { type: DataTypes.STRING(30), allowNull: false },

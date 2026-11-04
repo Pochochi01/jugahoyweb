@@ -10,6 +10,8 @@ const TorneoOrganizador = sequelize.define('TorneoOrganizador', {
   password:  { type: DataTypes.STRING(255), allowNull: false },   // hash bcrypt
   whatsapp:  { type: DataTypes.STRING(30) },
   activo:    { type: DataTypes.BOOLEAN, defaultValue: true },
+  // Permisos granulares (services/torneos/torneoPermisos): NULL = todos; { clave: false } = desactivado
+  permisos:  { type: DataTypes.JSON, allowNull: true },
 }, {
   tableName: 'torneo_organizadores',
   defaultScope: { attributes: { exclude: ['password'] } },

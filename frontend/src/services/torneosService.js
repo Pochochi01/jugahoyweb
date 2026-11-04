@@ -100,6 +100,15 @@ export function torneosStaff(client, cid) {
     setPuntaje:    (tid, jugadorId, d) => client.put(`${t(tid)}/jugadores/${jugadorId}/puntaje`, d),
     historialPuntajes: (tid, params) => client.get(`${t(tid)}/puntajes/historial`, { params }),
     reprogramar:   (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/programacion`, d),
+    historialPartido: (tid, pid) => client.get(`${t(tid)}/partidos/${pid}/historial`),
+    // Permisos granulares del usuario actual (reprogramar, editar plantel…)
+    permisos:      ()          => client.get(`${b}/torneos-permisos`),
+    // Editar plantel de una inscripción (pareja)
+    plantel:          (tid, pid)         => client.get(`${t(tid)}/parejas/${pid}/jugadores`),
+    plantelAgregar:   (tid, pid, d)      => client.post(`${t(tid)}/parejas/${pid}/jugadores`, d),
+    plantelModificar: (tid, pid, jid, d) => client.put(`${t(tid)}/parejas/${pid}/jugadores/${jid}`, d),
+    plantelEliminar:  (tid, pid, jid)    => client.delete(`${t(tid)}/parejas/${pid}/jugadores/${jid}`),
+    plantelHistorial: (tid, pid)         => client.get(`${t(tid)}/parejas/${pid}/jugadores/historial`),
     partidos:      (tid, params) => client.get(`${t(tid)}/partidos`, { params }),
     setResultado:  (tid, pid, d) => client.put(`${t(tid)}/partidos/${pid}/resultado`, d),
     borrarResultado: (tid, pid) => client.delete(`${t(tid)}/partidos/${pid}/resultado`),
