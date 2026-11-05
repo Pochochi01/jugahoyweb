@@ -146,6 +146,7 @@ club.post('/torneos/:torneoId/zonas/preview',           loadTorneo, torneos.prev
 club.post('/torneos/:torneoId/zonas/generar',           loadTorneo, torneos.generarZonas);
 club.get ('/torneos/:torneoId/zonas/historial',         loadTorneo, torneos.historialZonas);
 club.post('/torneos/:torneoId/llave/generar',           loadTorneo, torneos.generarLlave);
+club.delete('/torneos/:torneoId/categorias/:categoriaId/llave', soloAdminGeneral, loadTorneo, torneos.borrarLlave);   // solo Administrador General
 club.put ('/torneos/:torneoId/categorias/:categoriaId/llave-inicio', loadTorneo, torneos.inicioLlave);   // día y hora de inicio de la llave
 club.put ('/torneos/:torneoId/categorias/:categoriaId/llave-prevista/:clave', loadTorneo, puede('tournament.match.reschedule'), torneos.programarPrevista);   // fijar horario en la llave de referencia
 club.get ('/torneos/:torneoId/fixture',                 loadTorneo, torneos.fixture);

@@ -301,6 +301,14 @@ async function generarZonas(req, res) {
   } catch (err) { send(res, err); }
 }
 
+/** DELETE /torneos/:torneoId/categorias/:categoriaId/llave — solo Administrador General. */
+async function borrarLlave(req, res) {
+  try {
+    const u = req.user;
+    res.json(await svc.borrarLlave(req.torneo, req.params.categoriaId, { usuario: { id: u?.id, nombre: u ? `${u.nombre} ${u.apellido || ''}`.trim() : null } }));
+  } catch (err) { send(res, err); }
+}
+
 async function generarLlave(req, res) {
   try {
     const r = await svc.generarLlave(req.torneo, { categoria_id: req.body?.categoria_id, forzar: Boolean(req.body?.forzar), notificar: req.body?.notificar !== false });
@@ -382,5 +390,5 @@ module.exports = {
   conCategorias, modificarPuntaje, historialPuntajes, previewZonas, historialZonas, historialPartido, inicioLlave, programarPrevista,
   list, get, create, update, remove, cambiarEstado, subirImagen,
   getCanchas, setCanchas, getSlots,
-  generarZonas, generarLlave, fixture, ranking, reprogramar,
+  generarZonas, borrarLlave, generarLlave, fixture, ranking, reprogramar,
 };

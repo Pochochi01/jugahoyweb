@@ -11,6 +11,7 @@ import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores, Cronograma, imprimirFixture } from './FixtureViews';
 import { CategoriaTabs } from './CategoriasSelect';
 import ReprogramarModal from './ReprogramarModal';
+import { useAuth } from '../../context/AuthContext';
 import PlantelModal from './PlantelModal';
 import { uploadUrl } from '../../services/torneosService';
 import {
@@ -581,6 +582,8 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
 
 // ── Llave ─────────────────────────────────────────────────────
 function LlaveSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
+  const { isGeneralAdmin } = useAuth();
+  const [borrando, setBorrando] = useState(false);
   const [reprogramando, setReprogramando] = useState(null);   // partido de la llave en el modal
   const [fx, setFx] = useState(null);
   const [msg, setMsg] = useState({});
@@ -612,6 +615,25 @@ function LlaveSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
             los cruces son fijos por zona y posición (ver la llave de referencia); si no se completa el cuadro, los primeros de zona reciben BYE.
           </p>
           <button className="btn-primary text-sm" onClick={() => generar(!zonasCompletas)}>Generar llave{zonasCompletas ? '' : ' (forzar)'}</button>
+        </div>
+      )}
+      {isGeneralAdmin && fx.llave.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-3 border-red-500/40">
+          <p className="text-sm flex-1">
+            <strong>Administrador General:</strong> borrar la llave de {fx.categorias?.length > 1 ? `la ${tc?.nombre || 'categoría'}` : 'este torneo'} elimina sus partidos y resultados de fase final.
+            Las zonas y sus resultados se conservan y la llave se puede volver a generar.
+            {tc?.puntos_asignados && ' No disponible: la categoría ya asignó puntos al ranking anual.'}
+          </p>
+          <button className="btn-outline text-sm !text-red-400 !border-red-500/50" disabled={borrando || tc?.puntos_asignados} onClick={async () => {
+            const jugados = fx.llave.flatMap(r => r.partidos).filter(p => !p.es_bye && p.resultado).length;
+            if (!window.confirm(`¿Borrar la llave${fx.categorias?.length > 1 ? ` de ${tc?.nombre}` : ''}?${jugados ? `\n\nSe perderán ${jugados} resultado(s) ya cargado(s).` : ''}\n\nEsta acción no se puede deshacer.`)) return;
+            setBorrando(true); setMsg({});
+            try {
+              const r = await svc.borrarLlave(torneo.id, fx.categoria_id);
+              setMsg({ ok: `Llave borrada (${r.partidos_borrados} partido(s)${r.resultados_borrados ? `, ${r.resultados_borrados} resultado(s)` : ''}). Podés volver a generarla.` });
+              cargar(); onChange();
+            } catch (e) { setMsg({ error: errMsg(e) }); } finally { setBorrando(false); }
+          }}>{borrando ? 'Borrando…' : 'Borrar llave'}</button>
         </div>
       )}
       <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>

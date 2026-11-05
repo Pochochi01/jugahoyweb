@@ -732,6 +732,30 @@ function historialPuntajes(torneo, { jugadorId } = {}) {
 }
 
 // ── Llave ─────────────────────────────────────────────────────
+/**
+ * Borra la llave (fase final) de una categoría: elimina sus partidos y resultados de llave y la
+ * categoría vuelve a "zonas" (las zonas, posiciones y resultados de zona NO se tocan).
+ * Solo el Administrador General (lo controla la ruta). Si la categoría ya asignó puntos al
+ * ranking anual se bloquea: borrar la llave dejaría el ranking inconsistente.
+ */
+async function borrarLlave(torneo, categoriaId, { usuario = {} } = {}) {
+  const tc = await resolverCategoria(torneo, categoriaId);
+  const cat = tc.categoria_id;
+  if (!['llaves', 'finalizado'].includes(tc.estado)) throw httpError(409, `${rk.nombreCat(cat)} no tiene llave generada.`);
+  if (tc.puntos_asignados) throw httpError(409, `${rk.nombreCat(cat)} ya asignó puntos al ranking anual: no se puede borrar la llave sin alterar el ranking.`);
+  const where = { torneo_id: torneo.id, categoria_id: cat, ronda: { [Op.ne]: 'zona' } };
+  const partidos = await TorneoPartido.count({ where });
+  const jugados = await TorneoPartido.count({ where: { ...where, es_bye: false, estado: JUGADO } });
+  await conTransaccion(async (t) => {
+    await borrarPartidos(where, t);
+    await tc.update({ estado: 'zonas' }, { transaction: t });
+    await sincronizarEstado(torneo, t);
+    await sincronizarAgenda(torneo, t);
+  });
+  console.log(`[torneos] llave borrada · torneo ${torneo.id} · ${rk.nombreCat(cat)} · ${partidos} partido(s), ${jugados} con resultado · por ${usuario.nombre || usuario.id || '—'}`);
+  return { categoria_id: cat, partidos_borrados: partidos, resultados_borrados: jugados };
+}
+
 async function generarLlave(torneo, { categoria_id, forzar = false, notificar = true } = {}) {
   const tc = await resolverCategoria(torneo, categoria_id);
   const cat = tc.categoria_id;
@@ -1380,7 +1404,7 @@ module.exports = {
   registrarResultado, quitarResultado, recalcularTablaZona, puntosRanking, notificarProximos, reprogramarPartido, fixture,
   categoriasDe, resolverCategoria, sincronizarEstado, modificarPuntaje, historialPuntajes,
   previsualizarZonas, prepararSiembra, historialZonas, historialPartido, configurarInicioLlave, llavePrevista, simularLlaves,
-  programarPrevista,
+  programarPrevista, borrarLlave,
 };
 
 /** Historial de armados de zonas del torneo (auditoría). */
