@@ -107,6 +107,12 @@ app.use('/api/profesores',    profesoresRoutes);
 app.use('/api/escuela',       escuelaRoutes);
 app.use('/api/gym',           require('./routes/gym'));   // Gym / Fitness center
 app.use('/api/player',        require('./routes/player'));   // Portal de Jugador (solo lectura)
+// Seguimiento de notificaciones push (lo llama el Service Worker; firmado con HMAC por notificación)
+app.post('/api/push-tracking', express.json(), async (req, res) => {
+  const { id, t, evento } = req.body || {};
+  const ok = await require('./services/notifications/NotificationService').registrarSeguimiento(Number(id), t, evento === 'abierto' ? 'abierto' : 'entregado').catch(() => false);
+  res.status(ok ? 204 : 400).end();
+});
 
 // ── Frontend estático (modo mismo-servidor) ───────────────────
 // Activar con SERVE_FRONTEND=true en .env.production cuando el frontend

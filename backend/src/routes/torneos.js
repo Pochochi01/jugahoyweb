@@ -115,6 +115,11 @@ club.delete('/ranking/:id',                      soloAdminGeneral, ranking.remov
 club.post('/tickets/validar', inscr.validarTicket);
 
 // Torneos
+// Administración > Notificaciones push (historial, métricas, reenvío)
+const notifAdmin = require('../controllers/notifications/torneoNotificacionesController');
+club.get ('/notificaciones',              notifAdmin.listar);
+club.get ('/notificaciones/metricas',     notifAdmin.metricas);
+club.post('/notificaciones/:id/reenviar', notifAdmin.reenviar);
 club.get ('/torneos',                         torneos.list);
 club.post('/torneos',                         requireTorneoPadel, torneos.create);
 club.get ('/torneos/:torneoId',               loadTorneo, torneos.get);

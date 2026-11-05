@@ -120,6 +120,10 @@ export function torneosStaff(client, cid) {
     canal:         (tid)       => client.get(`${t(tid)}/comunicacion/canal`),
     difundir:      (tid, d)    => client.post(`${t(tid)}/comunicacion/mensaje`, d),
     proximos:      (tid)       => client.post(`${t(tid)}/comunicacion/proximos-partidos`, {}),
+    // Notificaciones push (Administración > Notificaciones)
+    notificaciones:   (params)  => client.get(`${b}/notificaciones`, { params }),
+    notifMetricas:    (params)  => client.get(`${b}/notificaciones/metricas`, { params }),
+    notifReenviar:    (id)      => client.post(`${b}/notificaciones/${id}/reenviar`, {}),
   };
 }
 

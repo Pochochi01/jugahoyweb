@@ -76,6 +76,7 @@ const MENU = [
 function Layout({ children }) {
   const navigate = useNavigate();
   useEffect(() => { if (!jugadorAuth.logueado()) navigate('/jugador/login', { replace: true }); }, [navigate]);
+  useEffect(() => { jugadorPush.renovar(); }, []);   // token FCM rotado / último uso del dispositivo
   const salir = () => { jugadorAuth.salir(); navigate('/jugador/login'); };
   const link = ({ isActive }) => `flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap ${isActive ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'}`;
   return (
@@ -229,29 +230,61 @@ export function JugadorRecuperar() {
 }
 
 // ── Notificaciones push ───────────────────────────────────────
+const PREFS = [
+  ['recordatorio_partidos', 'Recordatorio de partidos (3 h antes)'],
+  ['recordatorio_pagos', 'Pagos de inscripción pendientes'],
+  ['resultado_partidos', 'Resultados de mis partidos'],
+  ['clasificaciones', 'Clasificaciones (zona y llave)'],
+  ['finales', 'Semifinal, final y cierre del torneo'],
+  ['promociones', 'Novedades y promociones'],
+];
 function AvisosPush() {
   const [activo, setActivo] = useState(null);
   const [msg, setMsg] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [prefs, setPrefs] = useState(null);
+  const [verPrefs, setVerPrefs] = useState(false);
   useEffect(() => { jugadorPush.activo().then(setActivo).catch(() => setActivo(false)); }, []);
+  useEffect(() => { if (verPrefs && !prefs) jugadorPush.preferencias().then(setPrefs).catch(e => setMsg(errMsg(e))); }, [verPrefs, prefs]);
   if (!jugadorPush.soportado() || activo === null) return null;
+  const instalada = jugadorPush.instalada();
+  const bloqueadas = jugadorPush.permiso() === 'denied';
   const cambiar = async () => {
     setOcupado(true); setMsg('');
     try {
       if (activo) { await jugadorPush.desactivar(); setActivo(false); setMsg('Notificaciones desactivadas en este dispositivo.'); }
-      else { await jugadorPush.activar(); setActivo(true); setMsg('Listo: te avisamos de horarios, resultados y cambios de tus partidos.'); }
+      else { await jugadorPush.activar(); setActivo(true); setMsg('Listo: te avisamos de horarios, resultados y novedades de tus torneos.'); }
     } catch (e) { setMsg(errMsg(e)); } finally { setOcupado(false); }
   };
+  const togglePref = async (k) => {
+    const previo = prefs;
+    setPrefs({ ...prefs, [k]: !prefs[k] });
+    try { setPrefs(await jugadorPush.guardarPreferencias({ [k]: !previo[k] })); } catch (e) { setPrefs(previo); setMsg(errMsg(e)); }
+  };
   return (
-    <div className="card flex flex-col sm:flex-row sm:items-center gap-3">
-      {activo ? <Bell className="w-6 h-6 text-primary shrink-0" /> : <BellOff className="w-6 h-6 text-muted-foreground shrink-0" />}
-      <div className="flex-1 min-w-0">
-        <div className="font-medium">{activo ? 'Notificaciones activadas' : 'Activá las notificaciones'}</div>
-        <p className="text-sm text-muted-foreground">{msg || 'Recibí en este dispositivo los avisos de tus partidos: horarios, reprogramaciones y resultados.'}</p>
+    <div className="card space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {activo ? <Bell className="w-6 h-6 text-primary shrink-0" /> : <BellOff className="w-6 h-6 text-muted-foreground shrink-0" />}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium">{activo ? 'Notificaciones activadas' : 'Activá las notificaciones'}</div>
+          <p className="text-sm text-muted-foreground">{msg || (!instalada && !activo
+            ? 'Las notificaciones llegan a la app instalada: instalá JugaHoy y abrila desde el ícono para activarlas.'
+            : 'Recibí en este dispositivo los avisos de tus partidos, aunque la app esté cerrada.')}</p>
+        </div>
+        <div className="flex gap-2">
+          {activo && <button className="btn-ghost text-sm" onClick={() => setVerPrefs(v => !v)} aria-expanded={verPrefs}>Preferencias</button>}
+          <button className={activo ? 'btn-ghost text-sm' : 'btn-primary text-sm'} disabled={ocupado || bloqueadas || (!instalada && !activo)} onClick={cambiar}>
+            {bloqueadas ? 'Bloqueadas en el navegador' : ocupado ? 'Un momento…' : activo ? 'Desactivar' : 'Activar'}
+          </button>
+        </div>
       </div>
-      <button className={activo ? 'btn-ghost text-sm' : 'btn-primary text-sm'} disabled={ocupado || jugadorPush.permiso() === 'denied'} onClick={cambiar}>
-        {jugadorPush.permiso() === 'denied' ? 'Bloqueadas en el navegador' : ocupado ? 'Un momento…' : activo ? 'Desactivar' : 'Activar'}
-      </button>
+      {activo && verPrefs && (
+        <div className="border-t border-border pt-3 grid sm:grid-cols-2 gap-2">
+          {!prefs ? <Sk className="h-16 sm:col-span-2" /> : PREFS.map(([k, l]) => (
+            <label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs[k]} onChange={() => togglePref(k)} /> {l}</label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

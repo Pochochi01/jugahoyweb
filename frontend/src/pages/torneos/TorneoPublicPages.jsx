@@ -83,6 +83,15 @@ export function TorneoPublicPage() {
         </div>
       </div>
 
+      {/* Llegada desde la notificación "Inscripción pendiente" → Pagar ahora */}
+      {params.get('pagar') && Number(torneo.precio_inscripcion) > 0 && (
+        <div className="card flex flex-col sm:flex-row sm:items-center gap-3 border-primary/50">
+          <CreditCard className="w-6 h-6 text-primary shrink-0" />
+          <div className="flex-1 text-sm"><div className="font-semibold">Inscripción pendiente de pago</div>Completá el pago de {money(torneo.precio_inscripcion)} para asegurar tu lugar.</div>
+          <button className="btn-primary text-sm" onClick={() => irAPagar(params.get('pagar')).catch(e => alert(errMsg(e)))}>Pagar ahora</button>
+        </div>
+      )}
+
       <div className="flex gap-1 overflow-x-auto border-b border-border">
         {tabs.map(([k, l, Icon]) => (
           <button key={k} onClick={() => setTab(k)}

@@ -55,6 +55,9 @@ async function start() {
     // Gym: vencimientos de membresías, morosos y cierre de clases
     try { require('./src/services/gym/scheduler').iniciar(15); }
     catch (err) { console.error('✗ Gym scheduler:', err.message); }
+    // Torneos: notificaciones push automáticas (eventos → cola → FCM / Web Push)
+    try { require('./src/jobs/tournamentNotifications').iniciar(); }
+    catch (err) { console.error('✗ Notificaciones push de torneos:', err.message); }
     // Confirmación de asistencia por WhatsApp (hora configurable por complejo)
     try { require('./src/services/recordatorioService').iniciar(60); }
     catch (err) { console.error('✗ Confirmación de asistencia:', err.message); }
