@@ -23,7 +23,9 @@
     "test:torneos:llave": "node tests/torneos-llave.e2e.js",
     "test:torneos:simulacion": "node tests/torneos-simulacion.e2e.js",
     "test:portal-jugador": "node tests/portal-jugador.e2e.js",
-    "test:notificaciones": "node tests/notificaciones-push.e2e.js"
+    "test:notificaciones": "node tests/notificaciones-push.e2e.js",
+    "test:llaves": "node tests/llaves-oficiales.test.js",
+    "test:llaves:e2e": "node tests/llaves-oficiales.e2e.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

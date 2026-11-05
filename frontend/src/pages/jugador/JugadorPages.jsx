@@ -375,6 +375,14 @@ export function JugadorTorneo() {
   const c = useCarga(() => jugador.torneo(id, categoria ? { categoria_id: categoria } : {}), [id, categoria]);
   const rk = useCarga(() => (tab === 'posiciones' && c.data ? jugador.posiciones(id, { categoria_id: c.data.categoria_id }) : Promise.resolve(null)), [id, tab, c.data?.categoria_id]);
   const setTab = (k) => setParams(p => { p.set('tab', k); return p; }, { replace: true });
+  // Tiempo real: mientras el torneo se juega, se refresca cada 30 s (sin perder lo que se ve)
+  const enJuego = ['zonas', 'llaves'].includes(c.data?.torneo?.estado);
+  const { recargar } = c;
+  useEffect(() => {
+    if (!enJuego) return undefined;
+    const t = setInterval(() => { if (!document.hidden) recargar(); }, 30000);
+    return () => clearInterval(t);
+  }, [enJuego, recargar]);
   return (
     <Layout>
       <Link to="/jugador/torneos" className="text-sm text-muted-foreground inline-flex items-center gap-1"><ChevronLeft className="w-4 h-4" /> Mis Torneos</Link>

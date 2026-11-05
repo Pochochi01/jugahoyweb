@@ -258,7 +258,7 @@ function BracketReferencia({ prevista, onReprogramar }) {
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         <strong className="text-foreground">Llave de referencia</strong> · {prevista.clasificados} clasificados de {prevista.zonas} zonas{prevista.estimada ? ' (estimadas con las parejas inscriptas)' : ''}
-        {' '}→ empieza en <strong className="text-foreground">{RONDA_LABEL[prevista.ronda]}</strong>{prevista.byes ? ` · ${prevista.byes} BYE para los primeros de zona` : ''}.
+        {' '}→ empieza en <strong className="text-foreground">{prevista.rondas?.[0]?.nombre || RONDA_LABEL[prevista.ronda]}</strong>{prevista.byes ? ` · ${prevista.byes} BYE para los primeros de zona` : ''}.
         Al terminar cada zona su lugar se reemplaza por la pareja que quedó en esa posición.
         {prevista.simulada ? ' Los horarios son una simulación según la disponibilidad de canchas y las demás categorías (📌 = fijado a mano).' : ' Cargá el inicio de la llave para simular los horarios.'}
         {onReprogramar && ' Tocá el día y la hora de un partido para reprogramarlo.'}
@@ -267,7 +267,7 @@ function BracketReferencia({ prevista, onReprogramar }) {
         <div className="flex gap-4 min-w-max">
           {prevista.rondas.map(r => (
             <div key={r.ronda} className="w-60 flex flex-col">
-              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{RONDA_LABEL[r.ronda]}</div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{r.nombre || RONDA_LABEL[r.ronda]}</div>
               <div className="flex flex-col justify-around flex-1 gap-3">
                 {r.partidos.map(p => (
                   <div key={p.id} className="rounded-lg border border-dashed border-border bg-card text-xs overflow-hidden">
@@ -328,7 +328,7 @@ export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
         <div className="flex gap-4 min-w-max">
           {llave.map(r => (
             <div key={r.ronda} className="w-60 flex flex-col">
-              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{RONDA_LABEL[r.ronda]}</div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{r.nombre || RONDA_LABEL[r.ronda]}</div>
               <div className="flex flex-col justify-around flex-1 gap-3">
                 {r.partidos.map(p => (
                   <div key={p.id} className="rounded-lg border border-border bg-card text-xs overflow-hidden">
@@ -337,7 +337,11 @@ export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
                       const win = p.resultado?.ganador_id && par?.id === p.resultado.ganador_id;
                       return (
                         <div key={l} className={`px-2.5 py-1.5 flex justify-between gap-2 ${l === 2 ? 'border-t border-border' : ''} ${win ? 'text-primary font-semibold' : ''}`}>
-                          <span className="truncate">{par?.nombre || (p.es_bye ? 'BYE' : '—')}</span>
+                          <span className="min-w-0">
+                            <span className="block truncate">{par?.nombre || (p.es_bye ? 'BYE' : <span className="italic text-muted-foreground">A definir</span>)}</span>
+                            {par?.referencia && <span className="block text-[10px] font-normal text-muted-foreground">({par.referencia})</span>}
+                            {p.es_bye && par && <span className="block text-[10px] font-medium text-primary">Pasa directo</span>}
+                          </span>
                           <span className="font-mono shrink-0">
                             {(p.resultado?.sets || []).map((s, i) => {
                               const tb = p.resultado.tie_breaks?.[i];

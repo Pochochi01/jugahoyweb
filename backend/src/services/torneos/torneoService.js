@@ -30,6 +30,8 @@ const {
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
 const notifier = require('./torneoNotifier');
+const brackets = require('../brackets/configurations');
+const { validarLlave } = require('../brackets/generateBracket');
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
@@ -742,6 +744,11 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
   const cuadro = fx.armarLlavePorZonas(zonas.length, torneo.clasifican_por_zona,
     (pl) => zonas[pl.zona_idx]?.tabla.find(r => r.posicion === pl.posicion)?.pareja_id ?? null);
   const clasificados = cuadro.plazas.map(pl => zonas[pl.zona_idx]?.tabla.find(r => r.posicion === pl.posicion)?.pareja_id).filter(Boolean).map(id => ({ pareja_id: id }));
+  // Validación antes de guardar: sin faltantes, sin duplicados, sin cruces de la misma zona en 1ª ronda
+  const zonaDe = (id) => zonas.findIndex(z => z.tabla.some(r => r.pareja_id === id));
+  // (el armado genérico puede no evitarlo, ej. 1 sola zona: se valida estricto solo con regla oficial)
+  const errores = validarLlave(cuadro, cuadro.regla ? { zonaDe, esperados: clasificados.length } : {});
+  if (errores.length) throw httpError(409, `No se pudo armar la llave: ${errores.join('; ')}.`);
   const slots = await slotsDisponibles(torneo);
   // Ocupación: todo el torneo menos la llave vieja de esta categoría (se reescribe);
   // la llave arranca después de la fase de zonas DE ESTA categoría y no antes del inicio configurado.
@@ -974,9 +981,10 @@ async function llavePrevista(torneo, cat, zonas, simulacion = null) {
     rondas: cuadro.rondas.map((r, i) => {
       // Rondas siguientes: "Ganador Cuartos 1", "Ganador Semi 2"…
       const previa = i > 0 ? cuadro.rondas[i - 1].ronda : null;
-      const ganador = (n) => ({ id: null, nombre: `Ganador ${{ octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semi' }[previa] || ''} ${n}`, pendiente: true });
+      const regla = brackets.reglaPara(numZonas, K);
+      const ganador = (n) => ({ id: null, nombre: `Ganador ${previa ? brackets.nombreRonda(regla, previa).replace('Semifinal', 'Semi') : ''} ${n}`, pendiente: true });
       return {
-        ronda: r.ronda,
+        ronda: r.ronda, nombre: brackets.nombreRonda(regla, r.ronda),
         partidos: r.partidos.map(p => ({
           id: `prev-${p.key}`, clave: p.key, ronda: r.ronda, orden: p.orden, es_bye: p.es_bye, prevista: true,
           pareja1: p.pareja1_id ? lugar(p.pareja1_id) : (i === 0 ? null : ganador(p.orden * 2 - 1)),
@@ -1323,9 +1331,13 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     const l = partidos.find(x => x.perdedor_partido_id === p.id && x.perdedor_slot === slot);
     return l ? `Perdedor P${l.orden}` : null;
   };
+  // Llave: de qué zona y posición viene cada clasificado ("1° Zona A")
+  const K = Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona);
+  const procedencia = new Map(zonas.flatMap(z => (z.completa ? z.tabla : []).filter(r => r.posicion <= K).map(r => [r.pareja_id, `${r.posicion}° ${z.nombre}`])));
+  const regla = brackets.reglaPara(zonas.length, K);
   const pareja = (p, slot) => {
     const par = p[`pareja${slot}`];
-    if (par) return { id: par.id, nombre: notifier.nombrePareja(par), numero_zona: par.numero_zona ?? null };
+    if (par) return { id: par.id, nombre: notifier.nombrePareja(par), numero_zona: par.numero_zona ?? null, ...(p.ronda !== 'zona' && procedencia.has(par.id) && { referencia: procedencia.get(par.id) }) };
     const o = p.ronda === 'zona' ? origen(p, slot) : null;
     return o ? { id: null, nombre: o, pendiente: true } : null;
   };
@@ -1340,7 +1352,7 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     resultado: p.resultado ? { sets: p.resultado.sets, tie_breaks: p.resultado.tie_breaks || [], ganador_id: p.resultado.ganador_id } : null,
   });
   const llave = fx.ORDEN_RONDAS
-    .map(r => ({ ronda: r, partidos: partidos.filter(p => p.ronda === r).sort((a, b) => a.orden - b.orden).map(serial) }))
+    .map(r => ({ ronda: r, nombre: brackets.nombreRonda(regla, r), partidos: partidos.filter(p => p.ronda === r).sort((a, b) => a.orden - b.orden).map(serial) }))
     .filter(r => r.partidos.length);
   const simulacion = cat && !llave.length ? await simularLlaves(torneo).catch(() => new Map()) : null;
   const prevista = cat && !llave.length ? await llavePrevista(torneo, cat, zonas, simulacion?.get(cat) || null).catch(() => null) : null;

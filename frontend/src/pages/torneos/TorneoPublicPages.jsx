@@ -55,6 +55,16 @@ export function TorneoPublicPage() {
     torneosPublic.fixture(id, categoria).then(r => { setFx(r); if (!categoria && r.categoria_id) setCategoria(r.categoria_id); }).catch(() => {});
     torneosPublic.ranking(id, categoria).then(setRanking).catch(() => {});
   }, [id, categoria]);
+  // Tiempo real: mientras se juega, el fixture (resultados y llave) se refresca cada 30 s con la pestaña visible
+  useEffect(() => {
+    if (!['zonas', 'llaves'].includes(torneo?.estado)) return undefined;
+    const t = setInterval(() => {
+      if (document.hidden) return;
+      torneosPublic.fixture(id, categoria).then(setFx).catch(() => {});
+      torneosPublic.ranking(id, categoria).then(setRanking).catch(() => {});
+    }, 30000);
+    return () => clearInterval(t);
+  }, [id, categoria, torneo?.estado]);
 
   if (error) return <Wrap><div className="card text-red-400">{error}</div></Wrap>;
   if (!torneo) return <Loader />;

@@ -3,7 +3,7 @@
  *
  *   npm run test:torneos:llave
  *
- * Unitarias: cruces fijos por zona/posición ("1° Zona A vs 2° Zona D"), ronda inicial.
+ * Unitarias: cruces fijos por zona/posición (reglamento oficial: "1° Zona A vs 2° Zona C"), ronda inicial.
  * Integración (club TEMPORAL): 12 parejas → 4 zonas → cuartos; llave prevista antes y
  * después de armar zonas; día y hora de inicio de la llave; al terminar las zonas la llave
  * real coincide con la referencia y reemplaza cada lugar por la pareja que quedó.
@@ -20,7 +20,7 @@ function unitarias() {
   const et = (c) => (id) => c.plazas.find(p => p.key === id)?.etiqueta || 'BYE';
   const c4 = fx.armarLlavePorZonas(4, 2);
   const cruces = c4.rondas[0].partidos.map(p => `${et(c4)(p.pareja1_id)} v ${et(c4)(p.pareja2_id)}`);
-  ok(c4.rondas[0].ronda === 'cuartos' && cruces.join(' | ') === '1° Zona A v 2° Zona D | 1° Zona D v 2° Zona A | 1° Zona B v 2° Zona C | 1° Zona C v 2° Zona B', `4 zonas × 2 → cuartos: ${cruces.join(' | ')}`);
+  ok(c4.rondas[0].ronda === 'cuartos' && cruces.join(' | ') === '1° Zona A v 2° Zona C | 2° Zona B v 1° Zona D | 1° Zona C v 2° Zona A | 2° Zona D v 1° Zona B', `4 zonas × 2 → cuartos oficiales: ${cruces.join(' | ')}`);
   ok(fx.rondaInicial(4, 2).ronda === 'cuartos' && fx.rondaInicial(2, 2).ronda === 'semifinal' && fx.rondaInicial(6, 2).ronda === 'octavos' && fx.rondaInicial(1, 2).ronda === 'final', 'ronda inicial según zonas y clasificados');
   let mismaZona = false;
   for (const [z, k] of [[2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [8, 2], [3, 3]]) {
@@ -66,7 +66,7 @@ async function integracion() {
     let fx0 = (await call('GET', `/torneos/${t.id}/fixture`)).data;
     const prev0 = fx0.llave_prevista;
     ok(prev0 && prev0.estimada && prev0.zonas === 4 && prev0.ronda === 'cuartos' && prev0.clasificados === 8, '12 parejas inscriptas → 4 zonas estimadas → la llave empieza en cuartos');
-    ok(prev0.rondas[0].partidos[0].pareja1.nombre === '1° Zona A' && prev0.rondas[0].partidos[0].pareja2.nombre === '2° Zona D', 'referencia: "1° Zona A vs 2° Zona D"');
+    ok(prev0.rondas[0].partidos[0].pareja1.nombre === '1° Zona A' && prev0.rondas[0].partidos[0].pareja2.nombre === '2° Zona C', 'referencia oficial: "1° Zona A vs 2° Zona C"');
     ok(prev0.rondas[1].partidos[0].pareja1.nombre === 'Ganador Cuartos 1' && prev0.rondas.at(-1).ronda === 'final', 'rondas siguientes: "Ganador Cuartos 1" … final');
 
     // ── Inicio de la llave ──
@@ -91,9 +91,9 @@ async function integracion() {
     // La llave real respeta la referencia: cuartos 1 = 1° Zona A vs 2° Zona D
     const pos = (zona, puesto) => fz.zonas.find(z => z.nombre === zona).tabla.find(r => r.posicion === puesto).pareja_id;
     const q1 = fz.llave[0].partidos.find(p => p.orden === 1);
-    ok(q1.pareja1.id === pos('Zona A', 1) && q1.pareja2.id === pos('Zona D', 2), 'cuartos 1 con los nombres reales: 1° Zona A vs 2° Zona D');
+    ok(q1.pareja1.id === pos('Zona A', 1) && q1.pareja2.id === pos('Zona C', 2), 'cuartos 1 con los nombres reales: 1° Zona A vs 2° Zona C');
     const q4 = fz.llave[0].partidos.find(p => p.orden === 4);
-    ok(q4.pareja1.id === pos('Zona C', 1) && q4.pareja2.id === pos('Zona B', 2), 'cuartos 4: 1° Zona C vs 2° Zona B');
+    ok(q4.pareja1.id === pos('Zona D', 2) && q4.pareja2.id === pos('Zona B', 1), 'cuartos 4: 2° Zona D vs 1° Zona B');
     const antes = fz.llave.flatMap(r => r.partidos).filter(p => p.fecha).some(p => `${p.fecha} ${p.hora}` < '2026-12-21 18:00');
     ok(!antes && fz.llave[0].partidos.every(p => p.fecha), 'ningún partido de la llave antes del inicio configurado (21/12 18:00)');
     ok((await call('PUT', `/torneos/${t.id}/categorias/5/llave-inicio`, { fecha: '2026-12-21', hora: '19:00' })).status === 409, 'con la llave armada no se cambia el inicio → 409');

@@ -78,10 +78,14 @@ function validarFranjas(franjas, { fechaInicio, fechaFin, requerida = false } = 
 function badRequest(msg) { const e = new Error(msg); e.status = 400; return e; }
 
 // ── Zonas ─────────────────────────────────────────────────────
-/** Cantidad de zonas: n / parejas por zona, redondeado (18 parejas de a 3 → 6 zonas). */
+/**
+ * Cantidad de zonas: n / parejas por zona, redondeado HACIA ABAJO: ninguna zona queda con menos
+ * parejas que las configuradas y el resto se reparte (de a 3: 6–8 → 2 zonas, 9–11 → 3, 12–14 → 4,
+ * 15–17 → 5, como en el reglamento de las llaves oficiales).
+ */
 function cantidadZonas(n, parejasPorZona) {
   if (n < 2) throw badRequest('Se necesitan al menos 2 parejas para armar zonas.');
-  return Math.max(1, Math.round(n / Math.max(2, parejasPorZona)));
+  return Math.max(1, Math.floor(n / Math.max(2, parejasPorZona)));
 }
 
 /**
@@ -558,8 +562,14 @@ function rondaInicial(numZonas, clasificanPorZona) {
  * lugar (o null = BYE); sin `asignar` el cuadro queda con las claves de los lugares
  * (referencia). Placeholder y llave real salen del MISMO algoritmo → coinciden siempre.
  */
+const { generateBracketFromZones } = require('../brackets/generateBracket');
+
 function armarLlavePorZonas(numZonas, clasificanPorZona, asignar = null) {
   if (numZonas * clasificanPorZona < 2) throw badRequest('Se necesitan al menos 2 clasificados para armar la llave.');
+  // Cruces OFICIALES (services/brackets/configurations.js) cuando hay regla para zonas × clasificados
+  // y están todos los clasificados; si no, armado genérico por siembra.
+  const oficial = generateBracketFromZones(numZonas, clasificanPorZona, asignar);
+  if (oficial && (!asignar || oficial.plazas.every(pl => asignar(pl) != null))) return oficial;
   const plazas = plazasLlave(numZonas, clasificanPorZona);
   const lista = plazas.map(p => ({ pareja_id: asignar ? asignar(p) : p.key, zona_id: p.zona_idx, plaza: p }));
   return { ...armarLlave(lista), plazas };
