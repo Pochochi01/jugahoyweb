@@ -95,6 +95,12 @@ export function torneosStaff(client, cid) {
     generarZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/generar`, d),
     generarLlave:  (tid, d)    => client.post(`${t(tid)}/llave/generar`, d),
     borrarLlave:   (tid, cat)  => client.delete(`${t(tid)}/categorias/${cat}/llave`),   // solo Administrador General
+    // Plantillas de llaves (solo Administrador General)
+    plantillas:          ()        => client.get(`${b}/bracket-templates`),
+    probarPlantilla:     (d)       => client.post(`${b}/bracket-templates/probar`, d),
+    crearPlantilla:      (d)       => client.post(`${b}/bracket-templates`, d),
+    actualizarPlantilla: (id, d)   => client.put(`${b}/bracket-templates/${id}`, d),
+    activarPlantilla:    (id, act) => client.put(`${b}/bracket-templates/${id}/activa`, { active: act }),
     inicioLlave:   (tid, cat, d) => client.put(`${t(tid)}/categorias/${cat}/llave-inicio`, d),   // { fecha, hora } (vacíos = sin inicio fijo)
     // Fijar día / hora / cancha de un partido de la llave de referencia ({ estado: 'pendiente' } = automático)
     programarPrevista: (tid, cat, clave, d) => client.put(`${t(tid)}/categorias/${cat}/llave-prevista/${clave}`, d),

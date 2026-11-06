@@ -98,6 +98,13 @@ club.get   ('/jugadores',   ranking.jugadores);
 // Editar puntos, configurar puntajes, recalcular y ver auditorías: SOLO Administrador General.
 const soloAdminGeneral = (req, res, next) => (req.user?.rol === 'general_admin'
   ? next() : res.status(403).json({ message: 'Solo el Administrador General puede hacer esto.' }));
+// Plantillas de llaves (motor configurable): solo Administrador General
+const plantillas = require('../controllers/bracketTemplatesController');
+club.get ('/bracket-templates',            soloAdminGeneral, plantillas.catalogo);
+club.post('/bracket-templates/probar',     soloAdminGeneral, plantillas.probar);
+club.post('/bracket-templates',            soloAdminGeneral, plantillas.crear);
+club.put ('/bracket-templates/:id',        soloAdminGeneral, plantillas.actualizar);
+club.put ('/bracket-templates/:id/activa', soloAdminGeneral, plantillas.activar);
 club.get   ('/ranking',                          ranking.list);
 club.get   ('/ranking/temporadas',               ranking.temporadas);
 club.post  ('/ranking/temporadas',               soloAdminGeneral, ranking.crearTemporada);

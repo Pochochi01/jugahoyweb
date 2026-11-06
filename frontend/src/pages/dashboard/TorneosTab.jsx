@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Trophy, Plus, UserCog, QrCode, Pencil, Trash2, X, ListOrdered, Bell } from 'lucide-react';
+import { Trophy, Plus, UserCog, QrCode, Pencil, Trash2, X, ListOrdered, Bell, GitBranch } from 'lucide-react';
 import NotificacionesPanel from '../../components/torneos/NotificacionesPanel';
+import PlantillasLlaves from '../../components/torneos/PlantillasLlaves';
 import RankingAnual from '../../components/torneos/RankingAnual';
 import api from '../../services/api';
 import { torneosStaff } from '../../services/torneosService';
@@ -26,7 +27,7 @@ export default function TorneosTab({ complexId }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-xl font-bold flex items-center gap-2 mr-auto"><Trophy className="w-5 h-5 text-primary" /> Torneos Pádel</h2>
-        {[['torneos', 'Torneos', Trophy], ['ranking', 'Ligas anuales', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['notificaciones', 'Notificaciones', Bell], ['tickets', 'Validar ticket', QrCode]].map(([k, l, Icon]) => (
+        {[['torneos', 'Torneos', Trophy], ['ranking', 'Ligas anuales', ListOrdered], ['organizadores', 'Organizadores', UserCog], ['notificaciones', 'Notificaciones', Bell], ['tickets', 'Validar ticket', QrCode], ...(isGeneralAdmin ? [['plantillas', 'Plantillas de llaves', GitBranch]] : [])].map(([k, l, Icon]) => (
           <button key={k} onClick={() => setVista(k)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${vista === k ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
             <Icon className="w-4 h-4" /> {l}
@@ -38,6 +39,7 @@ export default function TorneosTab({ complexId }) {
       {vista === 'organizadores' && <Organizadores svc={svc} />}
       {vista === 'tickets' && <ValidarTicket svc={svc} />}
       {vista === 'notificaciones' && <NotificacionesPanel svc={svc} />}
+      {vista === 'plantillas' && isGeneralAdmin && <PlantillasLlaves svc={svc} />}
     </div>
   );
 }

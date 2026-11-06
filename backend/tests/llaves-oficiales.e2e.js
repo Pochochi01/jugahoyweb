@@ -3,7 +3,7 @@
  *
  *   npm run test:llaves:e2e
  *
- * Para 6, 7, 8 … 17 parejas: inscripción → zonas → resultados de zona → la llave se genera sola
+ * Para 6 a 32 parejas (LLAVES_DESDE / LLAVES_HASTA para un rango): inscripción → zonas → resultados de zona → la llave se genera sola
  * al terminar las zonas → los cruces de la llave real coinciden con el reglamento usando las
  * posiciones REALES de cada zona ("1° Zona A" = quien terminó 1° en la zona A) → se juega
  * toda la llave → hay campeón y el torneo queda finalizado. Imprime cada llave generada.
@@ -21,12 +21,23 @@ const PRIMERA = {
   3: ['2° Zona B vs 2° Zona C', '1° Zona C vs 2° Zona A'],
   4: ['1° Zona A vs 2° Zona C', '2° Zona B vs 1° Zona D', '1° Zona C vs 2° Zona A', '2° Zona D vs 1° Zona B'],
   5: ['2° Zona B vs 2° Zona C', '2° Zona A vs 2° Zona D'],
+  6: ['2° Zona F vs 2° Zona C', '1° Zona E vs 2° Zona B', '2° Zona A vs 1° Zona F', '2° Zona E vs 2° Zona D'],
+  8: ['1° Zona A vs 2° Zona B', '2° Zona G vs 1° Zona H', '1° Zona E vs 2° Zona F', '2° Zona C vs 1° Zona D', '1° Zona C vs 2° Zona D', '2° Zona E vs 1° Zona F', '1° Zona G vs 2° Zona H', '2° Zona A vs 1° Zona B'],
+  7: ['2° Zona F vs 2° Zona G', '1° Zona E vs 2° Zona C', '2° Zona B vs 1° Zona D', '1° Zona C vs 2° Zona A', '2° Zona D vs 1° Zona F', '1° Zona G vs 2° Zona E'],
+  9: ['2° Zona B vs 2° Zona C', '2° Zona D vs 2° Zona A'],
+  10: ['2° Zona C vs 2° Zona F', '2° Zona G vs 2° Zona B', '2° Zona A vs 2° Zona H', '2° Zona E vs 2° Zona D'],
 };
+const PENDIENTES = new Set();   // todas las cantidades de 6 a 32 tienen plantilla oficial
 // Lugares que pasan directo (BYE) y contra quién juegan en la ronda siguiente
 const SEGUNDA = {
   3: ['1° Zona A vs Ganador', 'Ganador vs 1° Zona B'],
   5: ['1° Zona A vs Ganador', '1° Zona D vs 1° Zona E', '1° Zona B vs Ganador', '1° Zona C vs 2° Zona E'],
+  6: ['1° Zona A vs Ganador', '1° Zona D vs Ganador', '1° Zona C vs Ganador', 'Ganador vs 1° Zona B'],
+  7: ['1° Zona A vs Ganador', 'Ganador vs Ganador', 'Ganador vs Ganador', 'Ganador vs 1° Zona B'],
+  10: ['1° Zona A vs Ganador', '1° Zona I vs 1° Zona H', '1° Zona E vs 2° Zona J', 'Ganador vs 1° Zona D', '1° Zona C vs Ganador', '2° Zona I vs 1° Zona F', '1° Zona G vs 1° Zona J', 'Ganador vs 1° Zona B'],
+  9: ['1° Zona A vs Ganador', '1° Zona I vs 1° Zona H', '1° Zona E vs 2° Zona G', '2° Zona F vs 1° Zona D', '1° Zona C vs 2° Zona E', '2° Zona H vs 1° Zona F', '1° Zona G vs 2° Zona I', 'Ganador vs 1° Zona B'],
 };
+const DESDE = Number(process.env.LLAVES_DESDE) || 6, HASTA = Number(process.env.LLAVES_HASTA) || 32;
 
 (async () => {
   const jwt = require('jsonwebtoken');
@@ -49,8 +60,8 @@ const SEGUNDA = {
     const liga = (await call('POST', '/ligas', { nombre: 'Liga Llaves' })).data;
     const franja = [{ fecha: null, desde: '08:00', hasta: '23:59' }];
     let dniN = 0;
-    for (let n = 6; n <= 17; n++) {
-      const t = (await call('POST', '/torneos', { nombre: `Copa ${n} parejas`, liga_id: liga.id, categorias: [5], genero: 'masculino', tipo: 'unico', fecha_inicio: '2026-12-10', fecha_fin: '2026-12-13', cupo_parejas: 32, parejas_por_zona: 3, clasifican_por_zona: 2, duracion_partido: 60, descanso_minimo: 0 })).data;
+    for (let n = DESDE; n <= HASTA; n++) {
+      const t = (await call('POST', '/torneos', { nombre: `Copa ${n} parejas`, liga_id: liga.id, categorias: [5], genero: 'masculino', tipo: 'unico', fecha_inicio: '2026-12-10', fecha_fin: '2026-12-14', cupo_parejas: 40, parejas_por_zona: 3, clasifican_por_zona: 2, duracion_partido: 60, descanso_minimo: 0 })).data;
       torneos.push(t.id);
       await call('PUT', `/torneos/${t.id}/canchas`, { canchas: canchas.map(c => ({ field_id: c.id, disponibilidad_horaria: franja })) });
       const jug = () => { dniN++; return { nombre: `Jugador${dniN} Prueba`, dni: String(43000000 + (s % 10000) * 100 + dniN), whatsapp: `54938190${String(dniN).padStart(5, '0')}`, categoria: 5, genero: 'masculino' }; };
@@ -67,22 +78,27 @@ const SEGUNDA = {
       }
       const fx = (await call('GET', `/torneos/${t.id}/fixture`)).data;
       const nz = fx.zonas.length;
-      ok(nz === { 6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 4, 13: 4, 14: 4, 15: 5, 16: 5, 17: 5 }[n], `${n} parejas → ${nz} zonas (${fx.zonas.map(z => z.tabla.length).join('-')})`);
+      ok(nz === Math.floor(n / 3), `${n} parejas → ${nz} zonas (${fx.zonas.map(z => z.tabla.length).join('-')})`);
       ok(fx.llave.length > 0, `${n} parejas: la llave se generó al terminar las zonas`);
 
       // Cruces con las posiciones reales de cada zona
       const txt = (p) => `${p.pareja1?.referencia || (p.pareja1 ? '?' : 'BYE')} vs ${p.pareja2?.referencia || (p.pareja2 ? '?' : (p.es_bye ? 'BYE' : 'Ganador'))}`;
       const primera = fx.llave[0].partidos.filter(p => !p.es_bye).map(txt);
-      ok(JSON.stringify(primera) === JSON.stringify(PRIMERA[nz]), `${n} parejas · ${fx.llave[0].nombre}: ${primera.join(' | ')}`);
+      if (!PENDIENTES.has(nz)) ok(JSON.stringify(primera) === JSON.stringify(PRIMERA[nz]), `${n} parejas · ${fx.llave[0].nombre}: ${primera.join(' | ')}`);
+      else console.log(`  · ${n} parejas (${nz} zonas, sin plantilla oficial → armado genérico) · ${fx.llave[0].nombre}: ${primera.join(' | ')}`);
       // La referencia corresponde a la posición real en la tabla
       const posReal = new Map(fx.zonas.flatMap(z => z.tabla.map(r => [r.pareja_id, `${r.posicion}° ${z.nombre}`])));
-      const todos = fx.llave[0].partidos.flatMap(p => [p.pareja1, p.pareja2]).filter(Boolean);
-      ok(todos.length === nz * 2 && todos.every(x => posReal.get(x.id) === x.referencia) && new Set(todos.map(x => x.id)).size === todos.length, `${n} parejas: los ${nz * 2} clasificados, una sola vez, con su posición real`);
+      // Antes de jugar la llave, toda pareja presente entró directo (plaza o BYE): deben ser los clasificados
+      const presentes = fx.llave.flatMap(r => r.partidos).flatMap(p => [p.pareja1, p.pareja2]).filter(x => x?.id);
+      const ids = [...new Set(presentes.map(x => x.id))];
+      ok(ids.length === nz * 2 && presentes.every(x => posReal.get(x.id) === x.referencia), `${n} parejas: los ${nz * 2} clasificados, una sola vez, con su posición real`);
+      const misma = fx.llave.flatMap(r => r.partidos).filter(p => p.pareja1?.referencia && p.pareja2?.referencia && !p.es_bye && p.pareja1.referencia.slice(3) === p.pareja2.referencia.slice(3));
+      ok(!misma.length, `${n} parejas: ningún cruce de la misma zona`);
       if (SEGUNDA[nz]) {
         const seg = fx.llave[1].partidos.map(p => `${p.pareja1?.referencia || 'Ganador'} vs ${p.pareja2?.referencia || 'Ganador'}`);
         ok(JSON.stringify(seg) === JSON.stringify(SEGUNDA[nz]), `${n} parejas · ${fx.llave[1].nombre}: ${seg.join(' | ')} (BYE → pasa directo)`);
       }
-      if (nz === 5) ok(fx.llave[0].nombre === 'Repechaje', '5 zonas: la primera ronda se muestra como "Repechaje"');
+      if ([5, 6, 9, 10].includes(nz)) ok(fx.llave[0].nombre === 'Repechaje', `${nz} zonas: la primera ronda se muestra como "Repechaje"`);
 
       // Jugar toda la llave
       for (let v = 0; v < 8; v++) {

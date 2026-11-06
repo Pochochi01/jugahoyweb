@@ -589,6 +589,12 @@ function LlaveSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
   const [msg, setMsg] = useState({});
   const cargar = useCallback(() => svc.fixture(torneo.id, categoria).then(setFx).catch(() => {}), [svc, torneo.id, categoria]);
   useEffect(() => { cargar(); }, [cargar, torneo.estado]);
+  // Actualización automática (resultados cargados desde otro dispositivo) mientras se juega
+  useEffect(() => {
+    if (!['zonas', 'llaves'].includes(torneo.estado)) return undefined;
+    const t = setInterval(() => { if (!document.hidden && !reprogramando) cargar(); }, 30000);
+    return () => clearInterval(t);
+  }, [cargar, torneo.estado, reprogramando]);
   if (!fx) return <Loader />;
 
   const generar = async (forzar) => {

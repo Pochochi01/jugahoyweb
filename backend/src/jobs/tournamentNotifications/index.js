@@ -97,6 +97,7 @@ const ganadorYPerdedor = (p) => {
 // Por ronda, qué recibe cada lado (un solo mensaje por jugador y partido)
 const POR_RONDA = {
   zona: ['resultado_ganador', 'resultado_perdedor'],
+  '16avos': ['avanza_llave', 'resultado_perdedor'],
   octavos: ['avanza_llave', 'resultado_perdedor'],
   cuartos: ['avanza_llave', 'resultado_perdedor'],
   semifinal: ['finalista', 'eliminado_semifinal'],
@@ -123,7 +124,7 @@ async function notificarResultados(rondas, desde) {
 }
 
 // ── 3. Resultado de partido (zonas, octavos, cuartos, semifinal) ─
-const resultNotificationJob = () => notificarResultados(['zona', 'octavos', 'cuartos', 'semifinal'], hace(VENTANA_EVENTOS_H));
+const resultNotificationJob = () => notificarResultados(['zona', '16avos', 'octavos', 'cuartos', 'semifinal'], hace(VENTANA_EVENTOS_H));
 
 // ── 4. Clasificación de zona ──────────────────────────────────
 async function classificationNotificationJob() {

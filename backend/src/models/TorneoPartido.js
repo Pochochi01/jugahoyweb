@@ -8,7 +8,7 @@ const TorneoPartido = sequelize.define('TorneoPartido', {
   torneo_id:  { type: DataTypes.INTEGER, allowNull: false },
   categoria_id: { type: DataTypes.TINYINT, allowNull: true },   // cuadro (categoría) al que pertenece
   zona_id:    { type: DataTypes.INTEGER, allowNull: true },
-  ronda:      { type: DataTypes.ENUM('zona', 'octavos', 'cuartos', 'semifinal', 'final'), allowNull: false },
+  ronda:      { type: DataTypes.ENUM('zona', '16avos', 'octavos', 'cuartos', 'semifinal', 'final'), allowNull: false },
   orden:      { type: DataTypes.INTEGER, defaultValue: 0 },
   pareja1_id: { type: DataTypes.INTEGER, allowNull: true },
   pareja2_id: { type: DataTypes.INTEGER, allowNull: true },

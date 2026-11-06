@@ -30,8 +30,8 @@ const {
 const rk = require('./rankingService');
 const fx = require('./fixtureService');
 const notifier = require('./torneoNotifier');
-const brackets = require('../brackets/configurations');
-const { validarLlave } = require('../brackets/generateBracket');
+const brackets = require('../brackets/bracketService');
+const { validarLlave } = brackets;
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
@@ -766,7 +766,8 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
 
   // Llave FIJA por zona y posición (la misma que se muestra como referencia antes de jugar)
   const cuadro = fx.armarLlavePorZonas(zonas.length, torneo.clasifican_por_zona,
-    (pl) => zonas[pl.zona_idx]?.tabla.find(r => r.posicion === pl.posicion)?.pareja_id ?? null);
+    (pl) => zonas[pl.zona_idx]?.tabla.find(r => r.posicion === pl.posicion)?.pareja_id ?? null,
+    { clubId: torneo.id_tenant, parejas: zonas.reduce((a, z) => a + z.tabla.length, 0) });
   const clasificados = cuadro.plazas.map(pl => zonas[pl.zona_idx]?.tabla.find(r => r.posicion === pl.posicion)?.pareja_id).filter(Boolean).map(id => ({ pareja_id: id }));
   // Validación antes de guardar: sin faltantes, sin duplicados, sin cruces de la misma zona en 1ª ronda
   const zonaDe = (id) => zonas.findIndex(z => z.tabla.some(r => r.pareja_id === id));
@@ -819,7 +820,7 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
 
   if (notificar) {
     // Agradecimiento a los que quedaron afuera en zonas
-    const clasif = new Set(clasificados.slice(0, 16).map(c => c.pareja_id));
+    const clasif = new Set(clasificados.map(c => c.pareja_id));
     const afuera = await TorneoPareja.findAll({
       where: { torneo_id: torneo.id, categoria_id: cat, zona_id: { [Op.ne]: null }, id: { [Op.notIn]: [...clasif] } },
       include: [{ model: TorneoJugador, as: 'jugadores' }],
@@ -827,7 +828,7 @@ async function generarLlave(torneo, { categoria_id, forzar = false, notificar = 
     for (const p of afuera) notifier.aPareja(torneo.id_tenant, p, notifier.mensajes.eliminados(torneo, p));
     await notificarProximos(torneo, { parejaIds: [...parejas.keys()] });
   }
-  return { categoria_id: cat, tam: cuadro.tam, clasificados: clasificados.length, byes: cuadro.tam - Math.min(16, clasificados.length) };
+  return { categoria_id: cat, tam: cuadro.tam, clasificados: clasificados.length, byes: Math.max(0, cuadro.tam - clasificados.length) };
 }
 
 /**
@@ -873,14 +874,16 @@ function minimosPorRonda(tc, dias) {
 /** Cuadro de referencia de una categoría (zonas reales o estimadas con las inscriptas). */
 async function cuadroReferencia(torneo, cat, zonas) {
   let numZonas = zonas.length;
+  let n = zonas.reduce((a, z) => a + z.tabla.length, 0);
   if (!numZonas) {
-    const n = await TorneoPareja.count({ where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: PAREJAS_ACTIVAS } });
+    n = await TorneoPareja.count({ where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: PAREJAS_ACTIVAS } });
     if (n < 2) return null;
     numZonas = fx.cantidadZonas(n, torneo.parejas_por_zona);
   }
   const K = Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona);
   if (numZonas * K < 2) return null;
-  return { numZonas, K, estimada: !zonas.length, cuadro: fx.armarLlavePorZonas(numZonas, K) };
+  const opts = { clubId: torneo.id_tenant, parejas: n };
+  return { numZonas, K, estimada: !zonas.length, cuadro: fx.armarLlavePorZonas(numZonas, K, null, opts), regla: brackets.reglaPara(numZonas, K, opts) };
 }
 
 /** Horarios fijados a mano en la llave de referencia: Map(categoria_id → Map(clave → fila)). */
@@ -985,7 +988,7 @@ async function simularLlaves(torneo) {
 async function llavePrevista(torneo, cat, zonas, simulacion = null) {
   const ref = await cuadroReferencia(torneo, cat, zonas);
   if (!ref) return null;
-  const { numZonas, K, cuadro } = ref;
+  const { numZonas, K, cuadro, regla } = ref;
   // Horario simulado de cada partido (si la categoría tiene inicio o zonas programadas)
   const horario = (key) => {
     const a = simulacion?.asignacion.get(key);
@@ -1003,16 +1006,20 @@ async function llavePrevista(torneo, cat, zonas, simulacion = null) {
   return {
     ...fx.rondaInicial(numZonas, K), zonas: numZonas, estimada: !zonas.length, simulada: Boolean(simulacion),
     rondas: cuadro.rondas.map((r, i) => {
-      // Rondas siguientes: "Ganador Cuartos 1", "Ganador Semi 2"…
+      // Lugares que vienen de otro partido: "Ganador Cuartos 1", "Ganador Repechaje 2"…
       const previa = i > 0 ? cuadro.rondas[i - 1].ronda : null;
-      const regla = brackets.reglaPara(numZonas, K);
-      const ganador = (n) => ({ id: null, nombre: `Ganador ${previa ? brackets.nombreRonda(regla, previa).replace('Semifinal', 'Semi') : ''} ${n}`, pendiente: true });
+      const etiquetaGanador = (rondaOrigen, n) => ({ id: null, nombre: `Ganador ${brackets.nombreRonda(regla, rondaOrigen).replace('Semifinal', 'Semi')} ${n}`, pendiente: true });
+      const ganadorDe = (p, lado, nGenerico) => {
+        const ref = p.origen?.[lado];
+        const m = /^W:(.+)-(\d+)$/.exec(ref || '');
+        return m ? etiquetaGanador(m[1], Number(m[2])) : etiquetaGanador(previa, nGenerico);
+      };
       return {
         ronda: r.ronda, nombre: brackets.nombreRonda(regla, r.ronda),
         partidos: r.partidos.map(p => ({
           id: `prev-${p.key}`, clave: p.key, ronda: r.ronda, orden: p.orden, es_bye: p.es_bye, prevista: true,
-          pareja1: p.pareja1_id ? lugar(p.pareja1_id) : (i === 0 ? null : ganador(p.orden * 2 - 1)),
-          pareja2: p.pareja2_id ? lugar(p.pareja2_id) : (i === 0 ? null : ganador(p.orden * 2)),
+          pareja1: p.pareja1_id ? lugar(p.pareja1_id) : (i === 0 ? null : ganadorDe(p, 'local', p.orden * 2 - 1)),
+          pareja2: p.pareja2_id ? lugar(p.pareja2_id) : (i === 0 ? null : ganadorDe(p, 'visitante', p.orden * 2)),
           resultado: null, ...(p.es_bye ? { fecha: null, hora: null, cancha: null } : horario(p.key)),
         })),
       };
@@ -1358,7 +1365,8 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
   // Llave: de qué zona y posición viene cada clasificado ("1° Zona A")
   const K = Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona);
   const procedencia = new Map(zonas.flatMap(z => (z.completa ? z.tabla : []).filter(r => r.posicion <= K).map(r => [r.pareja_id, `${r.posicion}° ${z.nombre}`])));
-  const regla = brackets.reglaPara(zonas.length, K);
+  const porId = new Map(partidos.map(p => [p.id, p]));
+  const regla = brackets.reglaPara(zonas.length, K, { clubId: torneo.id_tenant, parejas: zonas.reduce((a, z) => a + z.tabla.length, 0) });
   const pareja = (p, slot) => {
     const par = p[`pareja${slot}`];
     if (par) return { id: par.id, nombre: notifier.nombrePareja(par), numero_zona: par.numero_zona ?? null, ...(p.ronda !== 'zona' && procedencia.has(par.id) && { referencia: procedencia.get(par.id) }) };
@@ -1372,6 +1380,8 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     es_bye: p.es_bye, estado: p.estado, fuera_preferencia: p.fuera_preferencia,
     fecha: p.fecha, hora: p.hora, field_id: p.field_id, cancha: canchaLabel(p.field),
     siguiente_partido_id: p.siguiente_partido_id,
+    siguiente: p.ronda !== 'zona' && p.siguiente_partido_id && porId.has(p.siguiente_partido_id)
+      ? `${brackets.nombreRonda(regla, porId.get(p.siguiente_partido_id).ronda)} ${porId.get(p.siguiente_partido_id).orden}` : null,
     ultima_modificacion: ultimas.get(p.id) || null,
     resultado: p.resultado ? { sets: p.resultado.sets, tie_breaks: p.resultado.tie_breaks || [], ganador_id: p.resultado.ganador_id } : null,
   });

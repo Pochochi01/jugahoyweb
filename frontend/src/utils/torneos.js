@@ -23,7 +23,7 @@ export const ESTADO_PAGO = {
 };
 
 export const RONDA_LABEL = {
-  zona: 'Zona', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final',
+  zona: 'Zona', '16avos': '16avos', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final',
 };
 
 export const money = (n) => '$' + Number(n || 0).toLocaleString('es-AR');

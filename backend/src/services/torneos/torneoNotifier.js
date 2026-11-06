@@ -103,7 +103,7 @@ function fechaLarga(fecha) {
   const d = new Date(`${fecha}T12:00:00Z`);
   return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 }
-const RONDA_LABEL = { zona: 'Fase de zonas', octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'FINAL' };
+const RONDA_LABEL = { zona: 'Fase de zonas', '16avos': '16avos de final', octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'FINAL' };
 // 7-6 muestra el tie-break del perdedor del set entre paréntesis: 6-3 7-6(5)
 const setsTxt = (sets, tbs = []) => (sets || []).map(([a, b], i) =>
   `${a}-${b}${tbs?.[i] ? `(${Math.min(...tbs[i])})` : ''}`).join(' ');

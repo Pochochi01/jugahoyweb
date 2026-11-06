@@ -1,4 +1,5 @@
-import { Trophy, AlertTriangle, Pencil } from 'lucide-react';
+import { useState } from 'react';
+import { Trophy, AlertTriangle, Pencil, ZoomIn, ZoomOut } from 'lucide-react';
 import { RONDA_LABEL, fechaCorta, setsTxt } from '../../utils/torneos';
 import { UltimaModificacion } from './ReprogramarModal';
 
@@ -310,60 +311,93 @@ function BracketReferencia({ prevista, onReprogramar }) {
  * Llave en columnas. `onReprogramar(partido)` (panel) hace clickeable el día / hora / cancha
  * de cada enfrentamiento no jugado para abrir "Reprogramar partido".
  */
+const ESTADO_PARTIDO = { pendiente: 'Pendiente', programado: 'Programado', jugado: 'Finalizado', walkover: 'W.O.' };
+const ZOOMS = [0.7, 0.85, 1, 1.15, 1.3];
+
+/** Zoom del cuadro (− / % / +), recordado por dispositivo. */
+function useZoomLlave() {
+  const [i, setI] = useState(() => { try { const v = Number(localStorage.getItem('llave_zoom')); return ZOOMS.includes(v) ? ZOOMS.indexOf(v) : 2; } catch { return 2; } });
+  const set = (n) => { const k = Math.max(0, Math.min(ZOOMS.length - 1, n)); setI(k); try { localStorage.setItem('llave_zoom', String(ZOOMS[k])); } catch { /* sin storage */ } };
+  const controles = (
+    <div className="flex items-center gap-1 text-xs" role="group" aria-label="Zoom de la llave">
+      <button type="button" className="btn-ghost !px-2 !py-1" onClick={() => set(i - 1)} disabled={i === 0} aria-label="Alejar"><ZoomOut className="w-4 h-4" /></button>
+      <button type="button" className="btn-ghost !px-2 !py-1 tabular-nums min-w-[3.5rem]" onClick={() => set(2)} title="Tamaño normal">{Math.round(ZOOMS[i] * 100)}%</button>
+      <button type="button" className="btn-ghost !px-2 !py-1" onClick={() => set(i + 1)} disabled={i === ZOOMS.length - 1} aria-label="Acercar"><ZoomIn className="w-4 h-4" /></button>
+    </div>
+  );
+  return { zoom: ZOOMS[i], controles };
+}
+
 export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
-  // Sin llave generada: cuadro de referencia por zonas ("1° Zona A vs 2° Zona D")
+  const { zoom, controles } = useZoomLlave();
+  // Sin llave generada: cuadro de referencia por zonas ("1° Zona A vs 2° Zona C")
   if (!llave?.length && prevista?.rondas?.length) return <BracketReferencia prevista={prevista} onReprogramar={onReprogramar} />;
   if (!llave?.length) return <p className="text-sm text-muted-foreground">La llave se genera al terminar la fase de zonas.</p>;
-  const campeon = campeonId && llave.at(-1).partidos[0];
-  const nombreCampeon = campeon && (campeon.pareja1?.id === campeonId ? campeon.pareja1 : campeon.pareja2)?.nombre;
+  const final = llave.at(-1).partidos[0];
+  const campeon = campeonId && (final.pareja1?.id === campeonId ? final.pareja1 : final.pareja2);
   return (
-    <div>
-      {nombreCampeon && (
-        <div className="card mb-4 flex items-center gap-3 border-yellow-500/40">
-          <Trophy className="w-8 h-8 text-yellow-400" />
-          <div><div className="text-xs text-muted-foreground">Campeones</div><div className="font-bold">{nombreCampeon}</div></div>
+    <div className="space-y-3">
+      {campeon && (
+        <div className="card flex items-center gap-3 border-yellow-500/50 bg-yellow-500/5">
+          <Trophy className="w-9 h-9 text-yellow-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-xs text-muted-foreground">Campeones</div>
+            <div className="font-bold truncate">{campeon.nombre}</div>
+            {campeon.referencia && <div className="text-xs text-muted-foreground">({campeon.referencia})</div>}
+          </div>
         </div>
       )}
-      <div className="overflow-x-auto pb-2">
-        <div className="flex gap-4 min-w-max">
+      <div className="flex justify-end">{controles}</div>
+      <div className="overflow-x-auto pb-2 -mx-1 px-1 overscroll-x-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex gap-4 min-w-max" style={{ zoom }}>
           {llave.map(r => (
-            <div key={r.ronda} className="w-60 flex flex-col">
+            <div key={r.ronda} className="w-64 flex flex-col">
               <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">{r.nombre || RONDA_LABEL[r.ronda]}</div>
               <div className="flex flex-col justify-around flex-1 gap-3">
-                {r.partidos.map(p => (
-                  <div key={p.id} className="rounded-lg border border-border bg-card text-xs overflow-hidden">
-                    {[1, 2].map(l => {
-                      const par = p[`pareja${l}`];
-                      const win = p.resultado?.ganador_id && par?.id === p.resultado.ganador_id;
-                      return (
-                        <div key={l} className={`px-2.5 py-1.5 flex justify-between gap-2 ${l === 2 ? 'border-t border-border' : ''} ${win ? 'text-primary font-semibold' : ''}`}>
-                          <span className="min-w-0">
-                            <span className="block truncate">{par?.nombre || (p.es_bye ? 'BYE' : <span className="italic text-muted-foreground">A definir</span>)}</span>
-                            {par?.referencia && <span className="block text-[10px] font-normal text-muted-foreground">({par.referencia})</span>}
-                            {p.es_bye && par && <span className="block text-[10px] font-medium text-primary">Pasa directo</span>}
-                          </span>
-                          <span className="font-mono shrink-0">
-                            {(p.resultado?.sets || []).map((s, i) => {
-                              const tb = p.resultado.tie_breaks?.[i];
-                              return <span key={i} className="ml-1">{s[l - 1]}{tb && <sup className="text-[8px]">{tb[l - 1]}</sup>}</span>;
-                            })}
-                          </span>
+                {r.partidos.map(p => {
+                  const esFinal = !p.siguiente_partido_id && r.ronda === 'final';
+                  const ganadorFinal = esFinal && p.resultado?.ganador_id;
+                  return (
+                    <div key={p.id} className={`rounded-lg border bg-card text-xs overflow-hidden ${ganadorFinal ? 'border-yellow-500/60 ring-1 ring-yellow-500/30' : 'border-border'}`}>
+                      {[1, 2].map(l => {
+                        const par = p[`pareja${l}`];
+                        const win = p.resultado?.ganador_id && par?.id === p.resultado.ganador_id;
+                        return (
+                          <div key={l} className={`px-2.5 py-1.5 flex justify-between gap-2 ${l === 2 ? 'border-t border-border' : ''} ${win ? (ganadorFinal ? 'text-yellow-400 font-semibold' : 'text-primary font-semibold') : ''}`}>
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1"><span className="truncate">{par?.nombre || (p.es_bye ? 'BYE' : <span className="italic text-muted-foreground">A definir</span>)}</span>{win && ganadorFinal && <Trophy className="w-3 h-3 shrink-0" aria-label="Campeón" />}</span>
+                              {par?.referencia && <span className="block text-[10px] font-normal text-muted-foreground">({par.referencia})</span>}
+                              {p.es_bye && par && <span className="block text-[10px] font-medium text-primary">Pasa directo</span>}
+                            </span>
+                            <span className="font-mono shrink-0">
+                              {(p.resultado?.sets || []).map((s, i) => {
+                                const tb = p.resultado.tie_breaks?.[i];
+                                return <span key={i} className="ml-1">{s[l - 1]}{tb && <sup className="text-[8px]">{tb[l - 1]}</sup>}</span>;
+                              })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {!p.es_bye && (
+                        <div className="px-2.5 py-1 text-[10px] text-muted-foreground border-t border-border flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className={p.resultado ? 'text-emerald-400' : p.estado === 'programado' ? 'text-sky-400' : ''}>{ESTADO_PARTIDO[p.estado] || p.estado}</span>
+                          {p.siguiente && <span>→ {p.siguiente}</span>}
                         </div>
-                      );
-                    })}
-                    {!p.es_bye && !p.resultado && (p.fecha || onReprogramar) && (onReprogramar ? (
-                      <button type="button" onClick={() => onReprogramar(p)} title="Reprogramar día, hora y cancha"
-                        className="w-full text-left px-2.5 py-1 text-[10px] border-t border-border text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors flex items-center gap-1">
-                        <span className="min-w-0 truncate">{p.fecha ? `${fechaCorta(p.fecha)} ${p.hora} · ${p.cancha || 'sin cancha'}` : 'Sin programar: elegir día y hora'}</span>
-                        <span className="ml-auto shrink-0" aria-hidden="true">✎</span>
-                      </button>
-                    ) : (
-                      <div className="px-2.5 py-1 text-[10px] text-muted-foreground border-t border-border">
-                        {fechaCorta(p.fecha)} {p.hora} · {p.cancha}
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                      )}
+                      {!p.es_bye && !p.resultado && (p.fecha || onReprogramar) && (onReprogramar ? (
+                        <button type="button" onClick={() => onReprogramar(p)} title="Reprogramar día, hora y cancha"
+                          className="w-full text-left px-2.5 py-1 text-[10px] border-t border-border text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors flex items-center gap-1">
+                          <span className="min-w-0 truncate">{p.fecha ? `${fechaCorta(p.fecha)} ${p.hora} · ${p.cancha || 'sin cancha'}` : 'Sin programar: elegir día y hora'}</span>
+                          <span className="ml-auto shrink-0" aria-hidden="true">✎</span>
+                        </button>
+                      ) : (
+                        <div className="px-2.5 py-1 text-[10px] text-muted-foreground border-t border-border">
+                          {fechaCorta(p.fecha)} {p.hora} · {p.cancha}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

@@ -55,6 +55,9 @@ async function start() {
     // Gym: vencimientos de membresías, morosos y cierre de clases
     try { require('./src/services/gym/scheduler').iniciar(15); }
     catch (err) { console.error('✗ Gym scheduler:', err.message); }
+    // Llaves: plantillas configurables desde administración (en memoria; se refrescan al guardar)
+    require('./src/services/brackets/bracketService').cargarPlantillas()
+      .then(n => n && console.log(`✓ Llaves: ${n} plantilla(s) de administración activas`)).catch(() => {});
     // Torneos: notificaciones push automáticas (eventos → cola → FCM / Web Push)
     try { require('./src/jobs/tournamentNotifications').iniciar(); }
     catch (err) { console.error('✗ Notificaciones push de torneos:', err.message); }

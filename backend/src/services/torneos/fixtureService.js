@@ -30,8 +30,9 @@ const PUNTOS_VICTORIA = 2;
 const PUNTOS_DERROTA  = 1;   // en pádel se suele premiar el partido jugado
 const PUNTOS_WO       = 0;   // perder por walkover no suma
 
-const RONDAS_POR_TAMANIO = { 16: 'octavos', 8: 'cuartos', 4: 'semifinal', 2: 'final' };
-const ORDEN_RONDAS = ['octavos', 'cuartos', 'semifinal', 'final'];
+const RONDAS_POR_TAMANIO = { 32: '16avos', 16: 'octavos', 8: 'cuartos', 4: 'semifinal', 2: 'final' };
+const ORDEN_RONDAS = ['16avos', 'octavos', 'cuartos', 'semifinal', 'final'];
+const MAX_LLAVE = 32;   // 16avos → final
 
 // ── Tiempo ────────────────────────────────────────────────────
 function toMin(hhmm, esFin = false) {
@@ -463,13 +464,13 @@ function rankingClasificados(zonas, clasificanPorZona) {
  *    los lugares vacíos son BYES y los reciben los MEJORES sembrados
  *    (orden de siembra estándar → el seed 1 enfrenta al lugar 16, que queda vacío).
  *  - Se intenta que dos parejas de la misma zona no se crucen en la primera ronda.
- *  - Máximo 16 parejas (octavos). Si hay más, entran los 16 mejores.
+ *  - Máximo 32 parejas (16avos). Si hay más, entran los 32 mejores.
  *
  * @param {Array<{pareja_id, zona_id, seed}>} clasificados ordenados por seed
  * @returns {{ tam, rondas: Array<{ronda, partidos: Array<{key, orden, pareja1_id, pareja2_id, es_bye, siguiente_key, siguiente_slot, despuesDe}>}> }}
  */
 function armarLlave(clasificados) {
-  const lista = clasificados.slice(0, 16);
+  const lista = clasificados.slice(0, MAX_LLAVE);
   if (lista.length < 2) throw badRequest('Se necesitan al menos 2 clasificados para armar la llave.');
   // Un lugar sin pareja (pareja_id null) se trata como BYE
   let tam = 2;
@@ -536,7 +537,7 @@ function armarLlave(clasificados) {
 // ── Llave por zonas (cuadro de referencia) ─────────────────────
 /**
  * Lugares de la llave en orden de siembra: primero los 1° de cada zona (A, B, C…),
- * después los 2° (A, B, C…), etc. Máximo 16 (octavos).
+ * después los 2° (A, B, C…), etc. Máximo 32 (16avos).
  * Con la siembra estándar el k-ésimo 2° enfrenta al 1° de la zona N+1-k, y armarLlave
  * evita cruces de la misma zona en primera ronda: el cuadro es FIJO y se conoce antes
  * de jugar las zonas ("1° Zona A vs 2° Zona D").
@@ -546,12 +547,12 @@ function plazasLlave(numZonas, clasificanPorZona) {
   for (let pos = 1; pos <= clasificanPorZona; pos++) {
     for (let z = 0; z < numZonas; z++) out.push({ zona_idx: z, posicion: pos, key: `${pos}-${z}`, etiqueta: `${pos}° ${nombreZona(z)}` });
   }
-  return out.slice(0, 16);
+  return out.slice(0, MAX_LLAVE);
 }
 
 /** Ronda en la que empieza la llave según zonas y clasificados (ej. 4 zonas × 2 → cuartos). */
 function rondaInicial(numZonas, clasificanPorZona) {
-  const clasificados = Math.min(16, numZonas * clasificanPorZona);
+  const clasificados = Math.min(MAX_LLAVE, numZonas * clasificanPorZona);
   let tam = 2;
   while (tam < clasificados) tam *= 2;
   return { tam, ronda: RONDAS_POR_TAMANIO[tam], clasificados, byes: tam - clasificados };
@@ -562,13 +563,13 @@ function rondaInicial(numZonas, clasificanPorZona) {
  * lugar (o null = BYE); sin `asignar` el cuadro queda con las claves de los lugares
  * (referencia). Placeholder y llave real salen del MISMO algoritmo → coinciden siempre.
  */
-const { generateBracketFromZones } = require('../brackets/generateBracket');
+const { generateBracketFromZones } = require('../brackets/bracketService');
 
-function armarLlavePorZonas(numZonas, clasificanPorZona, asignar = null) {
+function armarLlavePorZonas(numZonas, clasificanPorZona, asignar = null, opts = {}) {
   if (numZonas * clasificanPorZona < 2) throw badRequest('Se necesitan al menos 2 clasificados para armar la llave.');
-  // Cruces OFICIALES (services/brackets/configurations.js) cuando hay regla para zonas × clasificados
-  // y están todos los clasificados; si no, armado genérico por siembra.
-  const oficial = generateBracketFromZones(numZonas, clasificanPorZona, asignar);
+  // Cruces por PLANTILLA (services/brackets: club → global → reglas oficiales) cuando hay una para
+  // zonas × clasificados y están todos los clasificados; si no, armado genérico por siembra.
+  const oficial = generateBracketFromZones(numZonas, clasificanPorZona, asignar, opts);
   if (oficial && (!asignar || oficial.plazas.every(pl => asignar(pl) != null))) return oficial;
   const plazas = plazasLlave(numZonas, clasificanPorZona);
   const lista = plazas.map(p => ({ pareja_id: asignar ? asignar(p) : p.key, zona_id: p.zona_idx, plaza: p }));
