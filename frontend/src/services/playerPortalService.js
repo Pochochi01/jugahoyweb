@@ -122,5 +122,7 @@ export const jugadorPush = {
     }
   },
   preferencias: () => api.get('/push/preferences'),
+  estado: () => api.get('/push/estado'),            // dispositivos + últimas notificaciones (diagnóstico)
+  prueba: () => api.post('/push/test', {}),          // notificación de prueba a este jugador
   guardarPreferencias: (d) => api.post('/push/preferences', d),
 };

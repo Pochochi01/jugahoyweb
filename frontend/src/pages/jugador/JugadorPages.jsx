@@ -244,7 +244,11 @@ function AvisosPush() {
   const [ocupado, setOcupado] = useState(false);
   const [prefs, setPrefs] = useState(null);
   const [verPrefs, setVerPrefs] = useState(false);
+  const [diag, setDiag] = useState(null);       // { dispositivos, ultimas, servidor }
+  const [verDiag, setVerDiag] = useState(false);
   useEffect(() => { jugadorPush.activo().then(setActivo).catch(() => setActivo(false)); }, []);
+  const cargarDiag = () => jugadorPush.estado().then(setDiag).catch(e => setMsg(errMsg(e)));
+  useEffect(() => { if (verDiag) cargarDiag(); }, [verDiag]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (verPrefs && !prefs) jugadorPush.preferencias().then(setPrefs).catch(e => setMsg(errMsg(e))); }, [verPrefs, prefs]);
   if (!jugadorPush.soportado() || activo === null) return null;
   const instalada = jugadorPush.instalada();
@@ -254,6 +258,15 @@ function AvisosPush() {
     try {
       if (activo) { await jugadorPush.desactivar(); setActivo(false); setMsg('Notificaciones desactivadas en este dispositivo.'); }
       else { await jugadorPush.activar(); setActivo(true); setMsg('Listo: te avisamos de horarios, resultados y novedades de tus torneos.'); }
+    } catch (e) { setMsg(errMsg(e)); } finally { setOcupado(false); }
+  };
+  const probar = async () => {
+    setOcupado(true); setMsg('');
+    try {
+      await jugadorPush.renovar();   // por si el token del dispositivo cambió
+      const r = await jugadorPush.prueba();
+      setMsg(r?.estado === 'enviado' ? `Prueba enviada a ${r.dispositivos} dispositivo(s): debería aparecer en unos segundos.` : `No se pudo enviar: ${r?.motivo || r?.estado || 'error'}.`);
+      if (verDiag) cargarDiag();
     } catch (e) { setMsg(errMsg(e)); } finally { setOcupado(false); }
   };
   const togglePref = async (k) => {
@@ -272,12 +285,38 @@ function AvisosPush() {
             : 'Recibí en este dispositivo los avisos de tus partidos, aunque la app esté cerrada.')}</p>
         </div>
         <div className="flex gap-2">
+          {activo && <button className="btn-ghost text-sm" disabled={ocupado} onClick={probar}>Probar</button>}
           {activo && <button className="btn-ghost text-sm" onClick={() => setVerPrefs(v => !v)} aria-expanded={verPrefs}>Preferencias</button>}
+          <button className="btn-ghost text-sm" onClick={() => setVerDiag(v => !v)} aria-expanded={verDiag}>Historial</button>
           <button className={activo ? 'btn-ghost text-sm' : 'btn-primary text-sm'} disabled={ocupado || bloqueadas || (!instalada && !activo)} onClick={cambiar}>
             {bloqueadas ? 'Bloqueadas en el navegador' : ocupado ? 'Un momento…' : activo ? 'Desactivar' : 'Activar'}
           </button>
         </div>
       </div>
+      {verDiag && (
+        <div className="border-t border-border pt-3 space-y-2 text-sm">
+          {!diag ? <Sk className="h-16" /> : (
+            <>
+              {!diag.servidor.disponible && <p className="text-amber-400">Las notificaciones no están configuradas en el servidor.</p>}
+              {!diag.dispositivos.some(d => d.activo && d.installed) && (
+                <p className="text-amber-400">Este jugador no tiene un dispositivo con la app instalada y las notificaciones activas: abrí JugaHoy desde el ícono de la app y tocá "Activar".</p>
+              )}
+              <div className="text-xs text-muted-foreground">Dispositivos: {diag.dispositivos.length ? diag.dispositivos.map(d => `${d.device_type || 'dispositivo'} · ${d.browser || ''}${d.installed ? ' · app instalada' : ' · navegador'}${d.activo ? '' : ' (dado de baja)'}`).join(' | ') : 'ninguno'}</div>
+              <ul className="space-y-1">
+                {!diag.ultimas.length && <li className="text-muted-foreground text-xs">Todavía no hubo notificaciones para vos.</li>}
+                {diag.ultimas.map(n => (
+                  <li key={n.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                    <span className="text-muted-foreground tabular-nums">{new Date(n.fecha_envio || n.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="font-medium">{n.titulo}</span>
+                    <span className={['enviado', 'entregado', 'abierto'].includes(n.estado) ? 'text-emerald-400' : n.estado === 'pendiente' ? 'text-sky-400' : 'text-amber-400'}>{{ enviado: 'enviada', entregado: 'entregada', abierto: 'abierta', omitido: 'no enviada', fallido: 'falló', pendiente: 'en cola', procesando: 'enviando' }[n.estado] || n.estado}</span>
+                    {n.motivo && !['enviado', 'entregado', 'abierto'].includes(n.estado) && <span className="text-muted-foreground w-full">{n.motivo}</span>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
       {activo && verPrefs && (
         <div className="border-t border-border pt-3 grid sm:grid-cols-2 gap-2">
           {!prefs ? <Sk className="h-16 sm:col-span-2" /> : PREFS.map(([k, l]) => (

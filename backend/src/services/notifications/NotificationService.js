@@ -201,7 +201,9 @@ async function registrarDispositivo(dni, body = {}, userAgent = '') {
     datos = { ...comun, proveedor: 'webpush', endpoint: s.endpoint, keys: s.keys };
   }
   const [row, creada] = await PlayerPushSubscription.findOrCreate({ where, defaults: datos });
-  if (!creada) await row.update(datos);
+  // En Android la app instalada y el navegador comparten la MISMA suscripción: abrir el portal en el
+  // navegador no debe desmarcar un dispositivo que ya se registró como app instalada.
+  if (!creada) await row.update({ ...datos, installed: Boolean(row.installed) || datos.installed });
   return row;
 }
 
@@ -236,6 +238,27 @@ const sendMatchReminder = (torneo, destinatarios, ctx) => sendTournamentNotifica
 const sendPaymentReminder = (torneo, destinatarios) => sendTournamentNotification('recordatorio_pago', torneo, destinatarios);
 const sendChampionNotification = (torneo, destinatarios) => sendTournamentNotification('campeon', torneo, destinatarios);
 const sendRunnerUpNotification = (torneo, destinatarios) => sendTournamentNotification('subcampeon', torneo, destinatarios);
+
+// ── Diagnóstico del jugador ───────────────────────────────────
+/** Dispositivos del jugador, últimas notificaciones (con motivo si no salieron) y estado del motor. */
+async function estadoJugador(dni) {
+  const [dispositivos, ultimas] = await Promise.all([
+    PlayerPushSubscription.findAll({ where: { dni }, attributes: ['id', 'proveedor', 'device_type', 'browser', 'installed', 'activo', 'last_active', 'createdAt'], order: [['last_active', 'DESC']], raw: true }),
+    NotificationLog.findAll({ where: { dni }, attributes: ['id', 'titulo', 'tipo', 'estado', 'motivo', 'fecha_envio', 'abierto_at', 'createdAt'], order: [['id', 'DESC']], limit: 15, raw: true }),
+  ]);
+  return {
+    servidor: { disponible: transport.disponible(), proveedor: transport.fcmActivo() ? 'fcm' : 'webpush', motor: require('../../jobs/tournamentNotifications').estadoJobs().activos },
+    dispositivos, ultimas,
+  };
+}
+
+/** Notificación de prueba al propio jugador: se envía en el momento y devuelve cómo terminó. */
+async function prueba(dni) {
+  const dedupe = `prueba:${dni}:${Date.now()}`;
+  const r = await encolar([{ tipo: 'manual', dni, dedupe, ctx: { titulo: '🔔 Notificación de prueba', mensaje: 'Si ves este mensaje, las notificaciones de JugaHoy funcionan en este dispositivo.', url: '/jugador/dashboard' } }]);
+  if (r.encoladas) await procesarCola();
+  return NotificationLog.findOne({ where: { dedupe_key: dedupe }, attributes: ['id', 'estado', 'motivo', 'dispositivos', 'fecha_envio'], raw: true });
+}
 
 // ── Panel administrativo ──────────────────────────────────────
 async function listar(idTenant, q = {}) {
@@ -287,6 +310,7 @@ async function metricas(idTenant, q = {}) {
     ctr: pct(abiertas, entregadas), tasa_entrega: pct(entregadas, enviadas + fallidas),
     usuarios_pwa: Number(instalados) || 0, por_tipo: porTipo,
     proveedor: transport.fcmActivo() ? 'fcm' : 'webpush', disponible: transport.disponible(),
+    motor: require('../../jobs/tournamentNotifications').estadoJobs(),
   };
 }
 
@@ -309,5 +333,5 @@ module.exports = {
   encolar, procesarCola, enviarLog, registrarSeguimiento, firmar,
   registrarDispositivo, quitarDispositivo, preferencias, guardarPreferencias,
   sendPush, sendTournamentNotification, sendMatchReminder, sendPaymentReminder, sendChampionNotification, sendRunnerUpNotification,
-  listar, metricas, reenviar,
+  listar, metricas, reenviar, estadoJugador, prueba,
 };

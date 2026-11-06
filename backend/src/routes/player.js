@@ -21,7 +21,7 @@ const svc = require('../services/playerPortalService');
 const { authJugador, claveAlDia, puedeVer, signJugador, ROLE_PLAYER, PERMISOS_JUGADOR } = require('../middlewares/playerAuth');
 
 // Escrituras permitidas: solo credenciales y suscripción push del propio dispositivo (tablas del portal)
-const AUTH = new Set(['/auth/login', '/auth/change-password', '/auth/forgot', '/auth/reset', '/push/subscribe', '/push/unsubscribe', '/push/preferences']);
+const AUTH = new Set(['/auth/login', '/auth/change-password', '/auth/forgot', '/auth/reset', '/push/subscribe', '/push/unsubscribe', '/push/preferences', '/push/test']);
 
 // Candado de solo lectura: fuera de las credenciales, cualquier método que no sea GET → 405
 router.use((req, res, next) => {
@@ -61,6 +61,12 @@ router.post('/push/subscribe', authJugador, async (req, res) => {   // alta / re
 });
 router.post('/push/unsubscribe', authJugador, async (req, res) => {
   try { await notif.quitarDispositivo(req.jugadorDni, req.body || {}); res.json({ ok: true }); } catch (e) { send(req, res, e, 'push'); }
+});
+router.get('/push/estado', authJugador, async (req, res) => {   // diagnóstico: dispositivos + últimas notificaciones
+  try { res.json(await notif.estadoJugador(req.jugadorDni)); } catch (e) { send(req, res, e, 'push'); }
+});
+router.post('/push/test', authJugador, async (req, res) => {    // notificación de prueba a sí mismo
+  try { svc.log(req, 'push_test', { status: 200 }); res.json(await notif.prueba(req.jugadorDni)); } catch (e) { send(req, res, e, 'push'); }
 });
 router.get('/push/preferences', authJugador, async (req, res) => {
   try { res.json(await notif.preferencias(req.jugadorDni)); } catch (e) { send(req, res, e, 'push'); }

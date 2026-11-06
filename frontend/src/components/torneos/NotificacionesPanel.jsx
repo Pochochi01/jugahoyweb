@@ -69,6 +69,18 @@ export default function NotificacionesPanel({ svc }) {
         resultados, clasificaciones, finales y cierre del torneo.
         {met && !met.disponible && <span className="text-amber-400"> Las notificaciones push no están configuradas en el servidor.</span>}
       </p>
+      {met?.motor && (() => {
+        const jobs = Object.entries(met.motor.jobs || {});
+        const conError = jobs.filter(([, j]) => j.ok === false);
+        const ultima = jobs.map(([, j]) => j.ultima).filter(Boolean).sort().at(-1);
+        return (
+          <div className={`text-xs rounded-lg px-3 py-2 ${!met.motor.activos || conError.length ? 'bg-amber-500/10 text-amber-400' : 'bg-muted/50 text-muted-foreground'}`}>
+            {!met.motor.activos ? 'El envío automático NO está corriendo en este servidor (revisá TORNEO_PUSH_JOBS y reiniciá el backend).'
+              : `Envío automático activo · última revisión ${ultima ? new Date(ultima).toLocaleTimeString('es-AR') : '—'}`}
+            {conError.map(([n, j]) => <div key={n}>⚠️ {n}: {j.error}</div>)}
+          </div>
+        );
+      })()}
 
       {met ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">

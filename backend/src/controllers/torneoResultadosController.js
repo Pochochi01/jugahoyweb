@@ -29,6 +29,8 @@ async function upsert(req, res) {
       return res.status(409).json({ message: 'El torneo no está en juego.' });
     }
     res.json(await svc.registrarResultado(req.torneo, req.params.partidoId, req.body || {}));
+    // Notificaciones push de resultado / clasificación / final: en segundo plano, sin demorar la respuesta
+    require('../jobs/tournamentNotifications').dispararResultados();
   } catch (err) { send(res, err); }
 }
 

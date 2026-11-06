@@ -19,12 +19,14 @@ const { Op } = require('sequelize');
 const m = require('../../models');
 const svc = require('../../services/notifications/NotificationService');
 
-const { Torneo, TorneoPartido, TorneoPareja, TorneoJugador, TorneoResultado, TorneoZona, TorneoTablaPosicion, Field, Complex } = m;
+const { Torneo, TorneoPartido, TorneoPareja, TorneoJugador, TorneoResultado, TorneoZona, TorneoTablaPosicion, Field, Complex, PadelJugador } = m;
 
 const TZ = '-03:00';                     // Argentina (sin horario de verano)
 const VENTANA_EVENTOS_H = 48;            // se miran cambios de las últimas 48 h
 const PAREJAS_ACTIVAS = ['pendiente', 'pagado'];
-const conJugadores = (as) => ({ model: TorneoPareja, as, include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre', 'dni'] }] });
+// Jugadores con su DNI; si la inscripción no lo tiene, se toma el de su ficha (padel_jugadores)
+const JUGADORES = () => ({ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre', 'dni', 'jugador_id'], include: [{ model: PadelJugador, as: 'registro', attributes: ['dni'], required: false }] });
+const conJugadores = (as) => ({ model: TorneoPareja, as, include: [JUGADORES()] });
 const inicioPartido = (p) => new Date(`${p.fecha}T${String(p.hora).slice(0, 5)}:00${TZ}`);
 const hace = (h) => new Date(Date.now() - h * 3600 * 1000);
 
@@ -33,7 +35,8 @@ async function torneosPorId(ids) {
   const ts = await Torneo.findAll({ where: { id: [...new Set(ids)] }, attributes: ['id', 'id_tenant', 'nombre', 'estado', 'fecha_inicio', 'precio_inscripcion', 'clasifican_por_zona', 'parejas_por_zona'], raw: true });
   return new Map(ts.map(t => [t.id, t]));
 }
-const destinatarios = (pareja, extra = {}) => (pareja?.jugadores || []).filter(j => j.dni).map(j => ({ dni: j.dni, nombre: j.nombre, pareja_id: pareja.id, ...extra }));
+const dniDe = (j) => String(j.dni || j.registro?.dni || '').replace(/\D/g, '');
+const destinatarios = (pareja, extra = {}) => (pareja?.jugadores || []).filter(j => dniDe(j)).map(j => ({ dni: dniDe(j), nombre: j.nombre, pareja_id: pareja.id, ...extra }));
 
 // ── 1. Recordatorio de partido (3 h antes) ────────────────────
 async function matchReminderJob(ahora = new Date()) {
@@ -75,7 +78,7 @@ async function paymentReminderJob(ahora = new Date()) {
     if (faltanH <= 0) continue;
     const umbral = UMBRALES_H.find(u => faltanH <= u);   // el más cercano que ya se alcanzó
     if (!umbral) continue;
-    const parejas = await TorneoPareja.findAll({ where: { torneo_id: t.id, estado_pago: 'pendiente' }, include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre', 'dni'] }] });
+    const parejas = await TorneoPareja.findAll({ where: { torneo_id: t.id, estado_pago: 'pendiente' }, include: [JUGADORES()] });
     const dest = parejas.flatMap(p => destinatarios(p)).map(d => ({ ...d, dedupe: `rec_pago:${d.pareja_id}:${umbral}h:${d.dni}` }));
     n += (await svc.sendPaymentReminder(t, dest)).encoladas;
   }
@@ -86,7 +89,7 @@ async function paymentReminderJob(ahora = new Date()) {
 async function partidosConResultado(rondas, desde) {
   return TorneoPartido.findAll({
     where: { estado: ['jugado', 'walkover'], es_bye: false, ronda: rondas, updated_at: { [Op.gte]: desde } },
-    include: [conJugadores('pareja1'), conJugadores('pareja2'), { model: TorneoResultado, as: 'resultado', required: true, attributes: ['ganador_id'] }],
+    include: [conJugadores('pareja1'), conJugadores('pareja2'), { model: TorneoResultado, as: 'resultado', required: true, attributes: ['id', 'ganador_id'] }],
   });
 }
 const ganadorYPerdedor = (p) => {
@@ -113,7 +116,9 @@ async function notificarResultados(rondas, desde) {
     const [g, l] = ganadorYPerdedor(p);
     if (!t || !g) continue;
     const [tg, tl] = POR_RONDA[p.ronda];
-    const lado = (par, tipo) => destinatarios(par, { partido_id: p.id }).map(d => ({ ...d, tipo, torneo: t, dedupe: `${tipo}:${p.id}:${d.dni}` }));
+    // La clave incluye el resultado: si se borra y se vuelve a cargar (o cambia el ganador) es un aviso nuevo
+    const res = `r${p.resultado.id}g${p.resultado.ganador_id}`;
+    const lado = (par, tipo) => destinatarios(par, { partido_id: p.id }).map(d => ({ ...d, tipo, torneo: t, dedupe: `${tipo}:${p.id}:${res}:${d.dni}` }));
     const items = [...lado(g, tg), ...lado(l, tl)];
     if (p.ronda === 'final') {   // métodos específicos de campeón / subcampeón
       n += (await svc.sendChampionNotification(t, items.filter(i => i.tipo === 'campeon'))).encoladas;
@@ -131,7 +136,7 @@ async function classificationNotificationJob() {
   const recientes = await TorneoPartido.findAll({ where: { ronda: 'zona', estado: ['jugado', 'walkover'], updated_at: { [Op.gte]: hace(VENTANA_EVENTOS_H) } }, attributes: ['zona_id'], group: ['zona_id'], raw: true });
   const zonaIds = recientes.map(r => r.zona_id).filter(Boolean);
   if (!zonaIds.length) return 0;
-  const zonas = await TorneoZona.findAll({ where: { id: zonaIds }, include: [{ model: TorneoPartido, as: 'partidos', attributes: ['estado'] }, { model: TorneoTablaPosicion, as: 'tabla', attributes: ['pareja_id', 'posicion'] }] });
+  const zonas = await TorneoZona.findAll({ where: { id: zonaIds }, include: [{ model: TorneoPartido, as: 'partidos', attributes: ['estado'], include: [{ model: TorneoResultado, as: 'resultado', attributes: ['id'] }] }, { model: TorneoTablaPosicion, as: 'tabla', attributes: ['pareja_id', 'posicion'] }] });
   const completas = zonas.filter(z => z.partidos.length && z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)));
   if (!completas.length) return 0;
   const torneos = await torneosPorId(completas.map(z => z.torneo_id));
@@ -140,12 +145,13 @@ async function classificationNotificationJob() {
     const t = torneos.get(z.torneo_id);
     if (!t) continue;
     const k = Math.min(t.clasifican_por_zona || 2, z.tabla.length);
-    for (const r of z.tabla.filter(x => x.posicion <= k)) clasificadas.push({ t, z, pareja_id: r.pareja_id });
+    const version = Math.max(0, ...z.partidos.map(p => p.resultado?.id || 0));   // cambia si se recarga un resultado
+    for (const r of z.tabla.filter(x => x.posicion <= k)) clasificadas.push({ t, z, version, pareja_id: r.pareja_id });
   }
   if (!clasificadas.length) return 0;
-  const parejas = await TorneoPareja.findAll({ where: { id: clasificadas.map(c => c.pareja_id), estado_pago: PAREJAS_ACTIVAS }, include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre', 'dni'] }] });
+  const parejas = await TorneoPareja.findAll({ where: { id: clasificadas.map(c => c.pareja_id), estado_pago: PAREJAS_ACTIVAS }, include: [JUGADORES()] });
   const items = clasificadas.flatMap(c => destinatarios(parejas.find(p => p.id === c.pareja_id))
-    .map(d => ({ ...d, tipo: 'clasificado_zona', torneo: c.t, dedupe: `clasificado_zona:${c.z.id}:${d.dni}` })));
+    .map(d => ({ ...d, tipo: 'clasificado_zona', torneo: c.t, dedupe: `clasificado_zona:${c.z.id}:v${c.version}:${d.dni}` })));
   return (await svc.encolar(items)).encoladas;
 }
 
@@ -154,7 +160,7 @@ async function finalNotificationJob() {
   let n = await notificarResultados(['final'], hace(VENTANA_EVENTOS_H));
   const cerrados = await Torneo.findAll({ where: { estado: 'finalizado', updated_at: { [Op.gte]: hace(VENTANA_EVENTOS_H) } }, attributes: ['id', 'id_tenant', 'nombre', 'estado'], raw: true });
   for (const t of cerrados) {
-    const parejas = await TorneoPareja.findAll({ where: { torneo_id: t.id, estado_pago: PAREJAS_ACTIVAS }, include: [{ model: TorneoJugador, as: 'jugadores', attributes: ['id', 'nombre', 'dni'] }] });
+    const parejas = await TorneoPareja.findAll({ where: { torneo_id: t.id, estado_pago: PAREJAS_ACTIVAS }, include: [JUGADORES()] });
     const items = parejas.flatMap(p => destinatarios(p)).map(d => ({ ...d, tipo: 'torneo_finalizado', torneo: t, dedupe: `torneo_finalizado:${t.id}:${d.dni}` }));
     n += (await svc.encolar(items)).encoladas;
   }
@@ -171,14 +177,36 @@ const JOBS = {
   queue: [() => svc.procesarCola(), 15],
 };
 const corriendo = new Set();
+const estado = {};   // nombre → { ultima, ok, encoladas, error, error_at }: diagnóstico en el panel
 async function correr(nombre) {
   if (corriendo.has(nombre)) return;   // sin solapamiento si una pasada tarda más que el intervalo
   corriendo.add(nombre);
+  const e = (estado[nombre] ||= { corridas: 0 });
   try {
     const n = await JOBS[nombre][0]();
+    Object.assign(e, { ultima: new Date(), ok: true, encoladas: n || 0, corridas: e.corridas + 1 });
     if (n && nombre !== 'queue') console.log(`[notif] ${nombre}: ${n} notificación(es) encolada(s)`);
-  } catch (err) { console.error(`[notif] ${nombre}:`, err.message); } finally { corriendo.delete(nombre); }
+  } catch (err) {
+    Object.assign(e, { ultima: new Date(), ok: false, error: err.message, error_at: new Date(), corridas: e.corridas + 1 });
+    console.error(`[notif] ${nombre}:`, err.message);
+  } finally { corriendo.delete(nombre); }
 }
+
+/**
+ * Disparo inmediato al cargar un resultado (no espera al próximo ciclo del scheduler).
+ * Agrupa cargas seguidas (1,5 s) y corre resultados → clasificación → final → cola.
+ */
+let pendienteDisparo = null;
+function dispararResultados() {
+  // Solo en el servidor real (scheduler iniciado) o si se pide explícitamente (TORNEO_PUSH_JOBS=1, tests)
+  if (pendienteDisparo || (!timers.length && process.env.TORNEO_PUSH_JOBS !== '1')) return;
+  pendienteDisparo = setTimeout(async () => {
+    pendienteDisparo = null;
+    for (const n of ['resultNotificationJob', 'classificationNotificationJob', 'finalNotificationJob', 'queue']) await correr(n);
+  }, 1500);
+  pendienteDisparo.unref?.();
+}
+const estadoJobs = () => ({ activos: timers.length > 0, jobs: estado });
 let timers = [];
 function iniciar() {
   if (process.env.TORNEO_PUSH_JOBS === '0') { console.log('· Notificaciones push de torneos: jobs deshabilitados (TORNEO_PUSH_JOBS=0)'); return; }
@@ -190,4 +218,4 @@ function iniciar() {
 }
 const detener = () => { timers.forEach(t => clearInterval(t)); timers = []; };
 
-module.exports = { iniciar, detener, matchReminderJob, paymentReminderJob, resultNotificationJob, classificationNotificationJob, finalNotificationJob };
+module.exports = { iniciar, detener, dispararResultados, estadoJobs, matchReminderJob, paymentReminderJob, resultNotificationJob, classificationNotificationJob, finalNotificationJob };
