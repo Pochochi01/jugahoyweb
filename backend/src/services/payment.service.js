@@ -32,7 +32,7 @@ function validateItems(items) {
  * Crea una preference de Checkout Pro.
  * @returns {Promise<{preference_id, init_point, sandbox_init_point}>}
  */
-async function createPreference({ items, payer, metadata, backUrls, notificationUrl, accessToken }) {
+async function createPreference({ items, payer, metadata, backUrls, notificationUrl, accessToken, externalReference, expiresAt, binaryMode = true }) {
   validateItems(items);
   const { preference } = buildClient(accessToken);
 
@@ -46,11 +46,12 @@ async function createPreference({ items, payer, metadata, backUrls, notification
     })),
     payer: payer ? { name: payer.name, email: payer.email } : undefined,
     metadata,                                   // viaja al payment → reconstruye la orden
-    external_reference: metadata?.reserva_id != null ? String(metadata.reserva_id) : undefined,
+    external_reference: externalReference ?? (metadata?.reserva_id != null ? String(metadata.reserva_id) : undefined),
     back_urls: backUrls,
     auto_return: 'approved',
     notification_url: notificationUrl,
-    binary_mode: true,                          // aprobado o rechazado (sin limbo largo)
+    binary_mode: binaryMode,                    // reservas: aprobado o rechazado (sin limbo largo)
+    ...(expiresAt && { expires: true, expiration_date_to: new Date(expiresAt).toISOString() }),
   };
 
   const res = await preference.create({ body });

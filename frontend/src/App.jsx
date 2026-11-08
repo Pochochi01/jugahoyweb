@@ -11,6 +11,8 @@ import ContactPage         from './pages/ContactPage';
 import RegisterComplexPage from './pages/RegisterComplexPage';
 import AuthCallbackPage    from './pages/AuthCallbackPage';
 import Dashboard          from './pages/dashboard/Dashboard';
+import PayPage            from './pages/pay/PayPage';
+import AutopagoPage       from './pages/pay/AutopagoPage';
 import PlayerPage         from './pages/player/PlayerPage';
 import ComplexSlotsPage   from './pages/player/ComplexSlotsPage';
 import MyBookingsPage     from './pages/player/MyBookingsPage';
@@ -110,6 +112,11 @@ export default function App() {
           <AdminDashboard />
         </ProtectedRoute>
       } />
+
+      {/* Jugahoy Pay: página pública de pago (QR / link), kiosco y portería */}
+      <Route path="/pay/:token"             element={<PayPage />} />
+      <Route path="/autopago"               element={<AutopagoPage />} />
+      <Route path="/admin/porteria/venta"   element={<Navigate to="/dashboard?tab=pay&vista=porteria" replace />} />
 
       <Route path="/dashboard/*" element={
         <ProtectedRoute roles={['general_admin', 'complex_admin', 'collaborator']}>

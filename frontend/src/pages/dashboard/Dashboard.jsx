@@ -6,7 +6,7 @@ import { complexService } from '../../services/complexService';
 import {
   Calendar, List, DollarSign, Settings, Users,
   Image, BarChart2, LogOut, Building2, ShieldCheck,
-  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal, Dumbbell,
+  Lock, LayoutDashboard, Link2, Menu, X, ShoppingCart, Trophy, GraduationCap, Store, Goal, Dumbbell, QrCode,
 } from 'lucide-react';
 import ComplexSwitcher from '../../components/ComplexSwitcher';
 import BrandLogo from '../../components/BrandLogo';
@@ -26,6 +26,7 @@ import CantinaTab       from './CantinaTab';
 import TorneosTab       from './TorneosTab';
 import ProfesoresTab    from './ProfesoresTab';
 import GymTab           from './GymTab';
+import PayTab           from './PayTab';
 
 // permiso: clave usada en Collaborator.permisos
 // deportivo: módulo que requiere canchas → oculto en complejos sin canchas (modo Almacén)
@@ -35,6 +36,7 @@ const TABS = [
   { key: 'operaciones',   label: 'Operaciones',   icon: List,        permiso: 'operaciones',  deportivo: true },
   // En modo Almacén la caja se usa desde adentro del módulo Almacén (subpestaña)
   { key: 'caja',          label: 'Caja',          icon: DollarSign,  permiso: 'caja',         deportivo: true },
+  { key: 'pay',           label: 'Jugahoy Pay',   icon: QrCode,      permiso: 'caja' },
   // "Cantina" con canchas / "Almacén" sin canchas (ver utils/modoComplejo)
   { key: 'cantina',       label: 'Cantina',       icon: ShoppingCart, permisos: ['cantina_gestion', 'cantina_ventas'] },
   // modulo: visible solo si las canchas lo habilitan (utils/modoComplejo → modulosComplejo)
@@ -56,7 +58,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [complexes,       setComplexes]      = useState([]);
   const [selectedComplex, setSelectedComplex] = useState(null);
-  const [activeTab,       setActiveTab]      = useState(null);
+  const [activeTab,       setActiveTab]      = useState(() => new URLSearchParams(window.location.search).get('tab'));   // ?tab=pay&vista=porteria (portería)
+  const vistaInicial = useMemo(() => new URLSearchParams(window.location.search).get('vista'), []);
   const [loadingComplexes, setLoadingComplexes] = useState(true);
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false); // hamburguesa móvil
   // Vuelta del OAuth de MercadoPago: /dashboard?mp=conectado|error&complex=&mp_email=&mp_msg=
@@ -186,6 +189,7 @@ export default function Dashboard() {
       case 'agenda':        return <AgendaTab {...props} />;
       case 'operaciones':   return <OperationsTab {...props} />;
       case 'caja':          return <CashTab {...props} />;
+      case 'pay':           return <PayTab {...props} vistaInicial={vistaInicial} />;
       case 'cantina':       return <CantinaTab {...props} />;
       case 'torneos':       return <TorneosTab {...props} />;
       case 'profesores':    return <ProfesoresTab {...props} />;

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   X, DollarSign, ShoppingCart, User, CalendarDays, Clock, Plus, Minus,
-  Trash2, Search, Users, CheckCircle, Circle, ArrowLeft, Loader2, Beer,
+  Trash2, Search, Users, CheckCircle, Circle, ArrowLeft, Loader2, Beer, QrCode,
 } from 'lucide-react';
 import { agendaService } from '../../services/agendaService';
+import LiquidacionReserva from '../pay/LiquidacionReserva';
 
 const DARK = {
   surface: { background: 'rgb(var(--card))', border: '1px solid rgb(var(--border))' },
@@ -79,7 +80,10 @@ export default function TurnoModal({ complexId, slot, onClose, onChanged, showTo
             <p className="text-center text-sm text-muted-foreground py-10">No se pudo cargar el turno.</p>
           ) : view === 'acciones' ? (
             <AccionesView b={b} totales={totales} yaCobrado={yaCobrado}
-              onConsumos={() => setView('consumos')} onCobrar={() => setView('cobrar')} />
+              onConsumos={() => setView('consumos')} onCobrar={() => setView('cobrar')} onCobrarQr={() => setView('qr')} />
+          ) : view === 'qr' ? (
+            <LiquidacionReserva complexId={complexId} bookingId={bookingId} b={b}
+              onBack={() => setView('acciones')} onCobrado={() => { showToast?.('Turno cobrado por Jugahoy Pay'); onChanged?.(); cargar(); setView('acciones'); }} />
           ) : view === 'consumos' ? (
             <ConsumosView complexId={complexId} bookingId={bookingId} consumos={consumos} totales={totales}
               yaCobrado={yaCobrado} saving={saving} setSaving={setSaving}
@@ -97,7 +101,7 @@ export default function TurnoModal({ complexId, slot, onClose, onChanged, showTo
 }
 
 // ── Vista: elegir acción ──────────────────────────────────────────────────────
-function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar }) {
+function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar, onCobrarQr }) {
   return (
     <div className="space-y-4">
       {/* Resumen */}
@@ -127,6 +131,10 @@ function AccionesView({ b, totales, yaCobrado, onConsumos, onCobrar }) {
         <button onClick={onCobrar} disabled={yaCobrado}
           className="btn-primary btn-lg w-full font-bold disabled:!bg-muted disabled:!text-muted-foreground">
           <DollarSign className="w-5 h-5" /> Cobrar turno
+        </button>
+        <button onClick={onCobrarQr} disabled={yaCobrado}
+          className="flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed border border-primary/40 text-primary hover:bg-primary/10">
+          <QrCode className="w-5 h-5" /> Generar cobro (QR por jugador)
         </button>
         <button onClick={onConsumos} disabled={yaCobrado}
           className="flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"

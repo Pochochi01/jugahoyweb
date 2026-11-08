@@ -55,6 +55,9 @@ async function start() {
     // Gym: vencimientos de membresías, morosos y cierre de clases
     try { require('./src/services/gym/scheduler').iniciar(15); }
     catch (err) { console.error('✗ Gym scheduler:', err.message); }
+    // Jugahoy Pay: vencimientos de órdenes y recordatorios de cuotas
+    try { require('./src/services/pay/payService').iniciarJobs(); }
+    catch (err) { console.error('✗ Jugahoy Pay:', err.message); }
     // Llaves: plantillas configurables desde administración (en memoria; se refrescan al guardar)
     require('./src/services/brackets/bracketService').cargarPlantillas()
       .then(n => n && console.log(`✓ Llaves: ${n} plantilla(s) de administración activas`)).catch(() => {});

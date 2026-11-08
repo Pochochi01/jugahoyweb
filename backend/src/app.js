@@ -107,6 +107,8 @@ app.use('/api/profesores',    profesoresRoutes);
 app.use('/api/escuela',       escuelaRoutes);
 app.use('/api/gym',           require('./routes/gym'));   // Gym / Fitness center
 app.use('/api/player',        require('./routes/player'));   // Portal de Jugador (solo lectura)
+app.use('/api/pay',           require('./routes/pay'));              // Jugahoy Pay (motor único de cobros)
+app.use('/api/webhooks',      require('./routes/payWebhooks'));      // POST /api/webhooks/mercadopago
 // Seguimiento de notificaciones push (lo llama el Service Worker; firmado con HMAC por notificación)
 app.post('/api/push-tracking', express.json(), async (req, res) => {
   const { id, t, evento } = req.body || {};

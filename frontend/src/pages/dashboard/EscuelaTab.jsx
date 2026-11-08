@@ -3,6 +3,8 @@ import {
   Users, Wallet, CalendarDays, Megaphone, Layers, UserCog, Settings, Search, Plus, Pencil, Trash2,
   MessageCircle, Link2, Goal, School, CheckCircle, Smartphone, Send,
 } from 'lucide-react';
+import { payClub } from '../../services/payService';
+import QrOrden from '../../components/pay/QrOrden';
 import { escuelaAdmin, escuelasAdmin } from '../../services/escuelaService';
 import { telefonoEscuela } from '../../services/telefonoEntidadService';
 import TelefonoEntidad from '../../components/TelefonoEntidad';
@@ -159,7 +161,7 @@ function EscuelaPanel({ complexId, escuela, escuelas, recargarEscuelas, elegir, 
         ))}
       </div>
       {vista === 'alumnos'      && <Alumnos {...ctx} />}
-      {vista === 'cuotas'       && <Cuotas {...ctx} />}
+      {vista === 'cuotas'       && <Cuotas {...ctx} complexId={complexId} />}
       {vista === 'horarios'     && <Horarios {...ctx} />}
       {vista === 'avisos'       && <Avisos {...ctx} />}
       {vista === 'categorias'   && <Categorias {...ctx} />}
@@ -311,7 +313,8 @@ const TURNO_LABEL = { manana: 'Mañana', tarde: 'Tarde', noche: 'Noche' };
  * estado). Los mismos filtros se aplican al listado y a "Generar cuotas" (que primero
  * muestra cuántas se van a crear). "Todas las escuelas" solo aplica a la generación.
  */
-function Cuotas({ svc, escuela, escuelas = [], elegir, categorias, avisar }) {
+function Cuotas({ svc, escuela, escuelas = [], elegir, categorias, avisar, complexId }) {
+  const [ordenQr, setOrdenQr] = useState(null);   // Jugahoy Pay: QR + link de la cuota
   const [periodo, setPeriodo] = useState(hoyISO().slice(0, 7));
   const [f, setF] = useState(FILTROS_VACIOS);
   const [todasEscuelas, setTodasEscuelas] = useState(false);
@@ -460,6 +463,7 @@ function Cuotas({ svc, escuela, escuelas = [], elegir, categorias, avisar }) {
               {p.estado === 'pendiente' ? <>
                 <button className="btn-outline text-xs !px-2 !py-1" onClick={() => cobrar(p, 'efectivo')}>Efectivo</button>
                 <button className="btn-outline text-xs !px-2 !py-1" onClick={() => cobrar(p, 'transferencia')}>Transferencia</button>
+                <button className="btn-outline text-xs !px-2 !py-1 !text-primary !border-primary/40" onClick={() => payClub(complexId).ordenCuota(p.id).then(setOrdenQr).catch(e => avisar('err', errMsg(e)))}>Cobrar online (QR)</button>
                 <button className="p-1.5 rounded bg-green-700 text-white" aria-label="Recordatorio por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'recordatorio' })}><MessageCircle className="w-4 h-4" /></button>
               </> : <>
                 <button className="p-1.5 rounded bg-green-700 text-white" aria-label="Comprobante por WhatsApp" onClick={() => setWa({ alumno: p.alumno, tipo: 'comprobante' })}><MessageCircle className="w-4 h-4" /></button>
@@ -469,6 +473,16 @@ function Cuotas({ svc, escuela, escuelas = [], elegir, categorias, avisar }) {
           </div>
         ))}
       </div>
+      {ordenQr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Cobro online de la cuota">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setOrdenQr(null); cargar(); }} />
+          <div className="relative w-full max-w-sm space-y-2">
+            <div className="text-sm text-white text-center">{ordenQr.concepto}{ordenQr.metadata?.vencimiento && ` · vence ${new Date(ordenQr.metadata.vencimiento).toLocaleDateString('es-AR')}`}</div>
+            <QrOrden orden={ordenQr} onEstado={(ev) => ev.estado === 'aprobado' && avisar('ok', 'Cuota pagada online.')} />
+            <button className="btn-ghost w-full text-white" onClick={() => { setOrdenQr(null); cargar(); }}>Cerrar</button>
+          </div>
+        </div>
+      )}
       {wa && <WhatsAppAlumno alumno={wa.alumno} tipoInicial={wa.tipo} cargarContexto={() => svc.contexto(wa.alumno.id, { periodo })} onClose={() => setWa(null)} />}
       {masivo && <EnvioMasivo titulo={masivo.titulo} alumnos={masivo.alumnos} tipo={masivo.tipo}
         cargarContexto={(id) => svc.contexto(id, { periodo })} onClose={() => setMasivo(null)} />}

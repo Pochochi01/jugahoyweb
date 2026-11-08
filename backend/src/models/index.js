@@ -304,10 +304,12 @@ Complex.hasOne(gym.modelos.GymConfig, { foreignKey: 'complex_id', as: 'gymConfig
 // ── Portal de Jugador (solo lectura) ──
 const playerPortal = require('./playerPortal');
 const bracketsModelos = require('./brackets');
+const payModelos = require('./pay');
 
 module.exports = {
   ...playerPortal.modelos,
   ...bracketsModelos.modelos,
+  ...payModelos.modelos,
   ...gym.modelos,
   ...torneoLigas.modelos,
   sequelize,

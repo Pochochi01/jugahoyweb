@@ -1004,6 +1004,9 @@ async function cobrarTurno(req, res) {
     if (r.error) { await t.rollback(); return res.status(r.error).json({ message: r.message }); }
     const booking = r.booking;
     if (booking.cobrado) { await t.rollback(); return res.status(409).json({ message: 'El turno ya fue cobrado.' }); }
+    // Cobro Jugahoy Pay en curso (QR por jugador): cobrarlo también acá duplicaría el ingreso en caja
+    const payActivas = await require('../models').PayOrder.count({ where: { modulo: 'reserva', referencia_tipo: 'booking', referencia_id: booking.id, estado: ['pendiente', 'procesando', 'parcial', 'aprobado'] }, transaction: t });
+    if (payActivas) { await t.rollback(); return res.status(409).json({ message: 'El turno tiene un cobro por QR (Jugahoy Pay) en curso: completalo o anulalo desde "Generar cobro".' }); }
     if (['cancelado', 'rechazado'].includes(booking.estado)) {
       await t.rollback(); return res.status(409).json({ message: `El turno está "${booking.estado}".` });
     }
