@@ -25,6 +25,8 @@
     "test:portal-jugador": "node tests/portal-jugador.e2e.js",
     "test:notificaciones": "node tests/notificaciones-push.e2e.js",
     "test:notificaciones:recarga": "node tests/notificaciones-recarga.e2e.js",
+    "test:resultados": "node --test tests/resultados-validacion.test.js",
+    "test:resultados:e2e": "node tests/resultados-carga.e2e.js",
     "test:llaves": "node --test --experimental-test-coverage --test-coverage-include=src/services/brackets/*.js src/services/brackets/tests/*.test.js",
     "test:llaves:e2e": "node tests/llaves-oficiales.e2e.js",
     "test:llaves:borrar": "node tests/borrar-llave.e2e.js",

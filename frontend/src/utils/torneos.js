@@ -41,8 +41,11 @@ export const TIPO_TORNEO = {
 
 // ── Validación de resultados (misma regla que el backend) ─────
 // Set: 6-0…6-4, 7-5 o 7-6 con tie-break (a 7, dif. 2; pasado el 7, dif. exacta de 2).
+export const MAX_GAMES = 7;
+export const MAX_TIEBREAK = 99;
 export function errorTieBreak([x, y], min = 7, etiqueta = 'Tie-break') {
   if (![x, y].every(v => Number.isInteger(v) && v >= 0)) return `${etiqueta}: cargá los puntos.`;
+  if (x > MAX_TIEBREAK || y > MAX_TIEBREAK) return `${etiqueta}: máximo ${MAX_TIEBREAK} puntos.`;
   const w = Math.max(x, y), l = Math.min(x, y);
   if (w < min) return `${etiqueta} ${x}-${y}: el ganador llega a ${min}.`;
   if (w - l < 2) return `${etiqueta} ${x}-${y}: se gana por 2.`;

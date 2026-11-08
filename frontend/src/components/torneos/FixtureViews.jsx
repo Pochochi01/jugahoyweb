@@ -48,7 +48,24 @@ export function TablaZona({ zona, mostrarRanking = false }) {
   );
 }
 
-export const resultadoTxt = (p) => (p.estado === 'walkover' && !p.es_bye ? 'W.O.' : setsTxt(p.resultado?.sets, p.resultado?.tie_breaks));
+/** ¿El partido se definió por W.O.? (marca del resultado o estado del partido) */
+export const esWalkover = (p) => !p.es_bye && (Boolean(p.resultado?.is_walkover) || p.estado === 'walkover');
+/** Texto plano del resultado ("6-4  3-6  6-3", "W.O. 6-0  6-0"): impresión y listados de texto. */
+export const resultadoTxt = (p) => {
+  const sets = setsTxt(p.resultado?.sets, p.resultado?.tie_breaks);
+  return esWalkover(p) ? `W.O.${sets ? ` ${sets}` : ''}` : sets;
+};
+/** Resultado con insignia "W.O." cuando corresponde. */
+export function ResultadoTexto({ p, className = '' }) {
+  const sets = setsTxt(p.resultado?.sets, p.resultado?.tie_breaks);
+  if (!esWalkover(p)) return sets ? <span className={`font-mono ${className}`}>{sets}</span> : null;
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <span className="badge badge-yellow !text-[10px] font-semibold" title="Victoria por W.O. (no se presentó la otra pareja)">W.O.</span>
+      {sets && <span className="font-mono text-muted-foreground">{sets}</span>}
+    </span>
+  );
+}
 
 /** Nombre de una pareja en un partido; los lugares a definir ("Ganador P1") van en cursiva. */
 function NombrePareja({ par, gano, fallback = 'A definir' }) {
@@ -81,7 +98,7 @@ export function PartidoRow({ p, acciones, etiqueta }) {
         <div><NombrePareja par={p.pareja1} gano={gano(1)} /></div>
         <div><NombrePareja par={p.pareja2} gano={gano(2)} fallback={p.es_bye ? 'BYE' : 'A definir'} /></div>
       </div>
-      <div className="text-sm font-mono sm:w-36 sm:text-right">{resultadoTxt(p)}</div>
+      <div className="text-sm sm:w-36 sm:text-right"><ResultadoTexto p={p} /></div>
       {acciones}
     </div>
   );
@@ -121,7 +138,7 @@ export function ZonaGrilla({ zona, accionesDe }) {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span className="font-mono font-semibold text-foreground/80">P{p.orden}</span>
                 <span className="min-w-0">{p.fecha ? <>{fechaCorta(p.fecha)} · {p.hora} hs{p.cancha && <> · {p.cancha}</>}</> : 'Sin programar'}</span>
-                {res && <span className="ml-auto font-mono text-sm text-foreground">{res}</span>}
+                {res && <span className="ml-auto text-sm text-foreground"><ResultadoTexto p={p} /></span>}
               </div>
               {/* Parejas: renglón completo para cada una, el nombre se acomoda en varias líneas si hace falta */}
               <div className="grid grid-cols-[1fr_auto] gap-x-3 items-center">
@@ -178,11 +195,11 @@ export function Cronograma({ partidos, accionesDe }) {
         <div className="min-w-0 space-y-0.5">
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{instanciaDe(p)}</div>
           <div className="text-[15px] leading-snug break-words"><span className={g(1) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja1, p)}</span> <span className="text-muted-foreground text-xs">vs</span> <span className={g(2) ? 'font-semibold text-primary' : ''}>{nombreDe(p.pareja2, p)}</span></div>
-          {res && <div className="font-mono text-sm sm:hidden">{res}</div>}
+          {res && <div className="text-sm sm:hidden"><ResultadoTexto p={p} /></div>}
           <UltimaModificacion p={p} />
         </div>
         <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2">
-          {res && <span className="hidden sm:inline font-mono text-sm">{res}</span>}
+          {res && <span className="hidden sm:inline text-sm"><ResultadoTexto p={p} /></span>}
           {accionesDe?.(p)}
         </div>
       </li>
@@ -380,7 +397,8 @@ export function Bracket({ llave, campeonId, prevista, onReprogramar }) {
                       })}
                       {!p.es_bye && (
                         <div className="px-2.5 py-1 text-[10px] text-muted-foreground border-t border-border flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className={p.resultado ? 'text-emerald-400' : p.estado === 'programado' ? 'text-sky-400' : ''}>{ESTADO_PARTIDO[p.estado] || p.estado}</span>
+                          {esWalkover(p) ? <span className="badge badge-yellow !text-[9px] font-semibold">W.O.</span>
+                            : <span className={p.resultado ? 'text-emerald-400' : p.estado === 'programado' ? 'text-sky-400' : ''}>{ESTADO_PARTIDO[p.estado] || p.estado}</span>}
                           {p.siguiente && <span>→ {p.siguiente}</span>}
                         </div>
                       )}

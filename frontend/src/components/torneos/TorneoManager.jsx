@@ -11,12 +11,13 @@ import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores, Cronograma, imprimirFixture } from './FixtureViews';
 import { CategoriaTabs } from './CategoriasSelect';
 import ReprogramarModal from './ReprogramarModal';
+import ResultadoModal from './ResultadoModal';
 import { useAuth } from '../../context/AuthContext';
 import PlantelModal from './PlantelModal';
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL, diasTorneo,
-  errorResultado, catNombre, catsTexto,
+  catNombre, catsTexto,
 } from '../../utils/torneos';
 
 const SECCIONES = [
@@ -363,14 +364,16 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
       )}
     </div>
   );
-  const editor = (p) => editando?.id === p.id && (
-    editando.modo === 'resultado'
-      ? <ResultadoForm p={p} tercerSet={torneo.tercer_set} onCancel={() => setEditando(null)} onSave={(d) => guardarResultado(p, d)} />
-      : null
-  );
+  // La carga de resultado es un modal (ResultadoModal); no hay editores en línea
+  const editor = () => null;
+  const enCarga = editando?.modo === 'resultado' ? todos.find(x => x.id === editando.id) : null;
 
   return (
     <div className="space-y-4">
+      {enCarga && (
+        <ResultadoModal torneo={torneo} p={enCarga} categoriaNombre={(torneo.categorias || []).length > 1 || categoria ? catNombre(categoria) : null}
+          onClose={() => setEditando(null)} onSave={(d) => guardarResultado(enCarga, d)} />
+      )}
       {['pendiente', 'zonas'].includes(estadoCat) && !['finalizado', 'cancelado'].includes(torneo.estado) && (
         <div className="card space-y-2">
           <div className="font-semibold text-sm flex items-center gap-2">
@@ -448,88 +451,6 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
           ))}
         </>
       )}
-    </div>
-  );
-}
-
-/**
- * Carga de resultado con validación en vivo (misma regla que el backend):
- * sets 0–7 · 6-0…6-4 · 7-5 · 7-6 → aparece el tie-break (a 7, dif. 2).
- * 3er set: set completo o súper tie-break a 10, según el torneo.
- */
-function ResultadoForm({ p, tercerSet = 'set', onSave, onCancel }) {
-  const r = p.resultado;
-  const [sets, setSets] = useState(r?.sets?.length ? r.sets.map(s => s.map(String)) : [['', ''], ['', '']]);
-  const [tbs, setTbs] = useState(r?.sets?.length ? r.sets.map((_, i) => (r.tie_breaks?.[i] || ['', '']).map(String)) : [['', ''], ['', '']]);
-  const [error, setError] = useState('');
-  const [enviando, setEnviando] = useState(false);
-
-  const num = (v) => (v === '' ? NaN : Number(v));
-  const setsN = sets.map(s => s.map(num));
-  const esTb = (i) => !(i === 2 && tercerSet === 'super_tiebreak') && Math.max(...setsN[i]) === 7 && Math.min(...setsN[i]) === 6;
-  const tbsN = tbs.map((t, i) => (esTb(i) ? t.map(num) : null));
-  const completos = setsN.every(s => s.every(Number.isInteger));
-  const errorVivo = completos ? errorResultado(setsN, tbsN, tercerSet) : null;
-
-  const setS = (i, l, v) => setSets(ss => ss.map((s, j) => (j === i ? s.map((x, k) => (k === l ? v.replace(/\D/g, '').slice(0, 2) : x)) : s)));
-  const setT = (i, l, v) => setTbs(ts => ts.map((t, j) => (j === i ? t.map((x, k) => (k === l ? v.replace(/\D/g, '').slice(0, 2) : x)) : t)));
-  const agregar3 = () => { setSets(s => [...s, ['', '']]); setTbs(t => [...t, ['', '']]); };
-  const quitar3 = () => { setSets(s => s.slice(0, 2)); setTbs(t => t.slice(0, 2)); };
-
-  const guardar = async (payload) => {
-    setError(''); setEnviando(true);
-    try { await onSave(payload); } catch (e) { setError(errMsg(e)); } finally { setEnviando(false); }
-  };
-  const enviar = () => {
-    if (!completos) return setError('Completá todos los sets.');
-    if (errorVivo) return setError(errorVivo);
-    guardar({ sets: setsN, tie_breaks: tbsN });
-  };
-  const etiquetaSet = (i) => (i === 2 && tercerSet === 'super_tiebreak' ? 'STB' : `Set ${i + 1}`);
-
-  return (
-    <div className="card border-primary/40 space-y-3">
-      <div className="overflow-x-auto">
-        <table className="text-sm">
-          <thead>
-            <tr className="text-[11px] text-muted-foreground">
-              <th />
-              {sets.map((_, i) => <th key={i} className="px-1 font-medium">{etiquetaSet(i)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {[1, 2].map(l => (
-              <tr key={l}>
-                <td className="pr-3 py-1 max-w-[180px] truncate">{p[`pareja${l}`]?.nombre}</td>
-                {sets.map((s, i) => (
-                  <td key={i} className="px-1 py-1 align-top">
-                    <input inputMode="numeric" className="input !w-12 text-center !px-1" value={s[l - 1]}
-                      onChange={e => setS(i, l - 1, e.target.value)} aria-label={`${etiquetaSet(i)} pareja ${l}`} />
-                    {esTb(i) && (
-                      <input inputMode="numeric" className="input !w-12 text-center !px-1 mt-1 !text-xs border-amber-500/50" placeholder="TB"
-                        value={tbs[i][l - 1]} onChange={e => setT(i, l - 1, e.target.value)} aria-label={`Tie-break set ${i + 1} pareja ${l}`} />
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        Sets de 0 a 7: 6-0…6-4, 7-5 o 7-6 (en 7-6 cargá el tie-break: a 7 con 2 de diferencia, ej. 7-5, 8-6, 12-10).
-        {tercerSet === 'super_tiebreak' && ' El 3º es súper tie-break a 10 (ej. 10-8, 11-9).'}
-      </p>
-      <div className="flex flex-wrap gap-2 items-center">
-        {sets.length < 3 && <button className="text-xs text-primary hover:underline" onClick={agregar3}>+ 3er {tercerSet === 'super_tiebreak' ? 'súper tie-break' : 'set'}</button>}
-        {sets.length === 3 && <button className="text-xs text-muted-foreground hover:underline" onClick={quitar3}>Quitar 3º</button>}
-        <span className="flex-1" />
-        <button className="text-xs text-amber-400 hover:underline" disabled={enviando} onClick={() => guardar({ walkover_ganador: 1 })}>W.O. gana 1</button>
-        <button className="text-xs text-amber-400 hover:underline" disabled={enviando} onClick={() => guardar({ walkover_ganador: 2 })}>W.O. gana 2</button>
-        <button className="btn-primary text-sm flex items-center gap-1" disabled={enviando || Boolean(errorVivo)} onClick={enviar}><Check className="w-4 h-4" /> Guardar</button>
-        <button className="p-2 rounded hover:bg-muted" onClick={onCancel} aria-label="Cancelar"><X className="w-4 h-4" /></button>
-      </div>
-      <Aviso>{error || errorVivo}</Aviso>
     </div>
   );
 }

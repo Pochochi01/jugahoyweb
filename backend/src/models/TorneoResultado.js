@@ -9,6 +9,10 @@ const TorneoResultado = sequelize.define('TorneoResultado', {
   sets:       { type: DataTypes.JSON, allowNull: false },
   ganador_id: { type: DataTypes.INTEGER, allowNull: true },
   tie_breaks: { type: DataTypes.JSON, allowNull: true },
+  is_walkover:    { type: DataTypes.BOOLEAN, defaultValue: false },   // W.O.: se guarda 6-0 6-0 para el ganador
+  cargado_por_id: { type: DataTypes.INTEGER },
+  cargado_por:    { type: DataTypes.STRING(150) },
+  cargado_at:     { type: DataTypes.DATE },
 }, { tableName: 'torneo_resultados' });
 
 module.exports = TorneoResultado;

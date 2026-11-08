@@ -32,6 +32,7 @@ const fx = require('./fixtureService');
 const notifier = require('./torneoNotifier');
 const brackets = require('../brackets/bracketService');
 const { validarLlave } = brackets;
+const { validateResult } = require('./resultValidation');
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
@@ -1051,8 +1052,9 @@ async function dependientes(partido, t) {
 /**
  * Carga (o corrige) el resultado de un partido.
  * @param {{sets?: number[][], tie_breaks?: Array<number[]|null>, walkover_ganador?: 1|2}} data
+ * @param {{ usuario?: { id?: number, nombre?: string } }} [opts]  quién carga (auditoría)
  */
-async function registrarResultado(torneo, partidoId, data) {
+async function registrarResultado(torneo, partidoId, data, { usuario = {} } = {}) {
   const avisos = [];
   await sequelize.transaction(async (t) => {
     const partido = await TorneoPartido.findOne({
@@ -1067,23 +1069,21 @@ async function registrarResultado(torneo, partidoId, data) {
     }
 
     // Validación: sets 6-x / 7-5 / 7-6 + tie-break (ver fixtureService.validarResultado)
-    const wo = data.walkover_ganador != null;
-    let lado, sets = [], tieBreaks = [];
-    if (wo) {
-      lado = Number(data.walkover_ganador);
-      if (![1, 2].includes(lado)) throw httpError(400, 'walkover_ganador debe ser 1 o 2.');
-    } else {
-      ({ lado, sets, tie_breaks: tieBreaks } = fx.validarResultado(data.sets, data.tie_breaks, torneo.tercer_set));
-    }
+    // Validación estricta (services/torneos/resultValidation): sets 6-x / 7-5 / 7-6 + tie-break, o W.O. → 6-0 6-0
+    const { lado, sets, tie_breaks: tieBreaks, is_walkover: wo } = validateResult(data || {}, torneo.tercer_set);
     const ganadorId = lado === 1 ? partido.pareja1_id : partido.pareja2_id;
     const perdedorId = lado === 1 ? partido.pareja2_id : partido.pareja1_id;
 
     const destinos = await dependientes(partido, t);
 
+    const datosRes = {
+      sets, tie_breaks: tieBreaks, ganador_id: ganadorId, is_walkover: wo,
+      cargado_por_id: usuario.id ?? null, cargado_por: usuario.nombre ?? null, cargado_at: new Date(),
+    };
     const [res] = await TorneoResultado.findOrCreate({
-      where: { partido_id: partido.id }, defaults: { partido_id: partido.id, sets, tie_breaks: tieBreaks, ganador_id: ganadorId }, transaction: t,
+      where: { partido_id: partido.id }, defaults: { partido_id: partido.id, ...datosRes }, transaction: t,
     });
-    await res.update({ sets, tie_breaks: tieBreaks, ganador_id: ganadorId }, { transaction: t });
+    await res.update(datosRes, { transaction: t });
     await partido.update({ estado: wo ? 'walkover' : 'jugado' }, { transaction: t });
 
     // Avance: ganador (llave y zonas de 4) y perdedor (zonas de 4)
@@ -1383,7 +1383,11 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     siguiente: p.ronda !== 'zona' && p.siguiente_partido_id && porId.has(p.siguiente_partido_id)
       ? `${brackets.nombreRonda(regla, porId.get(p.siguiente_partido_id).ronda)} ${porId.get(p.siguiente_partido_id).orden}` : null,
     ultima_modificacion: ultimas.get(p.id) || null,
-    resultado: p.resultado ? { sets: p.resultado.sets, tie_breaks: p.resultado.tie_breaks || [], ganador_id: p.resultado.ganador_id } : null,
+    resultado: p.resultado ? {
+      sets: p.resultado.sets, tie_breaks: p.resultado.tie_breaks || [], ganador_id: p.resultado.ganador_id,
+      is_walkover: Boolean(p.resultado.is_walkover) || p.estado === 'walkover',
+      ...(!publico && { cargado_por: p.resultado.cargado_por, cargado_at: p.resultado.cargado_at }),
+    } : null,
   });
   const llave = fx.ORDEN_RONDAS
     .map(r => ({ ronda: r, nombre: brackets.nombreRonda(regla, r), partidos: partidos.filter(p => p.ronda === r).sort((a, b) => a.orden - b.orden).map(serial) }))

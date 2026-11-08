@@ -179,6 +179,18 @@ function crucesZona4([p1, p2, p3, p4]) {
 
 // ── Validación de resultados ──────────────────────────────────
 const esEntero = (v) => Number.isInteger(v) && v >= 0;
+/**
+ * Número entero ESTRICTO entre 0 y `max`: acepta 6 o "6"; rechaza "", null, "6.5", "-1", "abc",
+ * "1e1", booleanos y valores fuera de rango (devuelve NaN). Así nada inválido se convierte en 0.
+ */
+function enteroEstricto(v, max) {
+  let n = NaN;
+  if (typeof v === 'number') n = v;
+  else if (typeof v === 'string' && /^\d{1,3}$/.test(v.trim())) n = Number(v.trim());
+  return Number.isInteger(n) && n >= 0 && n <= max ? n : NaN;
+}
+const MAX_GAMES = 7;
+const MAX_TIEBREAK = 99;
 
 /**
  * Tie-break: termina cuando alguien llega a `min` puntos con 2 de diferencia.
@@ -187,8 +199,8 @@ const esEntero = (v) => Number.isInteger(v) && v >= 0;
  */
 function validarTieBreak(tb, min = 7, etiqueta = 'tie-break') {
   if (!Array.isArray(tb) || tb.length !== 2) throw badRequest(`Cargá el resultado del ${etiqueta}.`);
-  const [x, y] = tb.map(Number);
-  if (!esEntero(x) || !esEntero(y)) throw badRequest(`${etiqueta}: puntos inválidos.`);
+  const [x, y] = tb.map(v => enteroEstricto(v, MAX_TIEBREAK));
+  if (!esEntero(x) || !esEntero(y)) throw badRequest(`${etiqueta}: los puntos son números enteros de 0 a ${MAX_TIEBREAK}.`);
   const [w, l] = x > y ? [x, y] : [y, x];
   if (w < min) throw badRequest(`${etiqueta} ${x}-${y}: el ganador debe llegar a ${min}.`);
   if (w - l < 2) throw badRequest(`${etiqueta} ${x}-${y}: se gana por 2 puntos de diferencia.`);
@@ -203,9 +215,10 @@ function validarTieBreak(tb, min = 7, etiqueta = 'tie-break') {
  * @returns {1|2} lado ganador
  */
 function validarSet(set, tb, nro) {
-  const [x, y] = (set || []).map(Number);
-  const pref = `Set ${nro} (${x}-${y})`;
-  if (!esEntero(x) || !esEntero(y) || x > 7 || y > 7) throw badRequest(`${pref}: cada set va de 0 a 7 games.`);
+  if (!Array.isArray(set) || set.length !== 2) throw badRequest(`Set ${nro}: cargá los games de las dos parejas.`);
+  const [x, y] = set.map(v => enteroEstricto(v, MAX_GAMES));
+  const pref = `Set ${nro} (${set.join('-')})`;
+  if (!esEntero(x) || !esEntero(y)) throw badRequest(`${pref}: cada set va de 0 a ${MAX_GAMES} games (números enteros).`);
   const [w, l] = x > y ? [x, y] : [y, x];
   const valido = (w === 6 && l <= 4) || (w === 7 && (l === 5 || l === 6));
   if (!valido) {
@@ -245,11 +258,11 @@ function validarResultado(sets, tieBreaks = [], tercerSet = 'set') {
     } else {
       lado = validarSet(s, tb, i + 1);
     }
-    tbs.push(tb ? tb.map(Number) : null);
+    tbs.push(tb ? tb.map(v => enteroEstricto(v, MAX_TIEBREAK)) : null);
     lado === 1 ? a++ : b++;
   });
   if (a !== 2 && b !== 2) throw badRequest('El resultado no define un ganador (mejor de 3 sets).');
-  return { lado: a === 2 ? 1 : 2, sets: sets.map(s => s.map(Number)), tie_breaks: tbs };
+  return { lado: a === 2 ? 1 : 2, sets: sets.map((s, i) => s.map(v => enteroEstricto(v, i === 2 && tercerSet === 'super_tiebreak' ? MAX_TIEBREAK : MAX_GAMES))), tie_breaks: tbs };
 }
 
 function nombreZona(i) { return `Zona ${String.fromCharCode(65 + i)}`; }
