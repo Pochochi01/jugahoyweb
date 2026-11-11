@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { GENEROS, TIPO_TORNEO, errMsg, categoriasDe } from '../../utils/torneos';
 import { CategoriasMultiSelect } from './CategoriasSelect';
+import FormatoRelampago from './FormatoRelampago';
 
 const INICIAL = {
-  deporte: 'padel', tipo: 'unico', tercer_set: 'set',
+  deporte: 'padel', tipo: 'unico', tercer_set: 'set', formato: 'tradicional', formato_partidos: null,
   nombre: '', descripcion: '', liga_id: '', categorias: [], genero: 'masculino', fecha_inicio: '', fecha_fin: '',
   cupo_parejas: 16, precio_inscripcion: 0, parejas_por_zona: 3, clasifican_por_zona: 2,
   duracion_partido: 90, descanso_minimo: 60,
@@ -41,6 +42,7 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
     if (!f.categorias.length) return setError('Elegí al menos una categoría.');
     setSaving(true); setError('');
     const { liga, ...datos } = f;   // liga (objeto) viene del backend; se envía liga_id
+    if (datos.formato !== 'relampago') delete datos.formato_partidos;
     try { await onSave({ ...datos, liga_id: Number(f.liga_id), categorias: f.categorias, deporte: 'padel' }); } catch (err) { setError(errMsg(err)); } finally { setSaving(false); }
   };
 
@@ -66,13 +68,23 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
               {Object.entries(TIPO_TORNEO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </Campo>
+          <Campo label="Formato de partidos">
+            <select className="input" value={f.formato} disabled={bloqueado} onChange={e => set('formato', e.target.value)}>
+              <option value="tradicional">Tradicional</option>
+              <option value="relampago">Relámpago</option>
+            </select>
+          </Campo>
+        </div>
+        {/* Tradicional: 3er set. Relámpago: el formato de cada fase lo define el organizador (sin 3er set ni súper TB preconfigurados) */}
+        {f.formato !== 'relampago' && (
           <Campo label="3er set">
             <select className="input" value={f.tercer_set} disabled={bloqueado} onChange={e => set('tercer_set', e.target.value)}>
               <option value="set">Set completo</option>
               <option value="super_tiebreak">Súper tie-break (a 10)</option>
             </select>
           </Campo>
-        </div>
+        )}
+        {f.formato === 'relampago' && <FormatoRelampago value={f.formato_partidos} onChange={v => set('formato_partidos', v)} />}
         <p className="md:col-span-2 -mt-2 text-[11px] text-muted-foreground">
           {TIPO_TORNEO[f.tipo]?.hint}. {f.tipo === 'anual' && 'Los puntos de cada pareja salen del ranking anual de la liga y la categoría en la que juega (suma de ambos jugadores); al finalizar cada categoría se suman en esa misma liga y categoría.'}
         </p>

@@ -28,7 +28,7 @@ const MAX_INTENTOS = 5;
 const BLOQUEO_MIN = 15;
 const INDICE_TTL_MS = 5 * 60 * 1000;
 const ESTADOS_VISIBLES = ['inscripcion', 'zonas', 'llaves', 'finalizado', 'cancelado'];
-const TORNEO_PUBLICO = ['id', 'id_tenant', 'liga_id', 'nombre', 'descripcion', 'categoria', 'genero', 'estado', 'fecha_inicio', 'fecha_fin', 'tipo', 'parejas_por_zona', 'clasifican_por_zona', 'imagen_evento'];
+const TORNEO_PUBLICO = ['id', 'id_tenant', 'liga_id', 'nombre', 'descripcion', 'categoria', 'genero', 'estado', 'fecha_inicio', 'fecha_fin', 'tipo', 'tercer_set', 'formato', 'formato_partidos', 'parejas_por_zona', 'clasifican_por_zona', 'imagen_evento'];
 
 // ── Auditoría (no bloquea la respuesta) ───────────────────────
 function log(req, accion, { dni, recurso, recurso_id, status } = {}) {

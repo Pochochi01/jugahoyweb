@@ -7,16 +7,17 @@
 const fs = require('fs');
 const path = require('path');
 const { Op } = require('sequelize');
-const { Torneo, TorneoCancha, TorneoPareja, TorneoCategoria, TorneoLiga, Field, Profesor, sequelize } = require('../models');
+const { Torneo, TorneoCancha, TorneoPartido, TorneoPareja, TorneoCategoria, TorneoLiga, Field, Profesor, sequelize } = require('../models');
 const rk = require('../services/torneos/rankingService');
 const permisos = require('../services/torneos/torneoPermisos');
 const { DEPORTES } = require('../models/Escuela');
 const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
+const fmt = require('../services/torneos/formatoPartido');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
 
-const CAMPOS = ['nombre', 'deporte', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set',
+const CAMPOS = ['nombre', 'deporte', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set', 'formato', 'formato_partidos',
   'precio_inscripcion', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'descanso_minimo'];
 
 // Transiciones de estado que el organizador puede pedir a mano
@@ -46,6 +47,10 @@ function validarTorneo(body, actual = {}) {
   if (v.duracion_partido != null && !(v.duracion_partido >= 30 && v.duracion_partido <= 180)) throw err('Duración de partido: 30 a 180 min.');
   if (v.tipo != null && !['unico', 'anual'].includes(v.tipo)) throw err('Tipo de torneo inválido (único o anual).');
   if (v.tercer_set != null && !['set', 'super_tiebreak'].includes(v.tercer_set)) throw err('Tercer set inválido.');
+  if (v.formato != null && !['tradicional', 'relampago'].includes(v.formato)) throw err('Formato inválido (tradicional o relámpago).');
+  // Relámpago: la regla de cada fase se valida y normaliza (games, tie-break, súper TB, formato de final)
+  if (v.formato === 'relampago') { if (d.formato !== undefined || d.formato_partidos !== undefined) d.formato_partidos = fmt.normalizarFormato(v.formato_partidos); }
+  else if (d.formato !== undefined || d.formato_partidos !== undefined) d.formato_partidos = null;
   return d;
 }
 
@@ -155,10 +160,18 @@ async function update(req, res) {
     // Con fixture armado no se tocan los parámetros que lo determinan
     if (!['borrador', 'inscripcion'].includes(t.estado)) {
       if (liga && liga.id !== t.liga_id) return res.status(409).json({ message: 'No se puede cambiar la liga con el fixture armado.' });
-      for (const k of ['deporte', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set']) {
+      for (const k of ['deporte', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set', 'formato']) {
         if (data[k] !== undefined && String(data[k]) !== String(t[k])) {
           return res.status(409).json({ message: `No se puede cambiar "${k}" con el fixture armado.` });
         }
+      }
+      // Relámpago: una fase puede reconfigurarse mientras no tenga resultados cargados
+      if (data.formato_partidos && t.formato === 'relampago') {
+        const antes = fmt.normalizarFormato(t.formato_partidos);
+        const cambiadas = fmt.FASES.filter(f => JSON.stringify(antes[f]) !== JSON.stringify(data.formato_partidos[f]));
+        const rondas = fx.ORDEN_RONDAS.concat('zona').filter(r => cambiadas.includes(fmt.faseDeRonda(r)));
+        const conResultado = rondas.length && await TorneoPartido.count({ where: { torneo_id: t.id, ronda: rondas, estado: ['jugado', 'walkover'] } });
+        if (conResultado) return res.status(409).json({ message: `No se puede cambiar el formato de ${cambiadas.map(f => fmt.FASE_LABEL[f]).join(', ')}: ya hay resultados cargados en esa fase.` });
       }
     }
     if (data.deporte && data.deporte !== t.deporte) {

@@ -392,10 +392,10 @@ function programar(partidos, slots, parejas, opts = {}) {
 
 // ── Posiciones ────────────────────────────────────────────────
 /** Suma sets y games de un resultado desde el punto de vista de cada pareja. */
-function resumenSets(sets) {
+function resumenSets(sets, superTb = -1) {
   let s1 = 0, s2 = 0, g1 = 0, g2 = 0;
-  for (const [a, b] of sets || []) {
-    g1 += a; g2 += b;
+  for (const [i, [a, b]] of (sets || []).entries()) {
+    if (i !== superTb) { g1 += a; g2 += b; }   // súper TB (relámpago): suma set, no games
     if (a > b) s1++; else if (b > a) s2++;
   }
   return { s1, s2, g1, g2 };
@@ -407,7 +407,7 @@ function resumenSets(sets) {
  * @param {Array<{pareja1_id, pareja2_id, estado, resultado:{sets, ganador_id}}>} partidos
  * @returns {Array<{pareja_id, pj, pg, pp, puntos, sf, sc, gf, gc, dif_sets, dif_games, posicion}>}
  */
-function tablaZona(parejas, partidos) {
+function tablaZona(parejas, partidos, { superTb = -1 } = {}) {
   const t = new Map(parejas.map(p => [p.id, {
     pareja_id: p.id, pj: 0, pg: 0, pp: 0, puntos: 0, sf: 0, sc: 0, gf: 0, gc: 0,
   }]));
@@ -417,7 +417,7 @@ function tablaZona(parejas, partidos) {
     if (!['jugado', 'walkover'].includes(m.estado) || !m.resultado?.ganador_id) continue;
     const a = t.get(m.pareja1_id), b = t.get(m.pareja2_id);
     if (!a || !b) continue;
-    const { s1, s2, g1, g2 } = resumenSets(m.resultado.sets);
+    const { s1, s2, g1, g2 } = resumenSets(m.resultado.sets, superTb);
     const ganaA = m.resultado.ganador_id === m.pareja1_id;
     const wo = m.estado === 'walkover';
     a.pj++; b.pj++;

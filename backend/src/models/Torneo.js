@@ -28,6 +28,9 @@ const Torneo = sequelize.define('Torneo', {
   tipo:               { type: DataTypes.ENUM('unico', 'anual'), defaultValue: 'unico' },
   // 3er set: set normal o súper tie-break (a 10, diferencia de 2)
   tercer_set:         { type: DataTypes.ENUM('set', 'super_tiebreak'), defaultValue: 'set' },
+  // Formato de partido: 'tradicional' (reglas históricas) | 'relampago' (regla configurable por fase)
+  formato:            { type: DataTypes.ENUM('tradicional', 'relampago'), allowNull: false, defaultValue: 'tradicional' },
+  formato_partidos:   { type: DataTypes.JSON, allowNull: true },   // { zonas, cuartos, semifinal, final } (formatoPartido.js)
   puntos_asignados:   { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'torneos' });
 

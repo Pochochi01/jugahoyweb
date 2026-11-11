@@ -10,6 +10,7 @@ import { jugador, jugadorAuth, jugadorPush } from '../../services/playerPortalSe
 import InstallPWA from '../../components/pwa/InstallPWA';
 import { TablaZona, ZonaGrilla, Bracket, RankingJugadores, Cronograma } from '../../components/torneos/FixtureViews';
 import { CategoriaTabs } from '../../components/torneos/CategoriasSelect';
+import { ResumenRelampago } from '../../components/torneos/FormatoRelampago';
 import { ESTADO_TORNEO, GENEROS, fechaCorta, errMsg } from '../../utils/torneos';
 
 // ── Estados genéricos ─────────────────────────────────────────
@@ -437,6 +438,7 @@ export function JugadorTorneo() {
               <div className="text-sm text-muted-foreground">{fechaCorta(t.fecha_inicio)} → {fechaCorta(t.fecha_fin)}{t.club && ` · ${t.club.nombre}`}</div>
               {!t.participa && <div className="text-xs text-muted-foreground">No jugás este torneo: lo ves por ser de tu misma liga.</div>}
             </div>
+            <ResumenRelampago torneo={t} />
             <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist">
               {TABS.map(([k, l]) => (
                 <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}

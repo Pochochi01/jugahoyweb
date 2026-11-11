@@ -33,6 +33,7 @@ const notifier = require('./torneoNotifier');
 const brackets = require('../brackets/bracketService');
 const { validarLlave } = brackets;
 const { validateResult } = require('./resultValidation');
+const fmt = require('./formatoPartido');
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
@@ -598,7 +599,10 @@ async function recalcularTablaZona(zonaId, transaction) {
     transaction,
   });
   if (!zona) return;
-  const filas = fx.tablaZona(zona.parejas, zona.partidos);
+  // Relámpago con zonas a 2 sets + súper TB: el súper TB cuenta como set pero sus puntos no son games
+  const torneo = await Torneo.findByPk(zona.torneo_id, { attributes: ['formato', 'formato_partidos', 'tercer_set'], transaction });
+  const regla = fmt.esRelampago(torneo) ? fmt.reglaPartido(torneo, 'zona') : null;
+  const filas = fx.tablaZona(zona.parejas, zona.partidos, { superTb: regla ? fmt.indiceSuperTb(regla) : -1 });
   await TorneoTablaPosicion.destroy({ where: { zona_id: zonaId }, transaction });
   await TorneoTablaPosicion.bulkCreate(filas.map(r => ({
     torneo_id: zona.torneo_id, zona_id: zonaId, pareja_id: r.pareja_id, posicion: r.posicion,
@@ -1070,7 +1074,9 @@ async function registrarResultado(torneo, partidoId, data, { usuario = {} } = {}
 
     // Validación: sets 6-x / 7-5 / 7-6 + tie-break (ver fixtureService.validarResultado)
     // Validación estricta (services/torneos/resultValidation): sets 6-x / 7-5 / 7-6 + tie-break, o W.O. → 6-0 6-0
-    const { lado, sets, tie_breaks: tieBreaks, is_walkover: wo } = validateResult(data || {}, torneo.tercer_set);
+    // Torneo relámpago: la regla depende de la fase del partido (formatoPartido.reglaPartido)
+    const regla = fmt.esRelampago(torneo) ? fmt.reglaPartido(torneo, partido.ronda) : null;
+    const { lado, sets, tie_breaks: tieBreaks, is_walkover: wo } = validateResult(data || {}, torneo.tercer_set, regla);
     const ganadorId = lado === 1 ? partido.pareja1_id : partido.pareja2_id;
     const perdedorId = lado === 1 ? partido.pareja2_id : partido.pareja1_id;
 

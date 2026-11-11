@@ -14,6 +14,7 @@ import ReprogramarModal from './ReprogramarModal';
 import ResultadoModal from './ResultadoModal';
 import { useAuth } from '../../context/AuthContext';
 import PlantelModal from './PlantelModal';
+import { ResumenRelampago } from './FormatoRelampago';
 import { uploadUrl } from '../../services/torneosService';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, nombrePareja, errMsg, RONDA_LABEL, diasTorneo,
@@ -81,6 +82,7 @@ export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
           <div className="text-sm text-muted-foreground flex flex-wrap gap-x-3 items-center">
             <span className={est.cls}>{est.label}</span>
             <span className="badge-blue">{TIPO_TORNEO[torneo.tipo]?.label}</span>
+            {torneo.formato === 'relampago' && <span className="badge-yellow">Relámpago</span>}
             {torneo.liga && <span className="badge-neutral">{torneo.liga.nombre}</span>}
             <span>{catsTexto(torneo)} · {GENEROS[torneo.genero]}</span>
             <span>{fechaCorta(torneo.fecha_inicio)} → {fechaCorta(torneo.fecha_fin)}</span>
@@ -108,6 +110,7 @@ export default function TorneoManager({ svc, torneoId, onBack, admin = true }) {
         ))}
       </div>
 
+      {torneo.formato === 'relampago' && ['fixture', 'llave', 'posiciones'].includes(seccion) && <ResumenRelampago torneo={torneo} />}
       {porCategoria && <CategoriaTabs categorias={torneo.categorias} value={categoria} onChange={setCategoria} />}
 
       {seccion === 'datos'         && <DatosSeccion svc={svc} torneo={torneo} onSaved={setTorneo} />}

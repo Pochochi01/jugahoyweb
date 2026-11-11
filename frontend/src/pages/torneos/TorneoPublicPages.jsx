@@ -5,6 +5,7 @@ import { torneosPublic, uploadUrl } from '../../services/torneosService';
 import InscripcionForm from '../../components/torneos/InscripcionForm';
 import { TablaZona, ZonaGrilla, Bracket, RankingJugadores } from '../../components/torneos/FixtureViews';
 import { CategoriaTabs } from '../../components/torneos/CategoriasSelect';
+import { ResumenRelampago } from '../../components/torneos/FormatoRelampago';
 import {
   ESTADO_TORNEO, ESTADO_PAGO, GENEROS, TIPO_TORNEO, catLabel, money, fechaCorta, setsTxt, RONDA_LABEL, errMsg, catsTexto,
 } from '../../utils/torneos';
@@ -115,7 +116,8 @@ export function TorneoPublicPage() {
         <div className="grid md:grid-cols-3 gap-3">
           <div className="card"><div className="text-xs text-muted-foreground">Inscripción por pareja</div><div className="text-xl font-bold">{Number(torneo.precio_inscripcion) > 0 ? money(torneo.precio_inscripcion) : 'Sin cargo'}</div></div>
           <div className="card"><div className="text-xs text-muted-foreground">Cupos libres</div><div className="text-xl font-bold">{torneo.cupos_libres} / {torneo.cupo_parejas}</div></div>
-          <div className="card"><div className="text-xs text-muted-foreground">Formato · {TIPO_TORNEO[torneo.tipo]?.label}</div><div className="text-sm">Zonas de {torneo.parejas_por_zona} ({TIPO_TORNEO[torneo.tipo]?.hint.toLowerCase()}), clasifican {torneo.clasifican_por_zona} a la llave{torneo.tercer_set === 'super_tiebreak' ? ' · 3er set: súper tie-break' : ''}</div></div>
+          <div className="card"><div className="text-xs text-muted-foreground">Formato · {TIPO_TORNEO[torneo.tipo]?.label}</div><div className="text-sm">Zonas de {torneo.parejas_por_zona} ({TIPO_TORNEO[torneo.tipo]?.hint.toLowerCase()}), clasifican {torneo.clasifican_por_zona} a la llave{torneo.formato === 'relampago' ? ' · Relámpago' : torneo.tercer_set === 'super_tiebreak' ? ' · 3er set: súper tie-break' : ''}</div></div>
+          <ResumenRelampago torneo={torneo} className="md:col-span-3" />
           {torneo.descripcion && <div className="card md:col-span-3 text-sm whitespace-pre-line">{torneo.descripcion}</div>}
         </div>
       )}

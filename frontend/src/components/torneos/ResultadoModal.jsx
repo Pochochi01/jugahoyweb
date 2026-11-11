@@ -3,6 +3,7 @@ import { ClipboardCheck, Flag, ArrowLeft, Trophy, CheckCircle2, AlertTriangle } 
 import { ModalTorneo } from './ReprogramarModal';
 import { instanciaDe } from './FixtureViews';
 import { errorSet, errorTieBreak, errorResultado, fechaCorta, errMsg, MAX_GAMES, MAX_TIEBREAK } from '../../utils/torneos';
+import * as fmt from '../../utils/formatoPartido';
 
 /**
  * Carga de resultado en modal (reemplaza al formulario en línea).
@@ -13,8 +14,11 @@ import { errorSet, errorTieBreak, errorResultado, fechaCorta, errMsg, MAX_GAMES,
  * - 3er set como súper tie-break (a 10) si el torneo lo usa.
  * - Victoria por W.O. → elegir ganador → confirmar (se guarda 6-0 6-0).
  * - Resumen antes de guardar. Teclado: flechas entre casilleros, Enter avanza/guarda, Escape cierra.
+ * Torneo relámpago: la regla sale de la fase del partido (utils/formatoPartido): un set o dos,
+ * games y tie-break configurables, súper tie-break, W.O. con el resultado mínimo de la fase.
  * El backend vuelve a validar todo (services/torneos/resultValidation).
  */
+const capturar = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
 const vacio = () => ['', ''];
 const num = (v) => (v === '' || v == null ? NaN : Number(v));
 
@@ -56,10 +60,21 @@ function Casilla({ value, onValue, digitos = 1, max = MAX_GAMES, label, registra
 }
 
 export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onClose }) {
-  const superTB = torneo.tercer_set === 'super_tiebreak';
+  // Regla del partido: tradicional (6 games, TB a 7, 3er set según torneo) o la de la fase en un relámpago
+  const relampago = fmt.esRelampago(torneo);
+  const regla = useMemo(() => fmt.reglaPartido(torneo, p.ronda), [torneo, p.ronda]);
+  const unSet = fmt.TIPOS[regla.tipo].sets === 1;
+  const superTB = fmt.indiceSuperTb(regla) === 2;
+  const maxG = relampago ? fmt.maxGames(regla) : MAX_GAMES;
+  const digG = maxG > 9 ? 2 : 1;
+  const iniciales = unSet ? 1 : 2;
   const previo = p.resultado && !p.resultado.is_walkover && p.estado !== 'walkover' ? p.resultado : null;
-  const [sets, setSets] = useState(() => (previo?.sets?.length ? previo.sets.map(s => s.map(String)) : [vacio(), vacio()]));
-  const [tbs, setTbs] = useState(() => (previo?.sets?.length ? previo.sets.map((_, i) => (previo.tie_breaks?.[i] || vacio()).map(String)) : [vacio(), vacio()]));
+  const [sets, setSets] = useState(() => (previo?.sets?.length ? previo.sets.map(s => s.map(String)) : Array.from({ length: iniciales }, vacio)));
+  const [tbs, setTbs] = useState(() => (previo?.sets?.length ? previo.sets.map((_, i) => (previo.tie_breaks?.[i] || vacio()).map(String)) : Array.from({ length: iniciales }, vacio)));
+  // Validadores: los del relámpago usan el motor de formatos; los tradicionales, los de siempre
+  const vSet = (xy, tb, nro) => (relampago ? capturar(() => fmt.validarSet(xy, tb, nro, regla)) : errorSet(xy, tb, nro));
+  const vStb = (xy) => (relampago ? capturar(() => fmt.validarTieBreak(xy, regla.super_tiebreak, 'Súper tie-break')) : errorTieBreak(xy, 10, 'Súper tie-break'));
+  const vResultado = (ss, tt) => (relampago ? capturar(() => fmt.validarResultado(ss, tt, regla)) : errorResultado(ss, tt, torneo.tercer_set));
   const [modo, setModo] = useState('carga');          // carga | wo | confirmar
   const [woGanador, setWoGanador] = useState(null);   // 1 | 2
   const [payload, setPayload] = useState(null);
@@ -69,17 +84,19 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
   const set3Ref = useRef(null);
   const nombre = (l) => p[`pareja${l}`]?.nombre || (l === 1 ? 'Pareja A' : 'Pareja B');
 
-  const esTb = (i) => !(i === 2 && superTB) && sets[i] && Math.max(num(sets[i][0]), num(sets[i][1])) === 7 && Math.min(num(sets[i][0]), num(sets[i][1])) === 6;
+  const esTb = (i) => !(i === 2 && superTB) && sets[i] && (relampago
+    ? sets[i].every(v => v !== '') && fmt.esSetConTb(sets[i].map(num), regla)
+    : Math.max(num(sets[i][0]), num(sets[i][1])) === 7 && Math.min(num(sets[i][0]), num(sets[i][1])) === 6);
   const completo = (i) => sets[i]?.every(v => v !== '');
   const ganadorSet = (i) => {
     if (!completo(i)) return null;
     const [x, y] = sets[i].map(num);
-    const e = i === 2 && superTB ? errorTieBreak([x, y], 10, 'Súper tie-break') : errorSet([x, y], esTb(i) ? tbs[i].map(num) : null, i + 1);
+    const e = i === 2 && superTB ? vStb([x, y]) : vSet([x, y], esTb(i) ? tbs[i].map(num) : null, i + 1);
     if (e && !(esTb(i) && tbs[i].some(v => v === ''))) return null;   // set inválido
     return x > y ? 1 : 2;
   };
   const g1 = ganadorSet(0), g2 = ganadorSet(1);
-  const necesitaTercero = Boolean(g1 && g2 && g1 !== g2);
+  const necesitaTercero = !unSet && Boolean(g1 && g2 && g1 !== g2);
 
   // 3er set automático: aparece si van 1-1 y desaparece (limpio) si deja de hacer falta
   useEffect(() => {
@@ -113,9 +130,9 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
   const todoCompleto = sets.every((_, i) => completo(i)) && tbs.every((t, i) => !esTb(i) || t.every(v => v !== ''));
   const errorDeSet = (i) => {
     if (!completo(i) || (esTb(i) && tbs[i].some(v => v === ''))) return null;
-    return i === 2 && superTB ? errorTieBreak(setsN[i], 10, 'Súper tie-break') : errorSet(setsN[i], tbsN[i], i + 1);
+    return i === 2 && superTB ? vStb(setsN[i]) : vSet(setsN[i], tbsN[i], i + 1);
   };
-  const errorGeneral = todoCompleto ? errorResultado(setsN, tbsN, torneo.tercer_set) : null;
+  const errorGeneral = todoCompleto ? vResultado(setsN, tbsN) : null;
 
   const textoSets = (ss, tb) => ss.map(([a, b], i) => `${a}-${b}${tb?.[i] ? ` (TB ${tb[i][0]}-${tb[i][1]})` : ''}`).join(' / ');
   const continuar = () => {
@@ -127,8 +144,8 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
   };
   const confirmarWo = () => {
     if (!woGanador) { setError('Elegí quién gana por W.O.'); return; }
-    const s = woGanador === 1 ? [6, 0] : [0, 6];
-    setPayload({ datos: { walkover_ganador: woGanador }, ganador: woGanador, texto: `W.O. ${s.join('-')} ${s.join('-')}`, wo: true });
+    const ss = relampago ? fmt.setsWalkover(woGanador, regla) : [woGanador === 1 ? [6, 0] : [0, 6], woGanador === 1 ? [6, 0] : [0, 6]];
+    setPayload({ datos: { walkover_ganador: woGanador }, ganador: woGanador, texto: `W.O. ${ss.map(x => x.join('-')).join(' ')}`, wo: true });
     setModo('confirmar');
   };
   const guardar = async () => {
@@ -169,14 +186,14 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
                   <div key={i} ref={i === 2 ? set3Ref : undefined} className={`rounded-xl border px-3 py-3 ${i === 2 ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
                     <div className="flex items-center gap-3">
                       <div className="w-20 shrink-0">
-                        <div className="text-sm font-semibold">{stb ? 'Súper TB' : `Set ${i + 1}`}</div>
+                        <div className="text-sm font-semibold">{stb ? 'Súper TB' : unSet ? 'Set único' : `Set ${i + 1}`}</div>
                         {g && <div className="text-[11px] text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> gana {g === 1 ? 'A' : 'B'}</div>}
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold text-muted-foreground">A</span>
-                        <Casilla value={s[0]} onValue={v => cambiarSet(i, 0, v)} digitos={stb ? 2 : 1} max={stb ? MAX_TIEBREAK : MAX_GAMES} label={`${stb ? 'Súper tie-break' : `Set ${i + 1}`} pareja A`} registrar={registrar(`s${i}-0`)} onNav={nav(`s${i}-0`)} invalida={Boolean(err)} />
+                        <Casilla value={s[0]} onValue={v => cambiarSet(i, 0, v)} digitos={stb ? 2 : digG} max={stb ? MAX_TIEBREAK : maxG} label={`${stb ? 'Súper tie-break' : `Set ${i + 1}`} pareja A`} registrar={registrar(`s${i}-0`)} onNav={nav(`s${i}-0`)} invalida={Boolean(err)} />
                         <span className="text-muted-foreground">–</span>
-                        <Casilla value={s[1]} onValue={v => cambiarSet(i, 1, v)} digitos={stb ? 2 : 1} max={stb ? MAX_TIEBREAK : MAX_GAMES} label={`${stb ? 'Súper tie-break' : `Set ${i + 1}`} pareja B`} registrar={registrar(`s${i}-1`)} onNav={nav(`s${i}-1`)} invalida={Boolean(err)} />
+                        <Casilla value={s[1]} onValue={v => cambiarSet(i, 1, v)} digitos={stb ? 2 : digG} max={stb ? MAX_TIEBREAK : maxG} label={`${stb ? 'Súper tie-break' : `Set ${i + 1}`} pareja B`} registrar={registrar(`s${i}-1`)} onNav={nav(`s${i}-1`)} invalida={Boolean(err)} />
                         <span className="text-[10px] font-bold text-muted-foreground">B</span>
                       </div>
                     </div>
@@ -198,8 +215,15 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
               })}
             </div>
             <p className="text-[11px] text-muted-foreground">
+              {relampago ? (
+                <>
+                  <span className="font-semibold text-amber-400">Relámpago · {fmt.describirRegla(regla)}.</span>{' '}
+                  Sets a {regla.games}: {fmt.ayudaSet(regla)}{superTB && `. Si van 1 set a 1, súper tie-break a ${regla.super_tiebreak}`}{regla.tipo === 'mejor_de_3' && '. El 3º aparece solo si van 1 set a 1'}.
+                </>
+              ) : (<>
               Games de 0 a 7: 6-0 a 6-4, 7-5 o 7-6 (con tie-break a 7 y 2 de diferencia, ej. 7-4, 10-8). El 3º aparece solo si van 1 set a 1.
               {superTB && ' En este torneo el 3º es súper tie-break a 10 (ej. 10-8).'}
+              </>)}
             </p>
             {(error || (todoCompleto && errorGeneral && !sets.some((_, i) => errorDeSet(i)))) && <p className="text-sm text-red-400" role="alert">{error || errorGeneral}</p>}
             <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +247,7 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
                 </label>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground">Se registra como {woGanador === 2 ? '0-6 0-6' : '6-0 6-0'} a favor del ganador, con la marca "W.O.". La pareja que no se presentó no suma puntos en la zona.</p>
+            <p className="text-[11px] text-muted-foreground">Se registra como {(relampago ? fmt.setsWalkover(woGanador || 1, regla) : [[6, 0], [6, 0]]).map(x => (woGanador === 2 && !relampago ? [...x].reverse() : x).join('-')).join(' ')} a favor del ganador, con la marca "W.O.". La pareja que no se presentó no suma puntos en la zona.</p>
             {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <button type="button" className="btn-ghost text-sm" onClick={() => { setModo('carga'); setError(''); }}><ArrowLeft className="w-4 h-4" /> Volver</button>
