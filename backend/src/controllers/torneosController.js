@@ -15,7 +15,7 @@ const svc = require('../services/torneos/torneoService');
 const fx  = require('../services/torneos/fixtureService');
 const fmt = require('../services/torneos/formatoPartido');
 
-const send = (res, err) => res.status(err.status || 500).json({ message: err.message });
+const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.inconsistencias && { inconsistencias: err.inconsistencias }) });
 
 const CAMPOS = ['nombre', 'deporte', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set', 'formato', 'formato_partidos',
   'precio_inscripcion', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'descanso_minimo'];

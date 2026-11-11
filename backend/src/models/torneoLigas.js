@@ -27,6 +27,8 @@ const TorneoCategoria = sequelize.define('TorneoCategoria', {
   categoria_id: { type: T.TINYINT, allowNull: false },
   estado: { type: T.ENUM('pendiente', 'zonas', 'llaves', 'finalizado'), defaultValue: 'pendiente' },
   puntos_asignados: { type: T.BOOLEAN, defaultValue: false },
+  // Se activa al armar zonas; solo admin general / del club / organizador reabren (auditado)
+  inscripciones_cerradas: { type: T.BOOLEAN, allowNull: false, defaultValue: false },
   // Inicio de la llave de esta categoría (null = después de la fase de zonas)
   llave_inicio_fecha: { type: T.DATEONLY, allowNull: true },
   llave_inicio_hora: { type: T.STRING(5), allowNull: true },
@@ -143,6 +145,14 @@ const TorneoJugadorCambio = sequelize.define('TorneoJugadorCambio', {
   datos_anteriores: T.JSON, datos_nuevos: T.JSON, usuario_id: T.INTEGER, usuario: T.STRING(150),
 }, { tableName: 'torneo_jugador_cambios', updatedAt: false });
 
+// Auditoría de inscripciones: alta, modificación, baja, zonas generadas, bloqueo y reapertura
+const TorneoInscripcionEvento = sequelize.define('TorneoInscripcionEvento', {
+  id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
+  torneo_id: { type: T.INTEGER, allowNull: false }, categoria_id: T.TINYINT, pareja_id: T.INTEGER,
+  accion: { type: T.ENUM('inscripcion_creada', 'inscripcion_modificada', 'inscripcion_eliminada', 'zonas_generadas', 'inscripciones_bloqueadas', 'inscripciones_reabiertas'), allowNull: false },
+  detalle: T.JSON, motivo: T.STRING(500), usuario_id: T.INTEGER, usuario: T.STRING(150),
+}, { tableName: 'torneo_inscripcion_eventos', updatedAt: false });
+
 // Horarios fijados a mano en la llave de referencia (antes de generarla)
 const TorneoLlaveProgramacion = sequelize.define('TorneoLlaveProgramacion', {
   id: { type: T.INTEGER, primaryKey: true, autoIncrement: true },
@@ -173,4 +183,4 @@ function asociar({ Complex, Torneo, TorneoPareja, TorneoZona, TorneoPartido, Tor
 }
 
 module.exports = { modelos: { TorneoLiga, PadelCategoria, TorneoCategoria, PadelJugador, RankingPunto, RankingAjuste, TorneoPuntajeHistorial, TorneoZonaHistorial,
-  RankingTemporada, RankingConfiguracion, RankingResultado, TorneoReprogramacion, TorneoNotificacion, TorneoJugadorCambio, TorneoLlaveProgramacion }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };
+  RankingTemporada, RankingConfiguracion, RankingResultado, TorneoReprogramacion, TorneoNotificacion, TorneoJugadorCambio, TorneoInscripcionEvento, TorneoLlaveProgramacion }, asociar, GENEROS, INSTANCIAS, CAMPOS_PUNTOS };

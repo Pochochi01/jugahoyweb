@@ -6,6 +6,7 @@ import {
 import TorneoForm from './TorneoForm';
 import HorariosEditor from './HorariosEditor';
 import InscripcionForm from './InscripcionForm';
+import EstadoInscripciones from './EstadoInscripciones';
 import TelefonoEntidad from '../TelefonoEntidad';
 import CompartirMensaje from '../CompartirMensaje';
 import { TablaZona, PartidoRow, ZonaGrilla, Bracket, RankingJugadores, Cronograma, imprimirFixture } from './FixtureViews';
@@ -218,6 +219,8 @@ function InscripcionesSeccion({ svc, torneo, categoria, permisos = {} }) {
   const multi = (torneo.categorias || []).length > 1;
   const [alta, setAlta] = useState(false);
   const [pagado, setPagado] = useState(false);
+  const [cerrada, setCerrada] = useState(false);   // inscripciones cerradas tras armar zonas
+  const [version, setVersion] = useState(0);       // refresca el estado de inscripciones
 
   const cargar = useCallback(() => svc.listParejas(torneo.id, multi && categoria ? { categoria_id: categoria } : {}).then(setData).catch(() => {}), [svc, torneo.id, categoria, multi]);
   useEffect(() => { cargar(); }, [cargar]);
@@ -243,12 +246,13 @@ function InscripcionesSeccion({ svc, torneo, categoria, permisos = {} }) {
       </div>
 
       {modalPlantel}
+      <EstadoInscripciones key={version} svc={svc} torneo={torneo} categoria={categoria} onEstado={setCerrada} />
       <div className="flex flex-wrap gap-2 items-center">
         <select className="input !w-auto text-sm" value={filtro} onChange={e => setFiltro(e.target.value)}>
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_PAGO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <button className="btn-primary text-sm ml-auto" onClick={() => setAlta(a => !a)}>{alta ? 'Cerrar' : '+ Inscribir pareja'}</button>
+        <button className="btn-primary text-sm ml-auto" disabled={cerrada && !alta} title={cerrada ? 'Las zonas ya fueron generadas. Las inscripciones se encuentran cerradas.' : undefined} onClick={() => setAlta(a => !a)}>{alta ? 'Cerrar' : '+ Inscribir pareja'}</button>
       </div>
 
       {alta && (
@@ -256,7 +260,11 @@ function InscripcionesSeccion({ svc, torneo, categoria, permisos = {} }) {
           extra={Number(torneo.precio_inscripcion) > 0 && (
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={pagado} onChange={e => setPagado(e.target.checked)} /> Ya pagó (efectivo / transferencia)</label>
           )}
-          onSubmit={async (d) => { await svc.createPareja(torneo.id, { ...d, pagado, metodo_pago: 'efectivo' }); setAlta(false); cargar(); }} />
+          onSubmit={async (d) => {
+            const r = await svc.createPareja(torneo.id, { ...d, pagado, metodo_pago: 'efectivo' });
+            setAlta(false); cargar(); setVersion(v => v + 1);
+            if (r?.autocompletados?.length) alert(`Se completaron datos desde la base: ${r.autocompletados.map(a => `jugador ${a.jugador} (${a.campos.join(', ').replace('whatsapp', 'teléfono')})`).join('; ')}.`);
+          }} />
       )}
 
       <div className="space-y-2">
@@ -270,7 +278,7 @@ function InscripcionesSeccion({ svc, torneo, categoria, permisos = {} }) {
                 {anual && <span className="ml-2 text-xs text-primary font-semibold">{p.puntos_ranking || 0} pts ranking</span>}
               </div>
               <div className="text-xs text-muted-foreground">
-                {p.jugadores.map(j => `${j.nombre}: ${catLabel(j.categoria)} · DNI ${j.dni} · ${j.whatsapp}`).join('  |  ')}
+                {p.jugadores.map(j => `${j.nombre}: ${catLabel(j.categoria)} · DNI ${j.dni} · ${j.whatsapp || 'sin teléfono'}${j.email ? '' : ' · sin email'}`).join('  |  ')}
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">
                 Horarios: {(p.horarios_preferidos || []).map(h => `${h.fecha ? fechaCorta(h.fecha) : 'todos'} ${h.desde}-${h.hasta}`).join(', ')}

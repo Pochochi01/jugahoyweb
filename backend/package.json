@@ -34,7 +34,9 @@
     "test:llaves:borrar": "node tests/borrar-llave.e2e.js",
     "test:llaves:plantillas": "node tests/plantillas-llaves.e2e.js",
     "test:relampago": "node --test --experimental-test-coverage --test-coverage-include=src/services/torneos/formatoPartido.js tests/relampago-formato.test.js",
-    "test:relampago:e2e": "node tests/relampago.e2e.js"
+    "test:relampago:e2e": "node tests/relampago.e2e.js",
+    "test:inscripciones": "node tests/inscripciones-inteligentes.e2e.js",
+    "test:inscripciones:unit": "node --test tests/inscripciones.test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

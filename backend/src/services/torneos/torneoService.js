@@ -34,6 +34,7 @@ const brackets = require('../brackets/bracketService');
 const { validarLlave } = brackets;
 const { validateResult } = require('./resultValidation');
 const fmt = require('./formatoPartido');
+const inscr = require('./inscripcionesService');
 const { frontendUrl } = require('../../config/urls');
 
 const PAREJAS_ACTIVAS = { [Op.in]: ['pendiente', 'pagado'] };
@@ -108,7 +109,10 @@ const GENERO_OK = {
  * Inscribe una pareja.
  * @param {Torneo} torneo
  * @param {{jugadores: Array, horarios_preferidos: Array}} data
- * @param {{userId?:number, porOrganizador?:boolean, metodoPago?:string}} opts
+ * @param {{userId?:number, porOrganizador?:boolean, metodoPago?:string, usuario?:{id,nombre}}} opts
+ *   porOrganizador = alta desde el panel (administrativa): puede seguir sin email / teléfono.
+ * Inscripciones inteligentes (inscripcionesService): autocompleta DNI / email / teléfono con la base,
+ * rechaza duplicados (DNI, email, teléfono, jugador) y respeta el bloqueo tras armar zonas.
  */
 async function inscribirPareja(torneo, data, opts = {}) {
   if (torneo.estado !== 'inscripcion' && !opts.porOrganizador) {
@@ -122,22 +126,30 @@ async function inscribirPareja(torneo, data, opts = {}) {
   const tc = await resolverCategoria(torneo, data.categoria_id);
   if (tc.estado !== 'pendiente' && !opts.porOrganizador) throw httpError(409, `La categoría ${rk.nombreCat(tc.categoria_id)} ya armó su fixture.`);
   const catTorneo = tc.categoria_id;
+  inscr.asegurarAbiertas(tc);
+
+  // Autocompletado de DNI / email / teléfono faltantes con la base (registro del club y usuarios)
+  const autocompletados = [];
+  const base = [];
+  for (const [i, j] of jugadores.entries()) {
+    const crudo = { nombre: String(j.nombre || '').trim(), dni: inscr.soloDigitos(j.dni) || null, email: inscr.emailLimpio(j.email), whatsapp: inscr.soloDigitos(j.whatsapp) || null };
+    const { jugador, completados } = await inscr.completarDatos(torneo.id_tenant, crudo);
+    if (completados.length) autocompletados.push({ jugador: i + 1, campos: completados });
+    base.push(jugador);
+  }
 
   const limpios = jugadores.map((j, i) => {
-    const nombre = String(j.nombre || '').trim();
-    const dni = String(j.dni || '').replace(/\D/g, '');
-    const whatsapp = String(j.whatsapp || '').replace(/\D/g, '');
+    const { nombre, dni, whatsapp, email } = base[i];
     const categoria = parseInt(j.categoria, 10);
     if (nombre.length < 3) throw httpError(400, `Jugador ${i + 1}: nombre y apellido requeridos.`);
-    if (!/^\d{7,9}$/.test(dni)) throw httpError(400, `Jugador ${i + 1}: DNI inválido.`);
-    if (!/^\d{10,15}$/.test(whatsapp)) throw httpError(400, `Jugador ${i + 1}: WhatsApp inválido (con código de país, ej. 549381...).`);
+    inscr.exigirDatos(base[i], i, { admin: Boolean(opts.porOrganizador) });
     if (!(categoria >= 1 && categoria <= 8)) throw httpError(400, `Jugador ${i + 1}: categoría inválida (1ª a 8ª).`);
     if (!['masculino', 'femenino'].includes(j.genero)) throw httpError(400, `Jugador ${i + 1}: género inválido.`);
     // Se puede jugar la categoría propia o una superior (número menor), nunca una inferior
     if (categoria < catTorneo) {
       throw httpError(400, `${nombre} es de ${categoria}ª y no puede jugar la categoría ${catTorneo}ª.`);
     }
-    return { nombre, dni, whatsapp, categoria, genero: j.genero, email: j.email?.trim() || null };
+    return { nombre, dni, whatsapp: whatsapp || null, categoria, genero: j.genero, email: email || null };
   });
   if (limpios[0].dni === limpios[1].dni) throw httpError(400, 'Los dos jugadores no pueden tener el mismo DNI.');
   if (!GENERO_OK[torneo.genero](limpios.map(j => j.genero))) {
@@ -155,15 +167,13 @@ async function inscribirPareja(torneo, data, opts = {}) {
   const pareja = await sequelize.transaction(async (t) => {
     // Lock del torneo → serializa inscripciones concurrentes (control de cupo)
     await Torneo.findByPk(torneo.id, { lock: t.LOCK.UPDATE, transaction: t });
+    // El bloqueo se relee dentro del lock (zonas armadas en paralelo)
+    inscr.asegurarAbiertas(await TorneoCategoria.findByPk(tc.id, { transaction: t }));
     const ocupados = await TorneoPareja.count({ where: { torneo_id: torneo.id, estado_pago: PAREJAS_ACTIVAS }, transaction: t });
     if (ocupados >= torneo.cupo_parejas) throw httpError(409, 'No quedan cupos disponibles.');
 
-    const repetido = await TorneoJugador.findOne({
-      where: { dni: limpios.map(j => j.dni) },
-      include: [{ model: TorneoPareja, as: 'pareja', where: { torneo_id: torneo.id, estado_pago: PAREJAS_ACTIVAS } }],
-      transaction: t,
-    });
-    if (repetido) throw httpError(409, `El DNI ${repetido.dni} ya está inscripto en este torneo.`);
+    // DNI, email, teléfono y jugador únicos entre las parejas activas del torneo (y dentro de la pareja)
+    await inscr.verificarDuplicados(torneo, limpios, { transaction: t });
 
     const p = await TorneoPareja.create({
       torneo_id: torneo.id,
@@ -178,10 +188,16 @@ async function inscribirPareja(torneo, data, opts = {}) {
     const registros = [];
     for (const j of limpios) registros.push(await rk.upsertJugador(torneo.id_tenant, j, t));
     await TorneoJugador.bulkCreate(limpios.map((j, i) => ({ ...j, pareja_id: p.id, jugador_id: registros[i].id })), { transaction: t });
+    await inscr.auditar(torneo, {
+      categoria_id: catTorneo, pareja_id: p.id, accion: 'inscripcion_creada',
+      detalle: { origen: opts.porOrganizador ? 'panel' : 'publico', jugadores: limpios.map(j => ({ nombre: j.nombre, dni: j.dni })), autocompletados },
+      usuario: opts.usuario || (opts.userId ? { id: opts.userId } : {}),
+    }, t);
     return p;
   });
 
   const completa = await TorneoPareja.findByPk(pareja.id, { include: [{ model: TorneoJugador, as: 'jugadores' }] });
+  completa.setDataValue('autocompletados', autocompletados);
   notifier.aPareja(torneo.id_tenant, completa, notifier.mensajes.inscripcion(torneo, completa));
   if (gratis) await emitirTickets(torneo, completa);
   return completa;
@@ -398,6 +414,9 @@ async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false
   });
   if (parejas.length < 2) throw httpError(409, `${rk.nombreCat(cat)}: se necesitan al menos 2 parejas ${incluirPendientes ? 'inscriptas' : 'pagadas'}.`);
 
+  // Inscripciones inteligentes: duplicados (DNI, email, teléfono, jugador), parejas completas y datos obligatorios
+  const problemas = inscr.inconsistencias(parejas);
+  if (problemas.length) throw Object.assign(httpError(409, `Corregí las inscripciones antes de armar las zonas: ${problemas.slice(0, 5).join(' ')}${problemas.length > 5 ? ` (y ${problemas.length - 5} más)` : ''}`), { inconsistencias: problemas });
   // Validaciones: parejas completas y sin jugadores repetidos entre parejas
   const incompletas = parejas.filter(p => p.jugadores.length !== 2 || p.jugadores.some(j => !j.dni || !String(j.nombre || '').trim()));
   if (incompletas.length) throw httpError(409, `Hay parejas con jugadores faltantes o sin datos: ${incompletas.map(p => notifier.nombrePareja(p) || `#${p.id}`).join(', ')}.`);
@@ -530,6 +549,9 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
 
     await tc.update({ estado: 'zonas' }, { transaction: t });
     await sincronizarEstado(torneo, t);
+    // Auditoría + bloqueo automático de inscripciones de la categoría
+    await inscr.auditar(torneo, { categoria_id: cat, accion: 'zonas_generadas', detalle: { zonas: siembra.length, parejas: parejas.length }, usuario }, t);
+    await inscr.cerrar(torneo, tc, usuario, t);
     const zonas = await TorneoZona.findAll({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     for (const z of zonas) await recalcularTablaZona(z.id, t);
     // Auditoría del armado (en la misma transacción)

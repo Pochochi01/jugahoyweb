@@ -121,7 +121,7 @@ const esperar = (ms) => new Promise(r => setTimeout(r, ms));
     await call('PUT', `/torneos/${t2.id}/canchas`, { canchas: [{ field_id: cancha.id, disponibilidad_horaria: [{ fecha: null, desde: '08:00', hasta: '23:00' }] }] });
     // Parejas mezcladas: (finalista + nuevo) se inscribe primero; (campeón + nuevo) después
     const camp = await m.PadelJugador.findByPk(campeon.jugador_id), fin = await m.PadelJugador.findByPk(finalista.jugador_id);
-    const deReg = (r) => ({ nombre: r.nombre, dni: r.dni, whatsapp: '5493819999999', categoria: 7, genero: 'masculino' });
+    const deReg = (r) => ({ nombre: r.nombre, dni: r.dni, whatsapp: `54938199${r.dni.slice(-5)}`, categoria: 7, genero: 'masculino' });
     await call('POST', `/torneos/${t2.id}/parejas`, { jugadores: [deReg(fin), jug(11)], horarios_preferidos: hor, pagado: true });
     await call('POST', `/torneos/${t2.id}/parejas`, { jugadores: [deReg(camp), jug(12)], horarios_preferidos: hor, pagado: true });
     await call('POST', `/torneos/${t2.id}/parejas`, { jugadores: [jug(13), jug(14)], horarios_preferidos: hor, pagado: true });

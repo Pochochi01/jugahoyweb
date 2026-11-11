@@ -52,7 +52,7 @@ async function hasta(cond, ms = 10000) { const fin = Date.now() + ms; while (Dat
     const t = (await call('POST', '/torneos', { nombre: 'Copa Recarga', liga_id: liga.id, categorias: [5], genero: 'masculino', tipo: 'unico', fecha_inicio: '2026-12-10', fecha_fin: '2026-12-11', cupo_parejas: 8, parejas_por_zona: 3, clasifican_por_zona: 2, duracion_partido: 60, descanso_minimo: 0 })).data;
     torneoId = t.id;
     await call('PUT', `/torneos/${t.id}/canchas`, { canchas: [{ field_id: c1.id, disponibilidad_horaria: franja }] });
-    const jug = (n) => ({ nombre: `Jugador${n} Recarga`, dni: dni(n), whatsapp: `54938160${String(sfx).padStart(5, '0')}${n}`.slice(0, 13), categoria: 5, genero: 'masculino' });
+    const jug = (n) => ({ nombre: `Jugador${n} Recarga`, dni: dni(n), whatsapp: `549381${String(sfx).padStart(5, '0')}${String(n).padStart(2, '0')}`, categoria: 5, genero: 'masculino' });
     for (let i = 0; i < 3; i++) await call('POST', `/torneos/${t.id}/parejas`, { jugadores: [jug(i * 2 + 1), jug(i * 2 + 2)], horarios_preferidos: franja, pagado: true });
     await call('POST', `/torneos/${t.id}/zonas/generar`, { notificar: false });
 

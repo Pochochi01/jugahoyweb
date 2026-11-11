@@ -95,6 +95,10 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     ok((await call('PUT', `${pl}/${jb.id}`, { categoria: 7 })).status === 200, 'jugador de 7ª puede jugar 6ª (sube de nivel)');
     ok((await call('PUT', `${pl}/${jb.id}`, { dni: '35000001' })).status === 409, 'DNI duplicado dentro del torneo → 409');
     ok((await call('DELETE', `${pl}/${jb.id}`, null, colabU)).status === 403, 'colaborador sin "eliminar jugadores" → 403');
+    // Inscripciones inteligentes: con las zonas armadas no se cambian integrantes hasta reabrir (auditado)
+    const bloq = await call('DELETE', `${pl}/${jb.id}`);
+    ok(bloq.status === 409 && /inscripciones se encuentran cerradas/.test(bloq.data?.message || ''), 'zonas armadas: eliminar integrante → 409 (inscripciones cerradas)');
+    ok((await call('POST', `/torneos/${t.id}/inscripciones/reabrir`, { motivo: 'Reemplazo por lesión' })).status === 200, 'admin reabre las inscripciones con motivo');
     // La pareja 3 todavía no jugó: se puede reemplazar a un jugador
     const del = await call('DELETE', `${pl}/${jb.id}`);
     const jugoPareja3 = lista.participacion;

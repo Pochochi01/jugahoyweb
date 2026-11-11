@@ -89,6 +89,11 @@ export function torneosStaff(client, cid) {
     createPareja:  (tid, d)    => client.post(`${t(tid)}/parejas`, d),
     updatePareja:  (tid, pid, d) => client.put(`${t(tid)}/parejas/${pid}`, d),
     setPago:       (tid, pid, d) => client.put(`${t(tid)}/parejas/${pid}/pago`, d),
+    // Inscripciones inteligentes: sugerencias, estado (bloqueo tras zonas), reapertura y auditoría
+    buscarJugadores:       (tid, q) => client.get(`${t(tid)}/jugadores/buscar`, { params: { q } }),
+    estadoInscripciones:   (tid)    => client.get(`${t(tid)}/inscripciones/estado`),
+    reabrirInscripciones:  (tid, d) => client.post(`${t(tid)}/inscripciones/reabrir`, d),
+    auditoriaInscripciones:(tid, params) => client.get(`${t(tid)}/inscripciones/auditoria`, { params }),
 
     // Fixture y resultados
     previewZonas:  (tid, d)    => client.post(`${t(tid)}/zonas/preview`, d),   // siembra en serpiente, sin guardar

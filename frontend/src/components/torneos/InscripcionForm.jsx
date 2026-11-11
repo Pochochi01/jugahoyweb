@@ -1,39 +1,60 @@
-import { useState, useEffect } from 'react';
-import { Search, UserCheck } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { UserCheck, AlertTriangle, Sparkles } from 'lucide-react';
 import HorariosEditor from './HorariosEditor';
 import { CATEGORIAS, catLabel, catNombre, categoriasDe, errMsg } from '../../utils/torneos';
 
 const JUGADOR = { nombre: '', dni: '', whatsapp: '', email: '', categoria: '', genero: '' };
+const CAMPOS_BUSCABLES = ['nombre', 'dni', 'whatsapp', 'email'];
 
 /**
  * Formulario de inscripción de una pareja (categoría del torneo en la que juega,
  * datos personales, categoría y género de cada jugador y horarios preferidos).
  * `onSubmit(data)` debe devolver una promesa.
  * `extra` permite agregar campos del organizador (p. ej. "ya pagó").
- * Con `svc` (panel del club) se puede elegir cada jugador del registro del club:
- * se listan TODOS, también los que tienen 0 puntos, con su categoría, puntos y liga.
+ *
+ * Inscripciones inteligentes:
+ *  - Con `svc` (panel del club): al escribir nombre, DNI, email o teléfono se sugieren jugadores
+ *    existentes (registro del club y usuarios); al elegir uno se completan todos sus datos, con su
+ *    ranking y categoría habitual. El panel puede inscribir sin email / teléfono (administrativo).
+ *  - Público: email y teléfono obligatorios.
+ *  - El backend autocompleta lo que falte y rechaza duplicados (DNI, email, teléfono): los conflictos
+ *    se muestran uno por uno.
  */
 export default function InscripcionForm({ torneo, onSubmit, submitLabel = 'Inscribir pareja', extra, svc, categoriaInicial }) {
   const cats = categoriasDe(torneo);
   const abiertas = (torneo.categorias || []).filter(c => !c.estado || c.estado === 'pendiente' || svc).map(c => c.categoria_id);
   const opciones = abiertas.length ? abiertas : cats;
   const generoFijo = torneo.genero === 'mixto' ? ['masculino', 'femenino'] : [torneo.genero, torneo.genero];
+  const admin = Boolean(svc);
   const [categoria, setCategoria] = useState(() => (opciones.includes(categoriaInicial) ? categoriaInicial : (opciones.length === 1 ? opciones[0] : '')));
   const [jugadores, setJugadores] = useState(generoFijo.map(g => ({ ...JUGADOR, genero: g })));
   const [horarios, setHorarios] = useState([{ fecha: null, desde: '18:00', hasta: '23:00' }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [conflictos, setConflictos] = useState([]);
+  const [elegidos, setElegidos] = useState({});   // índice → info del jugador elegido (ranking, categoría habitual)
 
-  const setJ = (i, k, v) => setJugadores(js => js.map((j, x) => (x === i ? { ...j, [k]: v } : j)));
+  const setJ = (i, k, v) => { setConflictos([]); setJugadores(js => js.map((j, x) => (x === i ? { ...j, [k]: v } : j))); };
   // Se juega la categoría propia o una superior (número menor), nunca una inferior
   const categoriasValidas = CATEGORIAS.filter(c => c >= (Number(categoria) || Math.min(...cats)));
 
+  const elegir = (i, r) => {
+    const catOk = r.categoria && r.categoria >= (Number(categoria) || 1) ? r.categoria : '';
+    setJugadores(js => js.map((x, k) => (k === i ? {
+      ...x, nombre: r.nombre, dni: r.dni || x.dni, whatsapp: r.whatsapp || x.whatsapp, email: r.email || x.email,
+      categoria: catOk || x.categoria, genero: torneo.genero === 'mixto' && r.genero ? r.genero : x.genero,
+    } : x)));
+    setElegidos(e => ({ ...e, [i]: r }));
+    setConflictos([]);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError(''); setConflictos([]);
     if (!categoria) return setError('Elegí la categoría en la que juega la pareja.');
     for (const [i, j] of jugadores.entries()) {
-      if (!j.nombre.trim() || !j.dni || !j.whatsapp || !j.categoria) return setError(`Completá los datos del jugador ${i + 1}.`);
+      if (!j.nombre.trim() || !j.dni || !j.categoria) return setError(`Completá nombre, DNI y categoría del jugador ${i + 1}.`);
+      if (!admin && (!j.whatsapp || !j.email)) return setError(`Jugador ${i + 1}: completá ${[!j.email && 'email', !j.whatsapp && 'teléfono'].filter(Boolean).join(' y ')} para finalizar la inscripción.`);
     }
     if (!horarios.length) return setError('Indicá al menos un horario en el que puedan jugar.');
     setSaving(true);
@@ -41,6 +62,7 @@ export default function InscripcionForm({ torneo, onSubmit, submitLabel = 'Inscr
       await onSubmit({ categoria_id: Number(categoria), jugadores: jugadores.map(j => ({ ...j, categoria: Number(j.categoria) })), horarios_preferidos: horarios });
     } catch (err) {
       setError(errMsg(err));
+      if (Array.isArray(err?.conflictos) && err.conflictos.length > 1) setConflictos(err.conflictos.map(c => c.mensaje));
     } finally { setSaving(false); }
   };
 
@@ -60,22 +82,34 @@ export default function InscripcionForm({ torneo, onSubmit, submitLabel = 'Inscr
         {jugadores.map((j, i) => (
           <fieldset key={i} className="card space-y-3">
             <legend className="font-semibold text-sm px-1">Jugador {i + 1}</legend>
-            {svc && <BuscarJugador svc={svc} torneo={torneo} categoria={categoria} genero={j.genero}
-              onElegir={(r) => setJugadores(js => js.map((x, k) => (k === i ? { ...x, nombre: r.nombre, dni: r.dni, whatsapp: r.whatsapp || x.whatsapp, email: r.email || '', categoria: r.categoria_actual && r.categoria_actual >= (Number(categoria) || 1) ? r.categoria_actual : x.categoria } : x)))} />}
-            <input className="input" placeholder="Nombre y apellido" value={j.nombre} onChange={e => setJ(i, 'nombre', e.target.value)} />
+            {admin && <p className="text-[11px] text-muted-foreground -mt-1">Escribí nombre, DNI, email o teléfono: te sugerimos jugadores ya cargados.</p>}
+            <CampoSugerido svc={svc} torneo={torneo} genero={j.genero} campo="nombre" onElegir={r => elegir(i, r)}
+              input={(p) => <input className="input" placeholder="Nombre y apellido *" value={j.nombre} onChange={e => setJ(i, 'nombre', e.target.value)} {...p} />} valor={j.nombre} />
             <div className="grid grid-cols-2 gap-2">
-              <input className="input" inputMode="numeric" placeholder="DNI" value={j.dni} onChange={e => setJ(i, 'dni', e.target.value)} />
+              <CampoSugerido svc={svc} torneo={torneo} genero={j.genero} campo="dni" onElegir={r => elegir(i, r)} valor={j.dni}
+                input={(p) => <input className="input" inputMode="numeric" placeholder="DNI *" value={j.dni} onChange={e => setJ(i, 'dni', e.target.value)} {...p} />} />
               <select className="input" value={j.categoria} onChange={e => setJ(i, 'categoria', e.target.value)} aria-label="Categoría del jugador">
-                <option value="">Categoría</option>
+                <option value="">Categoría *</option>
                 {categoriasValidas.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
               </select>
             </div>
-            <input className="input" inputMode="tel" placeholder="WhatsApp (ej. 5493811234567)" value={j.whatsapp} onChange={e => setJ(i, 'whatsapp', e.target.value)} />
-            <input className="input" type="email" placeholder="Email (opcional)" value={j.email} onChange={e => setJ(i, 'email', e.target.value)} />
+            <CampoSugerido svc={svc} torneo={torneo} genero={j.genero} campo="whatsapp" onElegir={r => elegir(i, r)} valor={j.whatsapp}
+              input={(p) => <input className="input" inputMode="tel" placeholder={`WhatsApp (ej. 5493811234567)${admin ? '' : ' *'}`} value={j.whatsapp} onChange={e => setJ(i, 'whatsapp', e.target.value)} {...p} />} />
+            <CampoSugerido svc={svc} torneo={torneo} genero={j.genero} campo="email" onElegir={r => elegir(i, r)} valor={j.email}
+              input={(p) => <input className="input" type="email" placeholder={admin ? 'Email' : 'Email *'} value={j.email} onChange={e => setJ(i, 'email', e.target.value)} {...p} />} />
             <select className="input" value={j.genero} disabled={torneo.genero !== 'mixto'} onChange={e => setJ(i, 'genero', e.target.value)}>
               <option value="masculino">Masculino</option>
               <option value="femenino">Femenino</option>
             </select>
+            {elegidos[i] && (
+              <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Datos completados de {elegidos[i].origen === 'usuario' ? 'un usuario registrado' : 'la base del club'}
+                {elegidos[i].ranking != null && ` · ${elegidos[i].ranking} pts ranking`}{elegidos[i].categoria && ` · habitual ${catLabel(elegidos[i].categoria)}`}
+              </p>
+            )}
+            {admin && (!j.email || !j.whatsapp) && j.nombre && j.dni && (
+              <p className="text-[11px] text-amber-400">Sin {[!j.email && 'email', !j.whatsapp && 'teléfono'].filter(Boolean).join(' ni ')}: si existe en la base se completa al guardar.</p>
+            )}
           </fieldset>
         ))}
       </div>
@@ -89,7 +123,12 @@ export default function InscripcionForm({ torneo, onSubmit, submitLabel = 'Inscr
       </div>
 
       {extra}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
+          <div className="flex items-start gap-2"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{error}</div>
+          {conflictos.length > 1 && <ul className="mt-1 ml-6 list-disc text-xs space-y-0.5">{conflictos.slice(1).map((c, k) => <li key={k}>{c}</li>)}</ul>}
+        </div>
+      )}
       <button type="submit" disabled={saving} className="btn-primary w-full md:w-auto">
         {saving ? 'Enviando…' : submitLabel}
       </button>
@@ -98,36 +137,48 @@ export default function InscripcionForm({ torneo, onSubmit, submitLabel = 'Inscr
 }
 
 /**
- * Buscador de jugadores registrados del club: muestra TODOS (con 0 puntos también),
- * con su categoría actual y sus puntos en la liga + categoría del torneo.
+ * Campo con sugerencias (solo panel): consulta /jugadores/buscar mientras se escribe y muestra
+ * jugadores existentes con DNI, contacto, ranking y categoría habitual.
  */
-function BuscarJugador({ svc, torneo, categoria, genero, onElegir }) {
-  const [q, setQ] = useState('');
+function CampoSugerido({ svc, torneo, genero, campo, valor, onElegir, input }) {
   const [lista, setLista] = useState(null);
-  const temporada = Number(String(torneo.fecha_inicio || '').slice(0, 4)) || new Date().getFullYear();
+  const [foco, setFoco] = useState(false);
+  const editado = useRef(false);
   useEffect(() => {
-    if (q.trim().length < 2) { setLista(null); return undefined; }
-    const t = setTimeout(() => {
-      svc.jugadores({ q: q.trim(), liga_id: torneo.liga_id, categoria_id: categoria || undefined, genero: torneo.genero, temporada, limite: 15 })
-        .then(setLista).catch(() => setLista([]));
-    }, 250);
+    if (!svc || !editado.current) return undefined;
+    const q = String(valor || '').trim();
+    const minimo = campo === 'nombre' || campo === 'email' ? 2 : 3;
+    if (q.length < minimo) { setLista(null); return undefined; }
+    const t = setTimeout(() => svc.buscarJugadores(torneo.id, q).then(setLista).catch(() => setLista([])), 250);
     return () => clearTimeout(t);
-  }, [q, svc, torneo.liga_id, torneo.genero, categoria, temporada]);
+  }, [svc, torneo.id, valor, campo]);
+  if (!svc) return input({});
+  const visibles = (lista || []).filter(r => !r.genero || torneo.genero === 'mixto' || r.genero === genero);
   return (
-    <div className="space-y-1">
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input className="input !pl-9 text-sm" placeholder="Buscar jugador registrado (nombre o DNI)" value={q} onChange={e => setQ(e.target.value)} aria-label="Buscar jugador registrado" />
-      </div>
-      {lista && (
-        <ul className="border border-border rounded-lg divide-y divide-border max-h-48 overflow-y-auto text-sm">
-          {lista.length === 0 && <li className="px-3 py-2 text-muted-foreground">Sin coincidencias: cargalo a mano abajo.</li>}
-          {lista.filter(r => !r.genero || torneo.genero === 'mixto' || r.genero === genero).map(r => (
-            <li key={r.id}>
-              <button type="button" className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2" onClick={() => { onElegir(r); setQ(''); setLista(null); }}>
-                <UserCheck className="w-4 h-4 text-primary shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{r.nombre} <span className="text-xs text-muted-foreground">· DNI {r.dni}</span></span>
-                <span className="text-xs text-muted-foreground shrink-0">{r.categoria_label || 's/cat.'} · <strong className="text-foreground">{r.puntos} pts</strong>{r.liga ? ` · ${r.liga}` : ''}</span>
+    <div className="relative">
+      {input({
+        onFocus: () => setFoco(true),
+        onBlur: () => setTimeout(() => setFoco(false), 150),
+        onInput: () => { editado.current = true; },
+        autoComplete: 'off',
+        'aria-autocomplete': 'list',
+      })}
+      {foco && visibles.length > 0 && CAMPOS_BUSCABLES.includes(campo) && (
+        <ul className="absolute z-20 left-0 right-0 mt-1 border border-border rounded-lg bg-background shadow-lg divide-y divide-border max-h-56 overflow-y-auto text-sm" role="listbox">
+          {visibles.map(r => (
+            <li key={`${r.origen}-${r.jugador_id || r.user_id}`}>
+              <button type="button" className="w-full text-left px-3 py-2 hover:bg-muted flex items-start gap-2"
+                onMouseDown={(e) => e.preventDefault()} onClick={() => { onElegir(r); setLista(null); editado.current = false; }}>
+                <UserCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{r.nombre}{r.origen === 'usuario' && <span className="ml-1 badge-neutral !text-[10px]">usuario</span>}</span>
+                  <span className="block text-xs text-muted-foreground truncate">
+                    {[r.dni && `DNI ${r.dni}`, r.whatsapp, r.email].filter(Boolean).join(' · ') || 'sin datos de contacto'}
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0 text-right">
+                  {r.categoria ? catLabel(r.categoria) : 's/cat.'}{r.ranking != null && <><br /><strong className="text-foreground">{r.ranking} pts</strong></>}
+                </span>
               </button>
             </li>
           ))}

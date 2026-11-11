@@ -62,7 +62,7 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
       await call('PUT', `/torneos/${r.data.id}/canchas`, { canchas: [{ field_id: c1.id, disponibilidad_horaria: franja }] });
       return r.data;
     };
-    const jug = (n) => ({ nombre: `Jugador${n} Apellido`, dni: dni(n), whatsapp: `5493817${String(sfx).padStart(5, '0')}${n % 10}`, categoria: 5, genero: 'masculino' });
+    const jug = (n) => ({ nombre: `Jugador${n} Apellido`, dni: dni(n), whatsapp: `549381${String(sfx).padStart(5, '0')}${String(n).padStart(2, '0')}`, categoria: 5, genero: 'masculino' });
 
     // Dispositivos: jugadores 1..10 con la PWA instalada; 11 en navegador (no instalada); 12 sin dispositivo
     for (let n = 1; n <= 11; n++) {

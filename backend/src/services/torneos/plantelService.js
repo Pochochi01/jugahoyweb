@@ -10,10 +10,18 @@
  *  - Género según el torneo (masculino / femenino / mixto = un hombre y una mujer).
  *  - Cupo: máximo 2 jugadores.
  *  - No se elimina a quien ya tiene participación (partidos jugados de la pareja).
- * Cada alta / modificación / baja queda en torneo_jugador_cambios (datos anteriores y nuevos).
+ * Cada alta / modificación / baja queda en torneo_jugador_cambios (datos anteriores y nuevos) y en la
+ * auditoría de inscripciones. Con las inscripciones cerradas (zonas armadas) no se agregan, eliminan ni
+ * cambian integrantes (DNI / nombre); sí se corrigen datos de contacto.
  */
 const { Op } = require('sequelize');
-const { sequelize, Torneo, TorneoPareja, TorneoJugador, TorneoPartido, TorneoTicket, TorneoJugadorCambio } = require('../../models');
+const { sequelize, Torneo, TorneoPareja, TorneoJugador, TorneoPartido, TorneoTicket, TorneoJugadorCambio, TorneoCategoria } = require('../../models');
+const inscr = require('./inscripcionesService');
+
+/** 409 si la categoría de la pareja tiene las inscripciones cerradas. */
+async function asegurarAbiertas(torneo, pareja, transaction) {
+  inscr.asegurarAbiertas(await TorneoCategoria.findOne({ where: { torneo_id: torneo.id, categoria_id: pareja.categoria_id || torneo.categoria }, transaction }));
+}
 const rk = require('./rankingService');
 
 function httpError(status, message) { return Object.assign(new Error(message), { status }); }
@@ -44,7 +52,7 @@ async function validar(torneo, pareja, body, { actual = null } = {}) {
   const v = { ...snapshot(actual), ...Object.fromEntries(CAMPOS.filter(k => body[k] !== undefined).map(k => [k, body[k]])) };
   v.nombre = String(v.nombre || '').trim();
   v.dni = String(v.dni || '').replace(/\D/g, '');
-  v.whatsapp = String(v.whatsapp || '').replace(/\D/g, '');
+  v.whatsapp = String(v.whatsapp || '').replace(/\D/g, '') || null;   // opcional (alta administrativa)
   v.email = v.email ? String(v.email).trim().toLowerCase() : null;
   v.categoria = Number.parseInt(v.categoria, 10);
   v.posicion = v.posicion || null;
@@ -53,7 +61,7 @@ async function validar(torneo, pareja, body, { actual = null } = {}) {
 
   if (v.nombre.length < 3 || v.nombre.length > 150) throw httpError(400, 'Nombre y apellido requeridos (3 a 150 caracteres).');
   if (!/^\d{7,9}$/.test(v.dni)) throw httpError(400, 'DNI inválido.');
-  if (!/^\d{10,15}$/.test(v.whatsapp)) throw httpError(400, 'Teléfono / WhatsApp inválido (con código de país, ej. 549381…).');
+  if (v.whatsapp && !/^\d{10,15}$/.test(v.whatsapp)) throw httpError(400, 'Teléfono / WhatsApp inválido (con código de país, ej. 549381…).');
   if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) throw httpError(400, 'Email inválido.');
   if (!['masculino', 'femenino'].includes(v.genero)) throw httpError(400, 'Género inválido.');
   if (v.posicion && !['drive', 'reves'].includes(v.posicion)) throw httpError(400, 'Posición inválida (drive o revés).');
@@ -66,12 +74,11 @@ async function validar(torneo, pareja, body, { actual = null } = {}) {
   if (!(v.categoria >= 1 && v.categoria <= 8)) throw httpError(400, 'Categoría inválida (1ª a 8ª).');
   if (v.categoria < catPareja) throw httpError(400, `Un jugador de ${v.categoria}ª no puede jugar la categoría ${catPareja}ª.`);
 
-  // DNI único en el torneo (parejas activas)
-  const otro = await TorneoJugador.findOne({
-    where: { dni: v.dni, ...(actual && { id: { [Op.ne]: actual.id } }) },
-    include: [{ model: TorneoPareja, as: 'pareja', where: { torneo_id: torneo.id, estado_pago: ACTIVAS }, attributes: ['id'] }],
-  });
-  if (otro) throw httpError(409, `El DNI ${v.dni} ya está inscripto en este torneo (${otro.nombre}).`);
+  // DNI, email y teléfono únicos en el torneo (parejas activas, incluido el compañero)
+  // (en una modificación se controla solo lo que cambia: no traba datos históricos)
+  const distinto = (k) => !actual || String(v[k] ?? '') !== String(actual[k] ?? '');
+  const control = { nombre: v.nombre, dni: distinto('dni') ? v.dni : null, email: distinto('email') ? v.email : null, whatsapp: distinto('whatsapp') ? v.whatsapp : null };
+  await inscr.verificarDuplicados(torneo, [control], { excluirJugadorIds: actual ? [actual.id] : [] });
   // Posición única dentro de la pareja
   const compañeros = pareja.jugadores.filter(j => j.id !== actual?.id);
   if (v.posicion && compañeros.some(j => j.posicion === v.posicion)) throw httpError(409, `Ya hay un jugador de ${v.posicion === 'drive' ? 'drive' : 'revés'} en la pareja.`);
@@ -89,6 +96,10 @@ async function registrarCambio(torneo, pareja, jugadorId, accion, anterior, nuev
     torneo_id: torneo.id, pareja_id: pareja.id, jugador_id: jugadorId, accion,
     datos_anteriores: anterior, datos_nuevos: nuevo, usuario_id: usuario?.id || null, usuario: usuario?.nombre || null,
   }, { transaction });
+  await inscr.auditar(torneo, {
+    categoria_id: pareja.categoria_id || null, pareja_id: pareja.id, accion: 'inscripcion_modificada',
+    detalle: { plantel: accion, jugador_id: jugadorId, antes: anterior, despues: nuevo }, usuario,
+  }, transaction);
 }
 
 async function listar(torneo, parejaId) {
@@ -105,6 +116,7 @@ async function agregar(torneo, parejaId, body, usuario) {
   return sequelize.transaction(async (t) => {
     const p = await cargarPareja(torneo, parejaId, t);
     if (!ACTIVAS.includes(p.estado_pago)) throw httpError(409, 'La inscripción está cancelada.');
+    await asegurarAbiertas(torneo, p, t);
     if (p.jugadores.length >= CUPO) throw httpError(409, `La pareja ya tiene ${CUPO} jugadores: eliminá uno antes de agregar otro.`);
     const v = await validar(torneo, p, body);
     const reg = await rk.upsertJugador(torneo.id_tenant, v, t);
@@ -131,6 +143,7 @@ async function modificar(torneo, parejaId, jugadorId, body, usuario) {
     if (v.dni !== actual.dni && await partidosJugados(p.id, t)) throw httpError(409, 'El jugador posee participación registrada: no se puede cambiar por otra persona.');
     const cambios = Object.fromEntries(CAMPOS.filter(k => String(v[k] ?? '') !== String(antes[k] ?? '')).map(k => [k, v[k]]));
     if (!Object.keys(cambios).length) throw httpError(400, 'No hay cambios para guardar.');
+    if (cambios.dni || cambios.nombre) await asegurarAbiertas(torneo, p, t);   // cambio de integrante
     if (cambios.dni || cambios.nombre) cambios.jugador_id = (await rk.upsertJugador(torneo.id_tenant, v, t)).id;
     await actual.update(cambios, { transaction: t });
     await registrarCambio(torneo, p, actual.id, 'UPDATE', antes, snapshot(actual), usuario, t);
@@ -144,6 +157,7 @@ async function eliminar(torneo, parejaId, jugadorId, usuario) {
     const p = await cargarPareja(torneo, parejaId, t);
     const actual = p.jugadores.find(j => j.id === Number(jugadorId));
     if (!actual) throw httpError(404, 'El jugador no pertenece a esta pareja.');
+    await asegurarAbiertas(torneo, p, t);
     if (await partidosJugados(p.id, t)) throw httpError(409, 'El jugador posee participación registrada y no puede eliminarse.');
     const antes = snapshot(actual);
     await TorneoTicket.destroy({ where: { jugador_id: actual.id }, transaction: t });

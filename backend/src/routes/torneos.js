@@ -147,6 +147,11 @@ club.get ('/torneos/:torneoId/parejas',                 loadTorneo, inscr.list);
 club.post('/torneos/:torneoId/parejas',                 loadTorneo, inscr.create);
 club.put ('/torneos/:torneoId/parejas/:parejaId',       loadTorneo, inscr.update);
 club.put ('/torneos/:torneoId/parejas/:parejaId/pago',  loadTorneo, inscr.setPago);
+// Inscripciones inteligentes: sugerencias, bloqueo tras zonas, reapertura (auditada) e historial
+club.get ('/torneos/:torneoId/jugadores/buscar',        loadTorneo, inscr.buscarJugadores);
+club.get ('/torneos/:torneoId/inscripciones/estado',    loadTorneo, inscr.estadoInscripciones);
+club.post('/torneos/:torneoId/inscripciones/reabrir',   loadTorneo, inscr.reabrirInscripciones);
+club.get ('/torneos/:torneoId/inscripciones/auditoria', loadTorneo, inscr.auditoria);
 
 // Fixture
 club.post('/torneos/:torneoId/zonas/preview',           loadTorneo, torneos.previewZonas);   // siembra en serpiente, sin guardar

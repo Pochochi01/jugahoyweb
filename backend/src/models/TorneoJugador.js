@@ -13,7 +13,7 @@ const TorneoJugador = sequelize.define('TorneoJugador', {
   observaciones: { type: DataTypes.STRING(255), allowNull: true },
   nombre:    { type: DataTypes.STRING(150), allowNull: false },
   dni:       { type: DataTypes.STRING(15), allowNull: false },
-  whatsapp:  { type: DataTypes.STRING(30), allowNull: false },
+  whatsapp:  { type: DataTypes.STRING(30), allowNull: true },   // opcional solo en altas del panel (administrativas)
   email:     { type: DataTypes.STRING(150) },
   categoria: { type: DataTypes.TINYINT, allowNull: false, validate: { min: 1, max: 8 } },
   genero:    { type: DataTypes.ENUM('masculino', 'femenino'), allowNull: false },
