@@ -17,6 +17,10 @@ const fmt = require('../services/torneos/formatoPartido');
 
 const send = (res, err) => res.status(err.status || 500).json({ message: err.message, ...(err.inconsistencias && { inconsistencias: err.inconsistencias }) });
 
+const CAMPO_LABEL = {
+  deporte: 'deporte', genero: 'género', fecha_inicio: 'fecha de inicio', fecha_fin: 'fecha de fin', duracion_partido: 'duración del partido',
+  tipo: 'tipo de torneo', formato: 'modalidad', tercer_set: '3er set', parejas_por_zona: 'parejas por zona', clasifican_por_zona: 'clasificados por zona',
+};
 const CAMPOS = ['nombre', 'deporte', 'descripcion', 'categoria', 'genero', 'fecha_inicio', 'fecha_fin', 'cupo_parejas', 'tipo', 'tercer_set', 'formato', 'formato_partidos',
   'precio_inscripcion', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'descanso_minimo'];
 
@@ -159,13 +163,33 @@ async function update(req, res) {
     const { liga, categorias } = await validarLigaYCategorias(req.clubId, req.body, t);
     // La liga define el ranking: no se cambia una vez asignados puntos
     if (liga && liga.id !== t.liga_id && t.puntos_asignados) return res.status(409).json({ message: 'El torneo ya asignó puntos en su liga: no se puede cambiar de liga.' });
-    // Con fixture armado no se tocan los parámetros que lo determinan
+    // Con fixture armado:
+    //  - fijos: deporte, género, fechas, duración y liga (determinan inscriptos y programación)
+    //  - tipo de torneo: editable mientras no se hayan asignado los puntos del ranking
+    //  - modalidad, 3er set, parejas por zona y clasificados: editables mientras no haya resultados
+    //    cargados ni llave armada; si ya hay zonas, se avisa que hay que rearmarlas
+    let aviso = null;
     if (!['borrador', 'inscripcion'].includes(t.estado)) {
+      const cambia = (k) => data[k] !== undefined && String(data[k]) !== String(t[k] ?? '');
       if (liga && liga.id !== t.liga_id) return res.status(409).json({ message: 'No se puede cambiar la liga con el fixture armado.' });
-      for (const k of ['deporte', 'genero', 'fecha_inicio', 'fecha_fin', 'parejas_por_zona', 'clasifican_por_zona', 'duracion_partido', 'tipo', 'tercer_set', 'formato']) {
-        if (data[k] !== undefined && String(data[k]) !== String(t[k])) {
-          return res.status(409).json({ message: `No se puede cambiar "${k}" con el fixture armado.` });
+      for (const k of ['deporte', 'genero', 'fecha_inicio', 'fecha_fin', 'duracion_partido']) {
+        if (cambia(k)) return res.status(409).json({ message: `No se puede cambiar "${CAMPO_LABEL[k] || k}" con el fixture armado.` });
+      }
+      if (cambia('tipo')) {
+        const asignados = t.puntos_asignados || await TorneoCategoria.count({ where: { torneo_id: t.id, puntos_asignados: true } });
+        if (asignados) return res.status(409).json({ message: 'No se puede cambiar el tipo de torneo: ya se asignaron los puntos del ranking.' });
+      }
+      const estructurales = ['formato', 'tercer_set', 'parejas_por_zona', 'clasifican_por_zona'].filter(cambia);
+      if (estructurales.length) {
+        const nombres = estructurales.map(k => CAMPO_LABEL[k]).join(', ');
+        const conResultados = await TorneoPartido.count({ where: { torneo_id: t.id, es_bye: false, estado: ['jugado', 'walkover'] } });
+        if (conResultados) return res.status(409).json({ message: `No se puede cambiar ${nombres}: ya hay resultados cargados.` });
+        if (await TorneoCategoria.count({ where: { torneo_id: t.id, estado: ['llaves', 'finalizado'] } })) return res.status(409).json({ message: `No se puede cambiar ${nombres}: ya hay una llave armada.` });
+        if (estructurales.some(k => ['formato', 'parejas_por_zona'].includes(k)) || cambia('tipo')) {
+          aviso = 'Las zonas ya estaban armadas con la configuración anterior: rearmalas (Partidos → Rearmar zonas) para aplicar los cambios.';
         }
+      } else if (cambia('tipo')) {
+        aviso = 'El nuevo tipo se aplica a la siembra al rearmar las zonas y a la asignación de puntos al finalizar.';
       }
       // Relámpago: una fase puede reconfigurarse mientras no tenga resultados cargados
       if (data.formato_partidos && fmt.esRelampago(t)) {
@@ -185,7 +209,7 @@ async function update(req, res) {
       await t.update({ ...data, ...(liga && { liga_id: liga.id }) }, { transaction: tx });
       if (categorias) await guardarCategorias(t, categorias, tx);
     });
-    res.json(await conCategorias(t));
+    res.json({ ...(await conCategorias(t)), ...(aviso && { aviso }) });
   } catch (err) { send(res, err); }
 }
 

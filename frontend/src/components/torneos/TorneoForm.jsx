@@ -65,12 +65,12 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Campo label="Tipo de torneo">
-            <select className="input" value={f.tipo} disabled={bloqueado} onChange={e => set('tipo', e.target.value)}>
+            <select className="input" value={f.tipo} onChange={e => set('tipo', e.target.value)}>
               {Object.entries(TIPO_TORNEO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </Campo>
           <Campo label="Modalidad">
-            <select className="input" value={f.formato} disabled={bloqueado} onChange={e => set('formato', e.target.value)}>
+            <select className="input" value={f.formato} onChange={e => set('formato', e.target.value)}>
               {Object.entries(fmt.FORMATOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </Campo>
@@ -78,7 +78,7 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
         {/* Tradicional: 3er set. Relámpago: el formato de cada fase lo define el organizador (sin 3er set ni súper TB preconfigurados) */}
         {!fmt.esRelampago(f) && (
           <Campo label="3er set">
-            <select className="input" value={f.tercer_set} disabled={bloqueado} onChange={e => set('tercer_set', e.target.value)}>
+            <select className="input" value={f.tercer_set} onChange={e => set('tercer_set', e.target.value)}>
               <option value="set">Set completo</option>
               <option value="super_tiebreak">Súper tie-break (a 10)</option>
             </select>
@@ -110,14 +110,21 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
           <Campo label="Inscripción ($ por pareja)"><input type="number" min="0" className="input" value={f.precio_inscripcion} onChange={num('precio_inscripcion')} /></Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Campo label="Parejas por zona"><input type="number" min="2" max="6" className="input" value={fmt.esTodosContraTodos(f) ? 4 : f.parejas_por_zona} disabled={bloqueado || fmt.esTodosContraTodos(f)} title={fmt.esTodosContraTodos(f) ? 'Todos contra todos: 4 (o 5) por zona, automático' : undefined} onChange={num('parejas_por_zona')} /></Campo>
-          <Campo label="Clasifican por zona"><input type="number" min="1" max="4" className="input" value={f.clasifican_por_zona} disabled={bloqueado} onChange={num('clasifican_por_zona')} /></Campo>
+          <Campo label="Parejas por zona"><input type="number" min="2" max="6" className="input" value={fmt.esTodosContraTodos(f) ? 4 : f.parejas_por_zona} disabled={fmt.esTodosContraTodos(f)} title={fmt.esTodosContraTodos(f) ? 'Todos contra todos: 4 (o 5) por zona, automático' : undefined} onChange={num('parejas_por_zona')} /></Campo>
+          <Campo label="Clasifican por zona"><input type="number" min="1" max="4" className="input" value={f.clasifican_por_zona} onChange={num('clasifican_por_zona')} /></Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Campo label="Duración partido (min)"><input type="number" min="30" max="180" step="15" className="input" value={f.duracion_partido} disabled={bloqueado} onChange={num('duracion_partido')} /></Campo>
           <Campo label="Descanso mínimo (min)"><input type="number" min="0" step="15" className="input" value={f.descanso_minimo} onChange={num('descanso_minimo')} /></Campo>
         </div>
       </div>
+      {bloqueado && (
+        <p className="text-[11px] text-muted-foreground">
+          Con el fixture armado se pueden cambiar el <strong>tipo de torneo</strong> (hasta que se asignen los puntos del ranking) y la
+          <strong> modalidad</strong>, el 3er set, las parejas por zona y los clasificados (mientras no haya resultados cargados ni llave armada).
+          Liga, género, fechas y duración quedan fijos. Si cambiás la modalidad o las zonas, después rearmá las zonas.
+        </p>
+      )}
       <Campo label="Descripción / reglamento"><textarea className="input min-h-[80px]" value={f.descripcion || ''} onChange={e => set('descripcion', e.target.value)} /></Campo>
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="flex gap-2">

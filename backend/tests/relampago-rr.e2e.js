@@ -84,6 +84,16 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
       if (cant === '13') t13 = t;
     }
 
+    // ── Edición con el fixture armado (zonas sin resultados) ──
+    const ed = async (body) => call('PUT', `/torneos/${t13.id}`, body);
+    const e1 = await ed({ tipo: 'anual' });
+    ok(e1.status === 200 && e1.data.tipo === 'anual' && e1.data.aviso, `zonas armadas: cambiar el tipo de torneo → 200 con aviso (${e1.status} ${e1.data?.message || ''})`);
+    const e2 = await ed({ formato: 'relampago' });
+    ok(e2.status === 200 && e2.data.formato === 'relampago' && /rearmalas/.test(e2.data.aviso || ''), 'zonas armadas sin resultados: cambiar la modalidad → 200 + "rearmá las zonas"');
+    ok((await ed({ formato: 'relampago_rr', tipo: 'unico' })).status === 200, 'y volver a la modalidad todos contra todos');
+    ok((await call('POST', `/torneos/${t13.id}/zonas/generar`, { notificar: false })).status === 200, 'rearmar zonas con la modalidad restaurada');
+    ok((await ed({ genero: 'femenino' })).status === 409, 'el género sigue fijo con el fixture armado → 409');
+
     // ── 13 parejas: jugar las zonas y pasar a la llave ──
     const put = (p, body) => call('PUT', `/torneos/${t13.id}/partidos/${p.id}/resultado`, body);
     let fx = (await call('GET', `/torneos/${t13.id}/fixture`)).data;
@@ -104,6 +114,9 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     ok(filaR.pj === 3, `rival: el compensatorio sí cuenta (PJ ${filaR.pj}, ${filaR.puntos} pts)`);
     ok(fx.zonas.every(z => z.tabla.every(r => r.pj === 3)), 'todas las parejas con 3 partidos computados');
     ok(fx.llave?.length > 0 && fx.llave.flatMap(r => r.partidos).some(p => p.pareja1 || p.pareja2), `llave armada al terminar las zonas (${fx.llave.map(r => r.ronda).join(', ')})`);
+    ok((await ed({ formato: 'relampago' })).status === 409, 'con resultados cargados la modalidad ya no se cambia → 409');
+    ok((await ed({ clasifican_por_zona: 1 })).status === 409, 'con resultados cargados los clasificados ya no se cambian → 409');
+    ok((await ed({ tipo: 'anual' })).status === 200, 'el tipo de torneo sí (todavía no hay puntos asignados)');
     const clasificados = new Set(fx.llave.flatMap(r => r.partidos).flatMap(p => [p.pareja1?.id, p.pareja2?.id]).filter(Boolean));
     const esperados = fx.zonas.flatMap(z => z.tabla.filter(r => r.posicion <= 2).map(r => r.pareja_id));
     ok(esperados.every(id => clasificados.has(id)), 'los 2 primeros de cada zona (de 4 y de 5) están en la llave');

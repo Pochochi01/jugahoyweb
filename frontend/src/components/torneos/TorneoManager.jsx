@@ -139,7 +139,11 @@ function DatosSeccion({ svc, torneo, onSaved }) {
   return (
     <div className="grid lg:grid-cols-[1fr_280px] gap-5">
       <TorneoForm key={torneo.updatedAt} svc={svc} initial={torneo} bloqueado={!['borrador', 'inscripcion'].includes(torneo.estado)}
-        onSave={async (d) => onSaved(await svc.update(torneo.id, d))} />
+        onSave={async (d) => {
+          const r = await svc.update(torneo.id, d);
+          onSaved(r);
+          if (r?.aviso) alert(r.aviso);
+        }} />
       <div className="card space-y-3 h-fit">
         <div className="font-semibold text-sm">Imagen del evento</div>
         <p className="text-xs text-muted-foreground">Se imprime en el ticket QR de cada jugador.</p>
