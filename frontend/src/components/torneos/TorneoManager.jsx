@@ -460,7 +460,7 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
 
       {vistaPartidos === 'dias' ? (
         <div className="space-y-2">
-          <Cronograma partidos={todos} accionesDe={acciones} />
+          <Cronograma partidos={todos} accionesDe={acciones} ordenZona={fmtP.esRelampago(torneo)} />
           {todos.map(p => editando?.id === p.id && <div key={p.id}>{editor(p)}</div>)}
         </div>
       ) : (

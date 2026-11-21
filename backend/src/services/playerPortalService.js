@@ -13,6 +13,7 @@
  * (player_access, player_tournament_index, player_access_logs).
  */
 const crypto = require('crypto');
+const fmtPartido = require('./torneos/formatoPartido');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const m = require('../models');
@@ -295,7 +296,9 @@ async function matches(acceso, id, q = {}) {
   const fx = await fixtureDe(t, mia, q.categoria_id);
   let partidos = [...fx.zonas.flatMap(z => z.partidos), ...fx.llave.flatMap(r => r.partidos)].filter(p => !p.es_bye);
   if (q.mios === '1' && mia) partidos = partidos.filter(p => p.pareja1?.id === mia.pareja_id || p.pareja2?.id === mia.pareja_id);
-  partidos.sort((a, b) => String(a.fecha || '9').localeCompare(String(b.fecha || '9')) || String(a.hora || '').localeCompare(String(b.hora || '')));
+  partidos.sort((a, b) => String(a.fecha || '9').localeCompare(String(b.fecha || '9')) || String(a.hora || '').localeCompare(String(b.hora || ''))
+    // Relámpago: a igual horario, el orden de generación de la zona (P1, P2…)
+    || (fmtPartido.esRelampago(t) && a.zona_id && a.zona_id === b.zona_id ? a.orden - b.orden : 0));
   return { categoria_id: fx.categoria_id, categorias: fx.categorias, partidos, mi_pareja_id: mia?.pareja_id ?? null };
 }
 

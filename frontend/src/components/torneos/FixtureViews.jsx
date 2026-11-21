@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Trophy, AlertTriangle, Pencil, ZoomIn, ZoomOut, Shuffle, Scale } from 'lucide-react';
 import { RONDA_LABEL, fechaCorta, setsTxt } from '../../utils/torneos';
 import { UltimaModificacion } from './ReprogramarModal';
+import { esRelampago } from '../../utils/formatoPartido';
 
 // ── Relámpago Todos contra Todos: zona de 5 equilibrada ──────────
 export const TEXTO_COMPENSATORIO = 'Este encuentro otorga puntos únicamente a la pareja rival debido al sistema de equilibrio de la zona.';
@@ -202,10 +203,12 @@ const nombreDe = (par, p, fallback = 'A definir') => par?.nombre || (p.es_bye ? 
  * Agrupa los partidos por día (ascendente) y dentro de cada día los ordena por
  * horario y luego por cancha. Los partidos sin programar van al final.
  */
-export function agruparPorDia(partidos) {
+export function agruparPorDia(partidos, { ordenZona = false } = {}) {
   const lista = partidos.filter(p => !p.es_bye);
+  // ordenZona (torneos relámpago): a igual día y horario, primero el orden de generación de la zona (P1, P2…)
+  const porZona = (a, b) => (ordenZona && a.zona_id && a.zona_id === b.zona_id ? a.orden - b.orden : 0);
   const programados = lista.filter(p => p.fecha && p.hora)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora) || String(a.cancha || '').localeCompare(String(b.cancha || ''), 'es', { numeric: true }));
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora.localeCompare(b.hora) || porZona(a, b) || String(a.cancha || '').localeCompare(String(b.cancha || ''), 'es', { numeric: true }));
   const dias = [];
   for (const p of programados) {
     const d = dias.at(-1);
@@ -216,8 +219,8 @@ export function agruparPorDia(partidos) {
 }
 
 /** Listado de partidos por día → horario → cancha (pantalla Partidos y página pública). */
-export function Cronograma({ partidos, accionesDe }) {
-  const { dias, sinProgramar } = agruparPorDia(partidos);
+export function Cronograma({ partidos, accionesDe, ordenZona = false }) {
+  const { dias, sinProgramar } = agruparPorDia(partidos, { ordenZona });
   if (!dias.length && !sinProgramar.length) return <p className="text-sm text-muted-foreground">Todavía no hay partidos.</p>;
   const fila = (p) => {
     const g = (l) => p.resultado?.ganador_id && p.resultado.ganador_id === p[`pareja${l}`]?.id;
@@ -265,7 +268,7 @@ export function imprimirFixture({ torneo, fx, categoria }) {
   const e = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const llave = (fx.llave || []).flatMap(r => r.partidos).filter(p => !p.es_bye);
   const todos = [...fx.zonas.flatMap(z => z.partidos), ...llave];
-  const { dias, sinProgramar } = agruparPorDia(todos);
+  const { dias, sinProgramar } = agruparPorDia(todos, { ordenZona: esRelampago(torneo) });
   const vs = (p) => `${e(nombreDe(p.pareja1, p))} <span class="vs">vs</span> ${e(nombreDe(p.pareja2, p))}`;
   const cuando = (p) => (p.fecha ? `${e(fechaCorta(p.fecha))} · ${e(p.hora)} hs${p.cancha ? ` · ${e(p.cancha)}` : ''}` : 'Sin programar');
   const zonasHtml = fx.zonas.map(z => {

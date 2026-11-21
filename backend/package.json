@@ -39,7 +39,8 @@
     "test:inscripciones:unit": "node --test tests/inscripciones.test.js",
     "test:relampago:rr": "node --test tests/relampago-rr.test.js",
     "test:relampago:rr:e2e": "node tests/relampago-rr.e2e.js",
-    "test:canchas": "node tests/canchas-nombre.e2e.js"
+    "test:canchas": "node tests/canchas-nombre.e2e.js",
+    "test:relampago:orden": "node --test tests/relampago-orden.test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.24",

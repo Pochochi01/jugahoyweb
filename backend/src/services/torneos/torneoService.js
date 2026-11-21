@@ -457,6 +457,27 @@ function cantidadZonasDe(torneo, n) {
   return fmt.esTodosContraTodos(torneo) ? fx.cantidadZonasTodosContraTodos(n) : undefined;
 }
 
+/**
+ * Relámpago: el horario de un partido de zona respeta el orden de generación (P1 ≤ P2 ≤ P3…).
+ * Se compara con el partido programado más cercano antes y después dentro de la misma zona.
+ */
+async function validarOrdenZona(partido, fecha, hora) {
+  const hermanos = await TorneoPartido.findAll({
+    where: { zona_id: partido.zona_id, id: { [Op.ne]: partido.id }, fecha: { [Op.ne]: null }, hora: { [Op.ne]: null } },
+    attributes: ['orden', 'fecha', 'hora'], order: [['orden', 'ASC']],
+  });
+  const clave = `${fecha} ${hora}`;
+  const txt = (p) => `P${p.orden} (${p.fecha} ${p.hora} hs)`;
+  const anterior = hermanos.filter(p => p.orden < partido.orden).at(-1);
+  const siguiente = hermanos.find(p => p.orden > partido.orden);
+  if (anterior && `${anterior.fecha} ${anterior.hora}` > clave) {
+    throw httpError(409, `En un torneo relámpago los partidos de la zona se juegan en orden: P${partido.orden} no puede quedar antes que ${txt(anterior)}.`);
+  }
+  if (siguiente && `${siguiente.fecha} ${siguiente.hora}` < clave) {
+    throw httpError(409, `En un torneo relámpago los partidos de la zona se juegan en orden: P${partido.orden} no puede quedar después que ${txt(siguiente)}.`);
+  }
+}
+
 async function previsualizarZonas(torneo, opts = {}) {
   const { cat, zonas, firma, parejas } = await prepararSiembra(torneo, opts);
   return {
@@ -539,10 +560,14 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
       }
     }
 
+    // Relámpago (ambas modalidades): una sola pasada en el orden de generación de cada zona
+    // (P1, P2, P3… intercalando zonas); cada partido recibe un horario ≥ al del anterior de su zona.
+    // Resto de modalidades, sin cambios:
     // 1ª pasada: partidos con parejas definidas (los más restringidos primero);
     // 2ª pasada: G1vP2 / G2vP1, siempre después de sus dos partidos previos.
-    const primeros = cruces.filter(c => !c.despuesDe.length);
-    const asignacion1 = fx.programar(primeros, slots, porId, { descanso: torneo.descanso_minimo, usados: new Set(deOtras.usados) });
+    const relampago = fmt.esRelampago(torneo);
+    const primeros = relampago ? fx.ordenSecuencial(cruces) : cruces.filter(c => !c.despuesDe.length);
+    const asignacion1 = fx.programar(primeros, slots, porId, { descanso: torneo.descanso_minimo, usados: new Set(deOtras.usados), secuencial: relampago });
     const usados = new Set([...deOtras.usados, ...[...asignacion1.values()].filter(Boolean).map(a => `${a.field_id}|${a.abs}`)]);
     const agenda = new Map();
     for (const c of primeros) {
@@ -553,7 +578,7 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
         agenda.get(pid).push([a.abs, a.abs + torneo.duracion_partido]);
       }
     }
-    const asignacion = fx.programar(cruces.filter(c => c.despuesDe.length), slots, porId, {
+    const asignacion = relampago ? asignacion1 : fx.programar(cruces.filter(c => c.despuesDe.length), slots, porId, {
       descanso: torneo.descanso_minimo, usados, agenda, previos: asignacion1,
     });
 
@@ -1298,6 +1323,8 @@ async function reprogramarPartido(torneo, partidoId, datos = {}, { notificar = t
     if (!ISO_FECHA.test(String(fecha || ''))) throw httpError(400, 'Fecha inválida.');
     if (!HHMM.test(String(hora || ''))) throw httpError(400, 'Horario inválido (HH:MM).');
     if (fecha < torneo.fecha_inicio || fecha > torneo.fecha_fin) throw httpError(400, `La fecha debe estar entre el ${torneo.fecha_inicio} y el ${torneo.fecha_fin}.`);
+    // Relámpago: el partido de zona no puede quedar antes del anterior ni después del siguiente de su zona
+    if (fmt.esRelampago(torneo) && partido.ronda === 'zona' && partido.zona_id) await validarOrdenZona(partido, fecha, hora);
     if (fecha === antes.fecha && hora === antes.hora && fieldId === antes.field_id && antes.estado === 'programado') throw httpError(400, 'No hay cambios: es el mismo día, horario y cancha.');
     // Permisos granulares por tipo de cambio
     const faltan = [

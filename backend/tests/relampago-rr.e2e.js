@@ -32,6 +32,11 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     return { status: r.status, data: await r.json().catch(() => null) };
   };
   const ids = [];
+  // Relámpago: dentro de cada zona, P1 ≤ P2 ≤ P3… en día y horario (los sin programar no cuentan)
+  const zonaEnOrden = (z) => {
+    const hs = [...z.partidos].sort((a, b) => a.orden - b.orden).filter(p => p.fecha).map(p => `${p.fecha} ${p.hora}`);
+    return hs.every((h, i) => i === 0 || h >= hs[i - 1]);
+  };
   let n = 0;
   const jug = () => { n++; return { nombre: `Jugador${n} Rueda`, dni: String(52000000 + (s % 1000) * 1000 + n), whatsapp: `549381${sfx}${String(n).padStart(3, '0')}`.slice(0, 15), email: `rr${n}-${s}@test.local`, categoria: 5, genero: 'masculino' }; };
   const franja = [{ fecha: null, desde: '08:00', hasta: '23:59' }];
@@ -81,6 +86,7 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
       }
       ok(equilibrio, `${cant}: todos contra todos, ${tam.includes('5') ? '8 partidos en la zona de 5 (1 compensatorio), ' : ''}cada pareja con ${3} partidos puntuables`);
       ok(sorteosOk, `${cant}: sorteo auditado (sorteada, rival, semilla, fecha, usuario) solo en zonas de 5`);
+      ok(fx.zonas.every(zonaEnOrden) && fx.zonas.every(z => z.partidos.every(p => p.fecha)), `${cant}: horarios en el orden de generación de cada zona (${fx.zonas.length} zona/s, todos programados)`);
       if (cant === '13') t13 = t;
     }
 
@@ -93,6 +99,50 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     ok((await ed({ formato: 'relampago_rr', tipo: 'unico' })).status === 200, 'y volver a la modalidad todos contra todos');
     ok((await call('POST', `/torneos/${t13.id}/zonas/generar`, { notificar: false })).status === 200, 'rearmar zonas con la modalidad restaurada');
     ok((await ed({ genero: 'femenino' })).status === 409, 'el género sigue fijo con el fixture armado → 409');
+
+    // ── Caso 3: edición posterior de horarios sin romper la secuencia ──
+    const fxOrd = (await call('GET', `/torneos/${t13.id}/fixture`)).data;
+    const zA = fxOrd.zonas[0];
+    const [p1, p2] = [...zA.partidos].sort((a, b) => a.orden - b.orden);
+    const slotsLibres = (await call('GET', `/torneos/${t13.id}/slots`)).data;
+    const lista = Array.isArray(slotsLibres) ? slotsLibres : (slotsLibres?.slots || []);
+    const ocupado = new Set(fxOrd.zonas.flatMap(z => z.partidos).map(p => `${p.field_id}|${p.fecha}|${p.hora}`));
+    const libre = (cond) => lista.find(sl => !ocupado.has(`${sl.field_id}|${sl.fecha}|${sl.hora}`) && cond(`${sl.fecha} ${sl.hora}`));
+    const antesDeP1 = libre(h => h < `${p1.fecha} ${p1.hora}`);
+    const reprog = (p, sl) => call('PUT', `/torneos/${t13.id}/partidos/${p.id}/programacion`, { field_id: sl.field_id, fecha: sl.fecha, hora: sl.hora, motivo: 'test', notificar: false });
+    if (antesDeP1) {
+      const mal = await reprog(p2, antesDeP1);
+      ok(mal.status === 409 && /se juegan en orden/.test(mal.data?.message || ''), `reprogramar P2 antes que P1 → 409 (${mal.data?.message})`);
+    }
+    // El último partido no puede pasar antes que el penúltimo
+    const ordenados = [...zA.partidos].sort((a, b) => a.orden - b.orden);
+    const penultimo = ordenados.at(-2);
+    let antesPenultimo = libre(h => h < `${penultimo.fecha} ${penultimo.hora}`);
+    if (!antesPenultimo) {
+      // Canchas llenas: se libera el horario de un partido de otra zona anterior al penúltimo
+      const otro = fxOrd.zonas.slice(1).flatMap(z => z.partidos).find(p => p.fecha && `${p.fecha} ${p.hora}` < `${penultimo.fecha} ${penultimo.hora}`);
+      await call('PUT', `/torneos/${t13.id}/partidos/${otro.id}/programacion`, { estado: 'pendiente', motivo: 'test', notificar: false });
+      ocupado.delete(`${otro.field_id}|${otro.fecha}|${otro.hora}`);
+      antesPenultimo = { field_id: otro.field_id, fecha: otro.fecha, hora: otro.hora };
+    }
+    const malUltimo = await reprog(ordenados.at(-1), antesPenultimo);
+    ok(malUltimo.status === 409 && /no puede quedar antes que P/.test(malUltimo.data?.message || ''), `reprogramar el último antes que el penúltimo → 409 (${malUltimo.data?.message})`);
+    const p1Antes = libre(h => h < `${p1.fecha} ${p1.hora}`) || null;
+    const ultimo = [...zA.partidos].sort((a, b) => a.orden - b.orden).at(-1);
+    const despuesUltimo = libre(h => h > `${ultimo.fecha} ${ultimo.hora}`);
+    const r2 = await reprog(ultimo, despuesUltimo);
+    ok(r2.status === 200, `reprogramar el último partido de la zona más tarde → 200 (${r2.status} ${r2.data?.message || ''})`);
+    const fxOrd2 = (await call('GET', `/torneos/${t13.id}/fixture`)).data;
+    ok(fxOrd2.zonas.every(zonaEnOrden) && [...fxOrd2.zonas[0].partidos].map(p => p.orden).join() === [...zA.partidos].map(p => p.orden).join(), 'después de editar: la secuencia y la numeración P1…Pn se mantienen');
+    if (p1Antes) ok((await reprog(p1, p1Antes)).status === 200, 'adelantar P1 (sigue antes que P2) → 200');
+
+    // ── Caso 4: el jugador ve el mismo orden (portal) ──
+    const dniJugador = (await m.TorneoJugador.findOne({ where: { pareja_id: p1.pareja1.id } })).dni;
+    const portal = await require('../src/services/playerPortalService').matches({ dni: dniJugador }, t13.id).catch(e => { ok(false, `portal: ${e.message}`); return null; });
+    if (portal) {
+      const delPortal = portal.partidos.filter(p => p.zona_id === zA.zona_id && p.fecha);
+      ok(delPortal.length === zA.partidos.length && delPortal.every((p, i) => i === 0 || `${p.fecha} ${p.hora}` > `${delPortal[i - 1].fecha} ${delPortal[i - 1].hora}` || p.orden > delPortal[i - 1].orden), 'portal de jugador: mismo orden lógico (horario y, a igual horario, P1…Pn)');
+    }
 
     // ── 13 parejas: jugar las zonas y pasar a la llave ──
     const put = (p, body) => call('PUT', `/torneos/${t13.id}/partidos/${p.id}/resultado`, body);
@@ -140,6 +190,7 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     const tApa = await crear(8, 'relampago');
     await call('POST', `/torneos/${tApa.id}/zonas/generar`, { notificar: false });
     const fApa = (await call('GET', `/torneos/${tApa.id}/fixture`)).data;
+    ok(fApa.zonas.every(zonaEnOrden), '"Zonas y Llaves APA": P1 ≤ P2 ≤ G1vP2 / G2vP1 en el orden de la zona');
     ok(tApa.formato === 'relampago' && fApa.zonas.length === 2 && fApa.zonas.every(z => z.partidos.length === 4 && !z.pareja_sorteada_id && !z.partidos.some(p => p.compensatorio)),
       `"Relámpago con Zonas y Llaves APA" (8 parejas → 2 zonas de 4 con cruces APA, 4 partidos): sin cambios (${fApa.zonas.map(z => z.partidos.length).join('/')} partidos)`);
     ok((await call('POST', '/torneos', { nombre: 'X', liga_id: liga.id, categorias: [5], genero: 'masculino', formato: 'rayo', fecha_inicio: '2026-12-10', fecha_fin: '2026-12-10' })).status === 400, 'modalidad inexistente → 400');

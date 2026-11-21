@@ -132,3 +132,35 @@ Por qué esta estrategia:
    - `cantidadZonasDe` y el bloque `rr` en `torneoService.generarZonas`;
    - los cambios en `torneosController`;
    - en el frontend, las marcas de `FixtureViews`, `TorneoForm`, `TorneoManager`, `FormatoRelampago`, `ResultadoModal` y `TorneoPublicPages`.
+
+## Orden de horarios en torneos relámpago (ambas modalidades)
+
+**Problema.** `fx.programar` ordenaba los partidos "más restringidos primero" (por horarios preferidos) y le daba a cada uno el primer hueco libre. Por eso un P3 podía quedar antes que un P2 de la misma zona. El número de partido (`torneo_partidos.orden`, P1…Pn) ya se guardaba, pero la programación no lo respetaba.
+
+**Solución.** No hace falta migración: el campo `orden` ya existía.
+
+- `fx.ordenSecuencial(cruces)`: ordena por número de partido intercalando zonas (A·P1, B·P1, C·P1, A·P2…), para que todas las zonas avancen en paralelo.
+- `fx.programar(..., { secuencial: true })`:
+  - respeta el orden recibido;
+  - cada partido recibe un horario igual o posterior al del partido anterior de su zona;
+  - con el mismo horario en dos canchas, el de menor número toma la primera cancha;
+  - si un horario preferido rompería el orden, el partido queda "fuera de preferencia".
+- `torneoService.generarZonas`: en los relámpago se programa en una sola pasada secuencial. Los cruces APA (G1vP2 / G2vP1) siguen esperando a P1 y P2 con descanso.
+- **Reprogramación manual** (`validarOrdenZona`): un partido de zona no puede quedar antes del anterior ni después del siguiente de su zona. Si pasa, responde 409 con el detalle. Desprogramar sigue permitido.
+- **Visualización:** el cronograma del panel, el del portal de jugador, la impresión y el listado de partidos del portal ordenan por día y horario y, a igual horario, por P1…Pn de la zona.
+- **Otras modalidades** (tradicional y llaves): sin cambios. El modo normal sigue priorizando los partidos más restringidos.
+
+**Pruebas.**
+
+- `npm run test:relampago:orden` (6 tests):
+  - 1 zona con horarios consecutivos (09:00, 09:30, 10:00);
+  - preferencias que antes adelantaban a P3;
+  - 3 zonas en paralelo;
+  - empate de horario en dos canchas;
+  - zona APA;
+  - el orden de programación.
+- `npm run test:relampago:rr:e2e`:
+  - orden por zona en todos los torneos de 4 a 21 parejas;
+  - reprogramación que rompe el orden → 409;
+  - reprogramación válida → 200, y la secuencia se mantiene;
+  - el portal de jugador muestra el mismo orden.

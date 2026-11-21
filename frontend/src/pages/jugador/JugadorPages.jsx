@@ -11,6 +11,7 @@ import InstallPWA from '../../components/pwa/InstallPWA';
 import { TablaZona, ZonaGrilla, Bracket, RankingJugadores, Cronograma } from '../../components/torneos/FixtureViews';
 import { CategoriaTabs } from '../../components/torneos/CategoriasSelect';
 import { ResumenRelampago } from '../../components/torneos/FormatoRelampago';
+import { esRelampago } from '../../utils/formatoPartido';
 import { ESTADO_TORNEO, GENEROS, fechaCorta, errMsg } from '../../utils/torneos';
 
 // ── Estados genéricos ─────────────────────────────────────────
@@ -459,7 +460,7 @@ export function JugadorTorneo() {
                 {d.mi_pareja_id && (
                   <section className="space-y-2">
                     <h2 className="font-semibold">Mis partidos</h2>
-                    {mios.length ? <Cronograma partidos={mios} /> : <Vacio icon={CalendarDays} titulo="Todavía no tenés partidos programados" />}
+                    {mios.length ? <Cronograma partidos={mios} ordenZona={esRelampago(t)} /> : <Vacio icon={CalendarDays} titulo="Todavía no tenés partidos programados" />}
                   </section>
                 )}
               </div>
@@ -471,7 +472,7 @@ export function JugadorTorneo() {
             {tab === 'resultados' && (
               <div className="space-y-3">
                 {d.mi_pareja_id && <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={soloMios} onChange={e => setSoloMios(e.target.checked)} /> Solo mis partidos</label>}
-                <Cronograma partidos={soloMios ? mios : partidos} />
+                <Cronograma partidos={soloMios ? mios : partidos} ordenZona={esRelampago(t)} />
               </div>
             )}
             {tab === 'posiciones' && (

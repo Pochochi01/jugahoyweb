@@ -411,8 +411,27 @@ function encajaPreferencia(pareja, slot) {
  *   - previos:  Map<key, asignación> de una pasada anterior (para despuesDe)
  * @returns {Map<key, {field_id, fecha, hora, abs, fuera_preferencia} | null>}
  */
+/**
+ * Orden de programación de los partidos de zona en un torneo RELÁMPAGO: por número de partido
+ * dentro de la zona, intercalando zonas (A·P1, B·P1, C·P1, A·P2, B·P2…). Así cada zona recibe sus
+ * horarios en el orden en que se generaron sus partidos y todas las zonas avanzan en paralelo.
+ * @param {Array<{zona_id, orden}>} cruces
+ */
+function ordenSecuencial(cruces) {
+  return [...cruces].sort((a, b) => (a.orden - b.orden) || (a.zona_id - b.zona_id));
+}
+
+/**
+ * Asigna cancha y horario a cada partido.
+ * opts.secuencial (torneos relámpago): los partidos se programan en el orden recibido (sin el
+ * "más restringido primero") y dentro de cada grupo (`zona_id`) cada partido recibe un horario
+ * mayor o igual al del partido anterior del mismo grupo: P1 ≤ P2 ≤ P3… Con el mismo horario
+ * (distintas canchas) el de menor número toma la primera cancha.
+ */
 function programar(partidos, slots, parejas, opts = {}) {
   const descanso = Number(opts.descanso ?? 60);
+  const secuencial = Boolean(opts.secuencial);
+  const ultimoDelGrupo = new Map();   // zona_id → abs del último partido programado (modo secuencial)
   const agenda = opts.agenda || new Map();
   const usados = opts.usados || new Set();
   const minAbs = opts.minAbs || 0;
@@ -430,6 +449,7 @@ function programar(partidos, slots, parejas, opts = {}) {
       agenda.get(pid).push([s.abs, s.abs + s.dur]);
     }
     asignado.set(p.key, { field_id: s.field_id, fecha: s.fecha, hora: s.hora, abs: s.abs, fuera_preferencia: fuera });
+    if (secuencial && p.zona_id != null) ultimoDelGrupo.set(p.zona_id, s.abs);
   };
 
   // Los partidos más restringidos (menos slots preferidos) se programan primero;
@@ -437,11 +457,13 @@ function programar(partidos, slots, parejas, opts = {}) {
   const candidatos = (p) => slots.filter(s =>
     encajaPreferencia(parejas.get(p.pareja1_id), s) && encajaPreferencia(parejas.get(p.pareja2_id), s)).length;
   const conDeps = partidos.some(p => p.despuesDe?.length);
-  const orden = conDeps ? partidos : [...partidos].sort((a, b) => candidatos(a) - candidatos(b));
+  const orden = conDeps || secuencial ? partidos : [...partidos].sort((a, b) => candidatos(a) - candidatos(b));
 
   for (const p of orden) {
     // No antes de que terminen (con descanso) los partidos que lo alimentan
     let desde = minDe(p);
+    // Relámpago: nunca antes que el partido anterior de su zona
+    if (secuencial && p.zona_id != null && ultimoDelGrupo.has(p.zona_id)) desde = Math.max(desde, ultimoDelGrupo.get(p.zona_id));
     for (const dep of p.despuesDe || []) {
       const d = asignado.get(dep);
       if (d) desde = Math.max(desde, d.abs + (slots[0]?.dur || 90) + descanso);
@@ -671,6 +693,7 @@ module.exports = {
   plazasLlave, rondaInicial, armarLlavePorZonas,
   PUNTOS_VICTORIA, PUNTOS_DERROTA, ORDEN_RONDAS,
   toMin, toHHMM, diasEntre, validarFranjas,
+  ordenSecuencial,
   cantidadZonasTodosContraTodos, tamaniosZonas, rngDesdeSemilla, fixtureZonaEquilibrada, puntuablesPorPareja,
   armarZonas, serpentina, cantidadZonas, generateSnakeSeedingZones, ordenarPorRanking, compararSiembra, crucesZona4, nombreZona, roundRobin,
   validarSet, validarTieBreak, validarResultado,
