@@ -121,6 +121,21 @@ const ok = (c, msg) => { total++; console.log(`${c ? '✔' : '✘'} ${msg}`); if
     const esperados = fx.zonas.flatMap(z => z.tabla.filter(r => r.posicion <= 2).map(r => r.pareja_id));
     ok(esperados.every(id => clasificados.has(id)), 'los 2 primeros de cada zona (de 4 y de 5) están en la llave');
 
+    // ── Flujo reportado: torneo APA con zonas armadas → pasar a Todos contra Todos → "Ver nueva distribución" ──
+    const tCambio = await crear(9, 'relampago');
+    await call('POST', `/torneos/${tCambio.id}/zonas/generar`, { notificar: false });
+    const antesCambio = (await call('GET', `/torneos/${tCambio.id}/fixture`)).data;
+    const cambio = await call('PUT', `/torneos/${tCambio.id}`, { formato: 'relampago_rr' });
+    ok(cambio.status === 200 && cambio.data.formato === 'relampago_rr' && cambio.data.parejas_por_zona === 4, `APA (${antesCambio.zonas.map(z => z.tabla.length).join('+')}) → modalidad todos contra todos guardada (${cambio.status} ${cambio.data?.message || ''})`);
+    const prevCambio = (await call('POST', `/torneos/${tCambio.id}/zonas/preview`, {})).data;
+    ok(prevCambio.modalidad === 'Relámpago Todos contra Todos por Zonas' && prevCambio.zonas.map(z => z.parejas.length).join('+') === '5+4' && prevCambio.todos_contra_todos?.zonas_de_5 === 1,
+      `nueva distribución con la modalidad nueva: ${prevCambio.zonas.map(z => z.parejas.length).join('+')} (${prevCambio.modalidad})`);
+    const rearmada = await call('POST', `/torneos/${tCambio.id}/zonas/generar`, { notificar: false, firma: prevCambio.firma });
+    const fCambio = (await call('GET', `/torneos/${tCambio.id}/fixture`)).data;
+    const z5c = fCambio.zonas.find(z => z.tabla.length === 5), z4c = fCambio.zonas.find(z => z.tabla.length === 4);
+    ok(rearmada.status === 200 && z5c?.partidos.length === 8 && z5c.partidos.filter(p => p.compensatorio).length === 1 && z4c?.partidos.length === 6 && z4c.partidos.every(p => !p.perdedor_partido_id),
+      'al rearmar: todos contra todos (zona de 4: 6 partidos; zona de 5: 8 con 1 compensatorio), sin cruces APA');
+
     // ── La modalidad APA sigue igual ──
     const tApa = await crear(8, 'relampago');
     await call('POST', `/torneos/${tApa.id}/zonas/generar`, { notificar: false });

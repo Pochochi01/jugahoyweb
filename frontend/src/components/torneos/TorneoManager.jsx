@@ -397,16 +397,26 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
             <span className="badge-blue">{TIPO_TORNEO[torneo.tipo]?.label}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Zonas de {torneo.parejas_por_zona} por <strong>siembra en serpiente</strong>: cada pareja suma los puntos de sus dos jugadores en el ranking de la liga y la categoría.
+            <strong>{fmtP.nombreFormato(torneo.formato)}</strong> · {fmtP.esTodosContraTodos(torneo)
+              ? <>zonas de 4 parejas (de 5 cuando sobran) por <strong>siembra en serpiente</strong></>
+              : <>zonas de {torneo.parejas_por_zona} por <strong>siembra en serpiente</strong></>}: cada pareja suma los puntos de sus dos jugadores en el ranking de la liga y la categoría.
             Las mejores son cabezas de serie (1→Zona A, 2→Zona B…) y el resto se reparte ida y vuelta (N→1, 1→N…). Empates: más torneos jugados, más partidos ganados, inscripción más antigua.
-            {' '}En zonas de 4 se juega 1v3 y 2v4; después ganador P1 vs perdedor P2 y ganador P2 vs perdedor P1. Cada partido se programa respetando canchas y horarios preferidos.
+            {' '}{fmtP.esTodosContraTodos(torneo)
+              ? 'Todos contra todos: cada pareja juega 3 partidos que suman. En las zonas de 5 se sortea una pareja que juega un partido compensatorio que solo suma para su rival.'
+              : 'En zonas de 4 se juega 1v3 y 2v4; después ganador P1 vs perdedor P2 y ganador P2 vs perdedor P1.'}
+            {' '}Cada partido se programa respetando canchas y horarios preferidos.
           </p>
+          {zonasDeOtraModalidad && (
+            <p className="text-xs rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400 px-3 py-2" role="alert">
+              Las zonas actuales se armaron con otra modalidad ({fmtP.esTodosContraTodos(torneo) ? 'cruces APA' : 'todos contra todos'}). Tocá <strong>Ver nueva distribución</strong> y confirmá para rearmarlas como <strong>{fmtP.nombreFormato(torneo.formato)}</strong>.
+            </p>
+          )}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirPend} onChange={e => setIncluirPend(e.target.checked)} /> Incluir parejas con pago pendiente</label>
           <button className="btn-primary text-sm" onClick={verPreview} disabled={cargandoPrev}>{cargandoPrev ? 'Calculando…' : fx.zonas.length ? 'Ver nueva distribución' : 'Generar zonas'}</button>
         </div>
       )}
       {preview && (
-        <PreviewZonas preview={preview} onConfirmar={armarZonas} onRecalcular={verPreview} onCancelar={() => setPreview(null)} rearmar={fx.zonas.length > 0} />
+        <PreviewZonas preview={preview} torneo={torneo} onConfirmar={armarZonas} onRecalcular={verPreview} onCancelar={() => setPreview(null)} rearmar={fx.zonas.length > 0} />
       )}
       <Aviso>{msg.error}</Aviso><Aviso tipo="ok">{msg.ok}</Aviso>
       {reparto && (
@@ -475,7 +485,17 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
  * Vista previa de la siembra en serpiente: zonas con posición de ranking, pareja y puntos.
  * Confirmar guarda exactamente esta distribución (si cambió algo, el backend pide recalcular).
  */
-function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar }) {
+/** Partidos que se juegan en una zona según la modalidad (lo mismo que arma el backend). */
+function fixtureDeZona(torneo, n) {
+  if (fmtP.esTodosContraTodos(torneo)) {
+    if (n === 5) return { partidos: 8, texto: 'Todos contra todos equilibrado · 8 partidos (1 compensatorio por sorteo) · 3 que suman por pareja' };
+    return { partidos: (n * (n - 1)) / 2, texto: `Todos contra todos · ${(n * (n - 1)) / 2} partidos · ${n - 1} por pareja` };
+  }
+  if (n === 4) return { partidos: 4, texto: 'Cruces APA · 1v3 · 2v4 · G1vP2 · G2vP1' };
+  return { partidos: (n * (n - 1)) / 2, texto: `Todos contra todos · ${(n * (n - 1)) / 2} partidos` };
+}
+
+function PreviewZonas({ preview, torneo, onConfirmar, onRecalcular, onCancelar, rearmar }) {
   const [enviando, setEnviando] = useState(false);
   const confirmar = async () => {
     if (rearmar && !confirm('Se borran las zonas y partidos actuales de esta categoría y se arman con esta distribución. ¿Continuar?')) return;
@@ -485,13 +505,19 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
   return (
     <div className="card space-y-3 border-primary/40">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="font-semibold text-sm mr-auto">Vista previa · {preview.cantidad_zonas} zonas · {preview.parejas} parejas · Ranking Anual {preview.ranking?.temporada} + serpiente</div>
+        <div className="mr-auto">
+          <div className="font-semibold text-sm">Vista previa · {preview.cantidad_zonas} zonas ({preview.zonas.map(z => z.parejas.length).join('+')}) · {preview.parejas} parejas · Ranking Anual {preview.ranking?.temporada} + serpiente</div>
+          <div className="text-xs text-primary font-medium">{preview.modalidad || fmtP.nombreFormato(torneo.formato)}</div>
+        </div>
         <button className="btn-ghost text-sm" onClick={onRecalcular} title="Vuelve a leer el ranking anual y rearma la serpiente"><RefreshCw className="w-4 h-4" /> Recalcular siembra</button>
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {preview.zonas.map(z => (
           <div key={z.zona} className="rounded-xl border border-border overflow-hidden">
-            <div className="px-3 py-2 font-semibold text-sm bg-muted/50">{z.zona}</div>
+            <div className="px-3 py-2 bg-muted/50">
+              <div className="font-semibold text-sm">{z.zona} · {z.parejas.length} parejas</div>
+              <div className="text-[11px] text-muted-foreground">{fixtureDeZona(torneo, z.parejas.length).texto}</div>
+            </div>
             <ul className="divide-y divide-border text-sm">
               {z.parejas.map(p => (
                 <li key={p.id} className="px-3 py-2 flex items-center gap-2">
@@ -508,7 +534,8 @@ function PreviewZonas({ preview, onConfirmar, onRecalcular, onCancelar, rearmar 
           </div>
         ))}
       </div>
-      <p className="text-[11px] text-muted-foreground">Al confirmar se guardan las zonas, se programan los partidos y se avisa a los jugadores. Si alguien se inscribe o se da de baja antes, se recalcula la distribución.</p>
+      {preview.todos_contra_todos?.aviso && <p className="text-xs text-amber-400" role="alert">{preview.todos_contra_todos.aviso}</p>}
+      <p className="text-[11px] text-muted-foreground">Al confirmar se guardan las zonas, se programan los partidos ({preview.zonas.reduce((a, z) => a + fixtureDeZona(torneo, z.parejas.length).partidos, 0)} en total) y se avisa a los jugadores. Si alguien se inscribe o se da de baja antes, se recalcula la distribución.</p>
       <div className="flex flex-wrap gap-2">
         <button className="btn-primary text-sm" onClick={confirmar} disabled={enviando}><Check className="w-4 h-4" /> {enviando ? 'Armando…' : 'Confirmar y armar zonas'}</button>
         <button className="btn-outline text-sm" onClick={onCancelar}>Cancelar</button>
