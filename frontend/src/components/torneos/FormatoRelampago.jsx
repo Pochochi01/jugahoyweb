@@ -88,7 +88,8 @@ export function ResumenRelampago({ torneo, className = '' }) {
   if (!filas) return null;
   return (
     <div className={`card ${className}`}>
-      <div className="text-xs text-muted-foreground flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-amber-400" /> Formato Relámpago</div>
+      <div className="text-xs text-muted-foreground flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-amber-400" /> {fmt.nombreFormato(torneo.formato)}</div>
+      {fmt.esTodosContraTodos(torneo) && <p className="text-[11px] text-muted-foreground mt-0.5">Zonas de 4 (o 5) todos contra todos · en zonas de 5, partido compensatorio que solo suma para el rival.</p>}
       <dl className="mt-1 grid sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
         {filas.map(f => (
           <div key={f.fase} className="flex gap-2"><dt className="text-muted-foreground shrink-0">{f.label.replace(' (y rondas previas)', '')}:</dt><dd>{f.texto}</dd></div>

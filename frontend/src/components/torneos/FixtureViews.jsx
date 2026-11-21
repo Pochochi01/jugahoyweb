@@ -1,7 +1,32 @@
 import { useState } from 'react';
-import { Trophy, AlertTriangle, Pencil, ZoomIn, ZoomOut } from 'lucide-react';
+import { Trophy, AlertTriangle, Pencil, ZoomIn, ZoomOut, Shuffle, Scale } from 'lucide-react';
 import { RONDA_LABEL, fechaCorta, setsTxt } from '../../utils/torneos';
 import { UltimaModificacion } from './ReprogramarModal';
+
+// ── Relámpago Todos contra Todos: zona de 5 equilibrada ──────────
+export const TEXTO_COMPENSATORIO = 'Este encuentro otorga puntos únicamente a la pareja rival debido al sistema de equilibrio de la zona.';
+const TEXTO_SORTEADA = 'Pareja sorteada: por el equilibrio de la zona de 5 juega un partido extra (compensatorio) que no le suma: ni puntos, ni partidos, ni sets, ni games.';
+/** Etiqueta "Pareja sorteada" (con explicación al pasar el mouse o con foco). */
+export function MarcaSorteada({ className = '' }) {
+  return (
+    <span className={`badge badge-yellow !text-[10px] !px-1.5 !py-0 inline-flex items-center gap-1 cursor-help ${className}`} title={TEXTO_SORTEADA} aria-label={TEXTO_SORTEADA} tabIndex={0}>
+      <Shuffle className="w-3 h-3" /> Pareja sorteada
+    </span>
+  );
+}
+/** Etiqueta "Partido compensatorio · Puntúa solo para el rival". */
+export function MarcaCompensatorio({ p, className = '' }) {
+  if (!p?.compensatorio) return null;
+  const rival = p.puntua_pareja1 === false ? p.pareja2 : p.pareja1;
+  const titulo = `${TEXTO_COMPENSATORIO}${rival?.nombre ? ` Suma solo: ${rival.nombre}.` : ''}`;
+  return (
+    <span className={`badge badge-blue !text-[10px] !px-1.5 !py-0 inline-flex items-center gap-1 cursor-help ${className}`} title={titulo} aria-label={titulo} tabIndex={0}>
+      <Scale className="w-3 h-3" /> Partido compensatorio · Puntúa solo para el rival
+    </span>
+  );
+}
+/** Nombre + "(no suma)" para el lado que no puntúa. */
+const noSuma = (p, lado) => p?.compensatorio && p[`puntua_pareja${lado}`] === false;
 
 /** Tabla de posiciones de una zona (persistida en el backend). */
 export function TablaZona({ zona, mostrarRanking = false }) {
@@ -31,6 +56,7 @@ export function TablaZona({ zona, mostrarRanking = false }) {
                   {r.numero_zona === 1 && <span className="mr-1" title="Cabeza de serie" aria-label="Cabeza de serie">🏆</span>}
                   {r.pareja}
                   {r.siembra && <span className="ml-1.5 badge-neutral !text-[10px] !px-1.5 !py-0" title="Posición en el ranking general al armar las zonas">#{r.siembra}</span>}
+                  {r.pareja_sorteada && <MarcaSorteada className="ml-1.5" />}
                 </td>
                 {mostrarRanking && <td className="px-2 py-2 text-center text-muted-foreground">{r.puntos_ranking}</td>}
                 <td className="px-2 py-2 text-center">{r.pj}</td>
@@ -44,6 +70,11 @@ export function TablaZona({ zona, mostrarRanking = false }) {
           </tbody>
         </table>
       </div>
+      {zona.pareja_sorteada_id && (
+        <p className="px-4 py-2 border-t border-border text-[11px] text-muted-foreground">
+          Zona de 5 equilibrada: todas las parejas computan 3 partidos. El partido compensatorio de la pareja sorteada solo suma para su rival.
+        </p>
+      )}
     </div>
   );
 }
@@ -68,13 +99,14 @@ export function ResultadoTexto({ p, className = '' }) {
 }
 
 /** Nombre de una pareja en un partido; los lugares a definir ("Ganador P1") van en cursiva. */
-function NombrePareja({ par, gano, fallback = 'A definir' }) {
+function NombrePareja({ par, gano, fallback = 'A definir', sinPuntos = false }) {
   if (!par) return <span className="text-muted-foreground italic">{fallback}</span>;
   if (par.pendiente) return <span className="text-muted-foreground italic">{par.nombre}</span>;
   return (
     <span className={gano ? 'font-semibold text-primary' : ''}>
       {par.numero_zona && <span className="text-[11px] text-muted-foreground mr-1.5 font-mono">#{par.numero_zona}</span>}
       {par.nombre}
+      {sinPuntos && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground" title={TEXTO_COMPENSATORIO}>(no suma en este partido)</span>}
     </span>
   );
 }
@@ -87,6 +119,7 @@ export function PartidoRow({ p, acciones, etiqueta }) {
       <div className="text-xs text-muted-foreground sm:w-44 shrink-0">
         {etiqueta && <div className="font-semibold text-foreground">{etiqueta}</div>}
         {p.fecha ? <>{fechaCorta(p.fecha)} · {p.hora} hs<br />{p.cancha}</> : 'Sin programar'}
+        <MarcaCompensatorio p={p} className="mt-1" />
         {p.fuera_preferencia && (
           <span className="flex items-center gap-1 text-amber-400 mt-0.5" title="Fuera del horario preferido de alguna pareja">
             <AlertTriangle className="w-3 h-3" /> fuera de preferencia
@@ -95,8 +128,8 @@ export function PartidoRow({ p, acciones, etiqueta }) {
         <UltimaModificacion p={p} />
       </div>
       <div className="flex-1 min-w-0 text-sm space-y-0.5">
-        <div><NombrePareja par={p.pareja1} gano={gano(1)} /></div>
-        <div><NombrePareja par={p.pareja2} gano={gano(2)} fallback={p.es_bye ? 'BYE' : 'A definir'} /></div>
+        <div><NombrePareja par={p.pareja1} gano={gano(1)} sinPuntos={noSuma(p, 1)} /></div>
+        <div><NombrePareja par={p.pareja2} gano={gano(2)} sinPuntos={noSuma(p, 2)} fallback={p.es_bye ? 'BYE' : 'A definir'} /></div>
       </div>
       <div className="text-sm sm:w-36 sm:text-right"><ResultadoTexto p={p} /></div>
       {acciones}
@@ -123,7 +156,7 @@ export function ZonaGrilla({ zona, accionesDe }) {
           {parejas.map(p => (
             <li key={p.pareja_id} className="flex items-start gap-2 text-sm leading-snug min-w-0">
               <span className="shrink-0 grid place-items-center w-5 h-5 mt-px rounded-full bg-muted text-[11px] font-semibold font-mono">{p.numero_zona}</span>
-              <span className="break-words min-w-0">{p.numero_zona === 1 && <span className="mr-1" title="Cabeza de serie" aria-label="Cabeza de serie">🏆</span>}{p.pareja}</span>
+              <span className="break-words min-w-0">{p.numero_zona === 1 && <span className="mr-1" title="Cabeza de serie" aria-label="Cabeza de serie">🏆</span>}{p.pareja}{p.pareja_id === zona.pareja_sorteada_id && <MarcaSorteada className="ml-1.5" />}</span>
             </li>
           ))}
         </ol>
@@ -133,19 +166,20 @@ export function ZonaGrilla({ zona, accionesDe }) {
           const g = (l) => p.resultado?.ganador_id && p.resultado.ganador_id === p[`pareja${l}`]?.id;
           const res = resultadoTxt(p);
           return (
-            <div key={p.id} className="px-4 py-3 space-y-2">
+            <div key={p.id} className={`px-4 py-3 space-y-2 ${p.compensatorio ? 'bg-blue-500/5' : ''}`}>
               {/* Línea superior: número de partido, horario/cancha y resultado */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span className="font-mono font-semibold text-foreground/80">P{p.orden}</span>
                 <span className="min-w-0">{p.fecha ? <>{fechaCorta(p.fecha)} · {p.hora} hs{p.cancha && <> · {p.cancha}</>}</> : 'Sin programar'}</span>
+                <MarcaCompensatorio p={p} />
                 {res && <span className="ml-auto text-sm text-foreground"><ResultadoTexto p={p} /></span>}
               </div>
               {/* Parejas: renglón completo para cada una, el nombre se acomoda en varias líneas si hace falta */}
               <div className="grid grid-cols-[1fr_auto] gap-x-3 items-center">
                 <div className="min-w-0 text-[15px] leading-snug space-y-1">
-                  <div className="break-words"><NombrePareja par={p.pareja1} gano={g(1)} /></div>
+                  <div className="break-words"><NombrePareja par={p.pareja1} gano={g(1)} sinPuntos={noSuma(p, 1)} /></div>
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">vs</div>
-                  <div className="break-words"><NombrePareja par={p.pareja2} gano={g(2)} /></div>
+                  <div className="break-words"><NombrePareja par={p.pareja2} gano={g(2)} sinPuntos={noSuma(p, 2)} /></div>
                 </div>
                 {accionesDe && <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1 shrink-0">{accionesDe(p)}</div>}
               </div>
@@ -239,7 +273,7 @@ export function imprimirFixture({ torneo, fx, categoria }) {
     return `<div class="zona"><h3>${e(z.nombre)}</h3>
       <ol class="parejas">${parejas.map(p => `<li><b>${e(p.numero_zona)}.</b> ${p.numero_zona === 1 ? '🏆 ' : ''}${e(p.pareja)}</li>`).join('')}</ol>
       <table><thead><tr><th>#</th><th>Partido</th><th>Día · hora · cancha</th><th>Resultado</th></tr></thead><tbody>
-      ${z.partidos.map(p => `<tr><td>P${e(p.orden)}</td><td>${vs(p)}</td><td>${cuando(p)}</td><td class="mono">${e(resultadoTxt(p) || '')}</td></tr>`).join('')}
+      ${z.partidos.map(p => `<tr><td>P${e(p.orden)}${p.compensatorio ? ' (compensatorio: suma solo el rival)' : ''}</td><td>${vs(p)}</td><td>${cuando(p)}</td><td class="mono">${e(resultadoTxt(p) || '')}</td></tr>`).join('')}
       </tbody></table></div>`;
   }).join('');
   const tablaDia = (lista) => `<table><thead><tr><th>Hora</th><th>Cancha</th><th>Instancia</th><th>Partido</th><th>Resultado</th></tr></thead><tbody>

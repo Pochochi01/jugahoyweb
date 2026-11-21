@@ -443,7 +443,8 @@ async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false
     jugadores: p.jugadores.map(j => ({ nombre: j.nombre, puntos: puntosPorDni.get(j.dni) || 0 })),
     inscripcion: p.createdAt,
   }));
-  const zonas = fx.generateSnakeSeedingZones(conDatos, { parejasPorZona: torneo.parejas_por_zona });
+  // Relámpago todos contra todos: zonas de 4 (y de 5 con el sobrante); resto: parejas_por_zona del torneo
+  const zonas = fx.generateSnakeSeedingZones(conDatos, { parejasPorZona: torneo.parejas_por_zona, zonas: cantidadZonasDe(torneo, conDatos.length) });
   const firma = crypto.createHash('sha1')
     .update(zonas.map(z => `${z.zona}:${z.parejas.map(p => `${p.id}/${p.puntos_totales}`).join(',')}`).join('|'))
     .digest('hex').slice(0, 16);
@@ -451,11 +452,25 @@ async function prepararSiembra(torneo, { categoria_id, incluirPendientes = false
 }
 
 /** Vista previa de las zonas (no guarda nada). */
+/** Zonas de la modalidad "todos contra todos" (o undefined = según parejas_por_zona). */
+function cantidadZonasDe(torneo, n) {
+  return fmt.esTodosContraTodos(torneo) ? fx.cantidadZonasTodosContraTodos(n) : undefined;
+}
+
 async function previsualizarZonas(torneo, opts = {}) {
   const { cat, zonas, firma, parejas } = await prepararSiembra(torneo, opts);
   return {
     categoria_id: cat, metodo: 'ranking_anual_snake', firma,
     ranking: { liga_id: torneo.liga_id, categoria_id: cat, genero: torneo.genero, temporada: temporadaDe(torneo) }, cantidad_zonas: zonas.length, parejas: parejas.length,
+    modalidad: fmt.nombreFormato(torneo.formato),
+    // Todos contra todos: zonas de 5 llevan sorteo + partido compensatorio; zonas de 3 = caso límite (6, 7 u 11 parejas)
+    ...(fmt.esTodosContraTodos(torneo) && {
+      todos_contra_todos: {
+        zonas_de_5: zonas.filter(z => z.parejas.length === 5).length,
+        zonas_de_3: zonas.filter(z => z.parejas.length === 3).length,
+        aviso: zonas.some(z => z.parejas.length === 3) ? `Con ${parejas.length} parejas no alcanza para zonas de 4 y 5: hay zonas de 3 (cada pareja juega 2 partidos en lugar de 3).` : null,
+      },
+    }),
     zonas: zonas.map(z => ({
       zona: z.zona,
       parejas: z.parejas.map(p => ({
@@ -484,7 +499,10 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     await TorneoPareja.update({ zona_id: null, numero_zona: null }, { where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     await TorneoZona.destroy({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
 
-    // Cruces por zona: 4 parejas → formato 1v3 / 2v4 / G1vP2 / G2vP1; resto → todos contra todos
+    // Cruces por zona: 4 parejas → formato 1v3 / 2v4 / G1vP2 / G2vP1 (APA); resto → todos contra todos.
+    // Relámpago todos contra todos: siempre todos contra todos (zonas de 5 equilibradas).
+    const rr = fmt.esTodosContraTodos(torneo);
+    const sorteos = [];
     const cruces = [];
     for (const [i, grupo] of grupos.entries()) {
       const zona = await TorneoZona.create({ torneo_id: torneo.id, categoria_id: cat, nombre: fx.nombreZona(i) }, { transaction: t });
@@ -494,7 +512,19 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
       }
       const ids = grupo.map(p => p.id);   // ya vienen en orden de numero_zona
       const key = (n) => `${zona.id}-${n}`;
-      if (ids.length === 4) {
+      if (rr) {
+        // Relámpago todos contra todos: todos contra todos equilibrado; zona de 5 → sorteo + compensatorio
+        const semilla = crypto.randomInt(1, 2 ** 31 - 1);
+        const { cruces: fixture, sorteo } = fx.fixtureZonaEquilibrada(ids, fx.rngDesdeSemilla(semilla));
+        fixture.forEach((c, k) => cruces.push({ key: key(k + 1), zona_id: zona.id, orden: k + 1, ...c, despuesDe: [] }));
+        if (sorteo) {
+          await zona.update({
+            pareja_sorteada_id: sorteo.pareja_sorteada_id,
+            sorteo: { ...sorteo, semilla, algoritmo: 'mulberry32', fecha: new Date().toISOString(), usuario: usuario?.nombre || null, usuario_id: usuario?.id || null },
+          }, { transaction: t });
+          sorteos.push({ zona: zona.nombre, ...sorteo, semilla });
+        }
+      } else if (ids.length === 4) {
         for (const c of fx.crucesZona4(ids)) {
           cruces.push({
             key: key(c.n), zona_id: zona.id, orden: c.n, pareja1_id: c.pareja1_id, pareja2_id: c.pareja2_id,
@@ -543,6 +573,7 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
         field_id: a?.field_id ?? null, fecha: a?.fecha ?? null, hora: a?.hora ?? null,
         fuera_preferencia: a?.fuera_preferencia ?? false,
         estado: a ? 'programado' : 'pendiente',
+        compensatorio: Boolean(c.compensatorio), puntua_pareja1: c.puntua_pareja1 !== false, puntua_pareja2: c.puntua_pareja2 !== false,
       }, { transaction: t });
       idPorKey.set(c.key, creado.id);
     }
@@ -550,7 +581,7 @@ async function generarZonas(torneo, { categoria_id, incluirPendientes = false, n
     await tc.update({ estado: 'zonas' }, { transaction: t });
     await sincronizarEstado(torneo, t);
     // Auditoría + bloqueo automático de inscripciones de la categoría
-    await inscr.auditar(torneo, { categoria_id: cat, accion: 'zonas_generadas', detalle: { zonas: siembra.length, parejas: parejas.length }, usuario }, t);
+    await inscr.auditar(torneo, { categoria_id: cat, accion: 'zonas_generadas', detalle: { zonas: siembra.length, parejas: parejas.length, modalidad: torneo.formato, ...(sorteos.length && { sorteos }) }, usuario }, t);
     await inscr.cerrar(torneo, tc, usuario, t);
     const zonas = await TorneoZona.findAll({ where: { torneo_id: torneo.id, categoria_id: cat }, transaction: t });
     for (const z of zonas) await recalcularTablaZona(z.id, t);
@@ -640,7 +671,7 @@ async function tablasDeZonas(torneo, publico = false, categoriaId = null) {
     where: { torneo_id: torneo.id, ...(categoriaId && { categoria_id: Number(categoriaId) }) },
     include: [
       incluirPareja('parejas', publico),
-      { model: TorneoPartido, as: 'partidos', attributes: ['id', 'estado'] },
+      { model: TorneoPartido, as: 'partidos', attributes: ['id', 'estado', 'compensatorio'] },
       { model: TorneoTablaPosicion, as: 'tabla' },
     ],
     order: [['nombre', 'ASC'], [{ model: TorneoTablaPosicion, as: 'tabla' }, 'posicion', 'ASC']],
@@ -655,8 +686,14 @@ async function tablasDeZonas(torneo, publico = false, categoriaId = null) {
       numero_zona: parejaDe(r.pareja_id)?.numero_zona ?? null,
       siembra: parejaDe(r.pareja_id)?.siembra ?? null,
       puntos_ranking: parejaDe(r.pareja_id)?.puntos_totales ?? 0,
+      pareja_sorteada: z.pareja_sorteada_id === r.pareja_id,
     }));
-    return { zona_id: z.id, categoria_id: z.categoria_id, nombre: z.nombre, tabla, completa: z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)) };
+    return {
+      zona_id: z.id, categoria_id: z.categoria_id, nombre: z.nombre, tabla,
+      pareja_sorteada_id: z.pareja_sorteada_id || null,
+      ...(z.sorteo && !publico && { sorteo: z.sorteo }),
+      ...(z.sorteo && publico && { sorteo: { fecha: z.sorteo.fecha, semilla: z.sorteo.semilla, rival_id: z.sorteo.rival_id } }),
+      completa: z.partidos.every(p => ['jugado', 'walkover'].includes(p.estado)) };
   });
 }
 
@@ -905,7 +942,7 @@ async function cuadroReferencia(torneo, cat, zonas) {
   if (!numZonas) {
     n = await TorneoPareja.count({ where: { torneo_id: torneo.id, categoria_id: cat, estado_pago: PAREJAS_ACTIVAS } });
     if (n < 2) return null;
-    numZonas = fx.cantidadZonas(n, torneo.parejas_por_zona);
+    numZonas = cantidadZonasDe(torneo, n) ?? fx.cantidadZonas(n, torneo.parejas_por_zona);
   }
   const K = Math.min(torneo.clasifican_por_zona, torneo.parejas_por_zona);
   if (numZonas * K < 2) return null;
@@ -1406,6 +1443,7 @@ async function fixture(torneo, { publico = true, categoria_id } = {}) {
     pareja1: pareja(p, 1),
     pareja2: pareja(p, 2),
     es_bye: p.es_bye, estado: p.estado, fuera_preferencia: p.fuera_preferencia,
+    compensatorio: Boolean(p.compensatorio), puntua_pareja1: p.puntua_pareja1 !== false, puntua_pareja2: p.puntua_pareja2 !== false,
     fecha: p.fecha, hora: p.hora, field_id: p.field_id, cancha: canchaLabel(p.field),
     siguiente_partido_id: p.siguiente_partido_id,
     siguiente: p.ronda !== 'zona' && p.siguiente_partido_id && porId.has(p.siguiente_partido_id)

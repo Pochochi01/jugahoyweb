@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { GENEROS, TIPO_TORNEO, errMsg, categoriasDe } from '../../utils/torneos';
 import { CategoriasMultiSelect } from './CategoriasSelect';
 import FormatoRelampago from './FormatoRelampago';
+import * as fmt from '../../utils/formatoPartido';
 
 const INICIAL = {
   deporte: 'padel', tipo: 'unico', tercer_set: 'set', formato: 'tradicional', formato_partidos: null,
@@ -42,7 +43,7 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
     if (!f.categorias.length) return setError('Elegí al menos una categoría.');
     setSaving(true); setError('');
     const { liga, ...datos } = f;   // liga (objeto) viene del backend; se envía liga_id
-    if (datos.formato !== 'relampago') delete datos.formato_partidos;
+    if (!fmt.esRelampago(datos)) delete datos.formato_partidos;
     try { await onSave({ ...datos, liga_id: Number(f.liga_id), categorias: f.categorias, deporte: 'padel' }); } catch (err) { setError(errMsg(err)); } finally { setSaving(false); }
   };
 
@@ -68,15 +69,14 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
               {Object.entries(TIPO_TORNEO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </Campo>
-          <Campo label="Formato de partidos">
+          <Campo label="Modalidad">
             <select className="input" value={f.formato} disabled={bloqueado} onChange={e => set('formato', e.target.value)}>
-              <option value="tradicional">Tradicional</option>
-              <option value="relampago">Relámpago</option>
+              {Object.entries(fmt.FORMATOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </Campo>
         </div>
         {/* Tradicional: 3er set. Relámpago: el formato de cada fase lo define el organizador (sin 3er set ni súper TB preconfigurados) */}
-        {f.formato !== 'relampago' && (
+        {!fmt.esRelampago(f) && (
           <Campo label="3er set">
             <select className="input" value={f.tercer_set} disabled={bloqueado} onChange={e => set('tercer_set', e.target.value)}>
               <option value="set">Set completo</option>
@@ -84,7 +84,13 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
             </select>
           </Campo>
         )}
-        {f.formato === 'relampago' && <FormatoRelampago value={f.formato_partidos} onChange={v => set('formato_partidos', v)} />}
+        {fmt.esTodosContraTodos(f) && (
+          <p className="md:col-span-2 -mt-2 text-[11px] text-muted-foreground">
+            Zonas de 4 parejas (de 5 cuando sobran) armadas por el sistema; todos contra todos. En cada zona de 5 se sortea una pareja que juega un
+            partido compensatorio que solo suma para su rival: todas las parejas computan 3 partidos.
+          </p>
+        )}
+        {fmt.esRelampago(f) && <FormatoRelampago value={f.formato_partidos} onChange={v => set('formato_partidos', v)} />}
         <p className="md:col-span-2 -mt-2 text-[11px] text-muted-foreground">
           {TIPO_TORNEO[f.tipo]?.hint}. {f.tipo === 'anual' && 'Los puntos de cada pareja salen del ranking anual de la liga y la categoría en la que juega (suma de ambos jugadores); al finalizar cada categoría se suman en esa misma liga y categoría.'}
         </p>
@@ -104,7 +110,7 @@ export default function TorneoForm({ initial, onSave, onCancel, bloqueado = fals
           <Campo label="Inscripción ($ por pareja)"><input type="number" min="0" className="input" value={f.precio_inscripcion} onChange={num('precio_inscripcion')} /></Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Campo label="Parejas por zona"><input type="number" min="2" max="6" className="input" value={f.parejas_por_zona} disabled={bloqueado} onChange={num('parejas_por_zona')} /></Campo>
+          <Campo label="Parejas por zona"><input type="number" min="2" max="6" className="input" value={fmt.esTodosContraTodos(f) ? 4 : f.parejas_por_zona} disabled={bloqueado || fmt.esTodosContraTodos(f)} title={fmt.esTodosContraTodos(f) ? 'Todos contra todos: 4 (o 5) por zona, automático' : undefined} onChange={num('parejas_por_zona')} /></Campo>
           <Campo label="Clasifican por zona"><input type="number" min="1" max="4" className="input" value={f.clasifican_por_zona} disabled={bloqueado} onChange={num('clasifican_por_zona')} /></Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">

@@ -47,9 +47,11 @@ function validarTorneo(body, actual = {}) {
   if (v.duracion_partido != null && !(v.duracion_partido >= 30 && v.duracion_partido <= 180)) throw err('Duración de partido: 30 a 180 min.');
   if (v.tipo != null && !['unico', 'anual'].includes(v.tipo)) throw err('Tipo de torneo inválido (único o anual).');
   if (v.tercer_set != null && !['set', 'super_tiebreak'].includes(v.tercer_set)) throw err('Tercer set inválido.');
-  if (v.formato != null && !['tradicional', 'relampago'].includes(v.formato)) throw err('Formato inválido (tradicional o relámpago).');
-  // Relámpago: la regla de cada fase se valida y normaliza (games, tie-break, súper TB, formato de final)
-  if (v.formato === 'relampago') { if (d.formato !== undefined || d.formato_partidos !== undefined) d.formato_partidos = fmt.normalizarFormato(v.formato_partidos); }
+  if (v.formato != null && !fmt.FORMATOS[v.formato]) throw err(`Modalidad inválida (${Object.values(fmt.FORMATOS).map(f => f.label).join(', ')}).`);
+  // Todos contra todos: zonas de 4 (de 5 con el sobrante), armadas por el sistema
+  if (v.formato === 'relampago_rr') d.parejas_por_zona = 4;
+  // Relámpago (ambas modalidades): la regla de cada fase se valida y normaliza (games, tie-break, súper TB, formato de final)
+  if (fmt.esRelampago(v)) { if (d.formato !== undefined || d.formato_partidos !== undefined) d.formato_partidos = fmt.normalizarFormato(v.formato_partidos); }
   else if (d.formato !== undefined || d.formato_partidos !== undefined) d.formato_partidos = null;
   return d;
 }
@@ -166,7 +168,7 @@ async function update(req, res) {
         }
       }
       // Relámpago: una fase puede reconfigurarse mientras no tenga resultados cargados
-      if (data.formato_partidos && t.formato === 'relampago') {
+      if (data.formato_partidos && fmt.esRelampago(t)) {
         const antes = fmt.normalizarFormato(t.formato_partidos);
         const cambiadas = fmt.FASES.filter(f => JSON.stringify(antes[f]) !== JSON.stringify(data.formato_partidos[f]));
         const rondas = fx.ORDEN_RONDAS.concat('zona').filter(r => cambiadas.includes(fmt.faseDeRonda(r)));

@@ -175,6 +175,11 @@ export default function ResultadoModal({ torneo, p, categoriaNombre, onSave, onC
           {p.fecha && <div className="text-xs text-muted-foreground">{fechaCorta(p.fecha)} · {p.hora} hs{p.cancha && ` · ${p.cancha}`}</div>}
         </div>
 
+        {p.compensatorio && (
+          <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs" role="note">
+            <strong>Partido compensatorio.</strong> Este encuentro otorga puntos únicamente a la pareja rival debido al sistema de equilibrio de la zona. Se registra el resultado real; a {(p.puntua_pareja1 === false ? p.pareja1 : p.pareja2)?.nombre || 'la pareja sorteada'} no le suma.
+          </div>
+        )}
         {modo === 'carga' && (
           <>
             <div className="space-y-3">

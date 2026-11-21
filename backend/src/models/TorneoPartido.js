@@ -18,6 +18,10 @@ const TorneoPartido = sequelize.define('TorneoPartido', {
   // Zonas de 4: el PERDEDOR también avanza (P1/P2 → P3/P4)
   perdedor_partido_id: { type: DataTypes.INTEGER, allowNull: true },
   perdedor_slot: { type: DataTypes.TINYINT, allowNull: true },
+  // Relámpago todos contra todos (zona de 5): partido compensatorio → puntúa solo para el rival
+  compensatorio:  { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  puntua_pareja1: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  puntua_pareja2: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   field_id:   { type: DataTypes.INTEGER, allowNull: true },
   fecha:      { type: DataTypes.DATEONLY, allowNull: true },
   hora:       { type: DataTypes.STRING(5), allowNull: true },

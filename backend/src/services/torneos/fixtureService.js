@@ -283,6 +283,78 @@ function roundRobin(ids) {
   return cruces;
 }
 
+// ── Relámpago Todos contra Todos por Zonas ──────────────────────
+/**
+ * Cantidad de zonas para "todos contra todos": zonas de 4 y, cuando sobran parejas, zonas de 5.
+ *   k = ⌊n/4⌋ zonas; resto r = n mod 4 → r zonas quedan de 5 (la serpiente reparte el sobrante).
+ *   Si r > k (n = 6, 7, 11) no alcanza con zonas de 4 y 5 → k = ⌈n/4⌉ y hay zonas de 3
+ *   (caso límite, se informa en la vista previa). n < 4 → 1 zona.
+ * Ej.: 8 → 4+4 · 9 → 5+4 · 12 → 4+4+4 · 13 → 5+4+4 · 17 → 5+4+4+4 · 21 → 5+4+4+4+4.
+ */
+function cantidadZonasTodosContraTodos(n) {
+  if (n < 2) throw badRequest('Se necesitan al menos 2 parejas para armar zonas.');
+  if (n < 4) return 1;
+  const k = Math.floor(n / 4);
+  return n % 4 <= k ? k : Math.ceil(n / 4);
+}
+
+/** Tamaños de zona que resultan de la serpiente (para vistas previas y tests). */
+function tamaniosZonas(n, k) {
+  return Array.from({ length: k }, (_, i) => Math.floor(n / k) + (i < n % k ? 1 : 0));
+}
+
+/** Generador pseudoaleatorio reproducible (mulberry32): con la semilla guardada el sorteo se puede verificar. */
+function rngDesdeSemilla(semilla) {
+  let a = Number(semilla) >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const elegirUno = (lista, rng) => lista[Math.floor(rng() * lista.length)];
+
+/**
+ * Fixture equilibrado de una zona (todos contra todos):
+ *  - Zonas de 2, 3 o 4: todos contra todos, todos los partidos puntúan (cada pareja juega n-1).
+ *  - Zona de 5 (regla de equilibrio): cada pareja tiene EXACTAMENTE 3 partidos puntuables.
+ *      Sorteo transparente (semilla guardada): S = "pareja sorteada", R = su rival compensatorio y
+ *      X (otra pareja). Con Y y Z (las dos restantes) se juegan los 10 cruces posibles MENOS
+ *      R–X e Y–Z (7 partidos normales) + S–R "partido compensatorio" (8 en total):
+ *        S: 3 normales + compensatorio (no puntúa para S) → 4 jugados, 3 puntuables
+ *        R: 2 normales + compensatorio (sí puntúa para R) → 3 jugados, 3 puntuables
+ *        X, Y, Z: 3 normales cada una.
+ * @param {number[]} ids  ids de pareja de la zona (orden de numero_zona)
+ * @param {() => number} rng
+ * @returns {{ cruces: Array<{pareja1_id, pareja2_id, compensatorio, puntua_pareja1, puntua_pareja2}>, sorteo: object|null }}
+ */
+function fixtureZonaEquilibrada(ids, rng = Math.random) {
+  const normal = (a, b) => ({ pareja1_id: a, pareja2_id: b, compensatorio: false, puntua_pareja1: true, puntua_pareja2: true });
+  if (ids.length !== 5) return { cruces: roundRobin(ids).map(([a, b]) => normal(a, b)), sorteo: null };
+  const S = elegirUno(ids, rng);
+  const otros = ids.filter(x => x !== S);
+  const R = elegirUno(otros, rng);
+  const restantes = otros.filter(x => x !== R);
+  const X = elegirUno(restantes, rng);
+  const [Y, Z] = restantes.filter(x => x !== X);
+  const clave = (a, b) => [a, b].sort((p, q) => p - q).join('|');
+  const fuera = new Set([clave(R, X), clave(Y, Z), clave(S, R)]);
+  const cruces = roundRobin(ids).filter(([a, b]) => !fuera.has(clave(a, b))).map(([a, b]) => normal(a, b));
+  // El compensatorio va último (la sorteada ya jugó sus 3 puntuables) y puntúa solo para el rival
+  cruces.push({ pareja1_id: R, pareja2_id: S, compensatorio: true, puntua_pareja1: true, puntua_pareja2: false });
+  return { cruces, sorteo: { pareja_sorteada_id: S, rival_id: R, cruces_excluidos: [[R, X], [Y, Z]], candidatos: [...ids] } };
+}
+
+/** Partidos puntuables por pareja (validación del equilibrio). */
+function puntuablesPorPareja(cruces) {
+  const m = new Map();
+  const sumar = (id, ok) => { if (ok) m.set(id, (m.get(id) || 0) + 1); };
+  for (const c of cruces) { sumar(c.pareja1_id, c.puntua_pareja1 !== false); sumar(c.pareja2_id, c.puntua_pareja2 !== false); }
+  return m;
+}
+
 // ── Slots ─────────────────────────────────────────────────────
 /**
  * Turnos disponibles de las canchas cedidas.
@@ -409,7 +481,7 @@ function resumenSets(sets, superTb = -1) {
  */
 function tablaZona(parejas, partidos, { superTb = -1 } = {}) {
   const t = new Map(parejas.map(p => [p.id, {
-    pareja_id: p.id, pj: 0, pg: 0, pp: 0, puntos: 0, sf: 0, sc: 0, gf: 0, gc: 0,
+    pareja_id: p.id, pj: 0, pg: 0, pp: 0, puntos: 0, sf: 0, sc: 0, gf: 0, gc: 0, no_puntuables: 0,
   }]));
   const h2h = new Map(); // 'a|b' → ganador
 
@@ -420,13 +492,19 @@ function tablaZona(parejas, partidos, { superTb = -1 } = {}) {
     const { s1, s2, g1, g2 } = resumenSets(m.resultado.sets, superTb);
     const ganaA = m.resultado.ganador_id === m.pareja1_id;
     const wo = m.estado === 'walkover';
-    a.pj++; b.pj++;
-    a.sf += s1; a.sc += s2; a.gf += g1; a.gc += g2;
-    b.sf += s2; b.sc += s1; b.gf += g2; b.gc += g1;
+    // Partido compensatorio (Relámpago todos contra todos, zona de 5): para la pareja sorteada NO cuenta
+    // nada (PJ, PG/PP, sets, games ni puntos) → nunca la beneficia; para el rival cuenta completo.
+    const cuentaA = m.puntua_pareja1 !== false, cuentaB = m.puntua_pareja2 !== false;
+    if (!cuentaA) a.no_puntuables++;
+    if (!cuentaB) b.no_puntuables++;
+    if (cuentaA) { a.pj++; a.sf += s1; a.sc += s2; a.gf += g1; a.gc += g2; }
+    if (cuentaB) { b.pj++; b.sf += s2; b.sc += s1; b.gf += g2; b.gc += g1; }
     const [gan, per] = ganaA ? [a, b] : [b, a];
-    gan.pg++; gan.puntos += PUNTOS_VICTORIA;
-    per.pp++; per.puntos += wo ? PUNTOS_WO : PUNTOS_DERROTA;
-    h2h.set([m.pareja1_id, m.pareja2_id].sort().join('|'), m.resultado.ganador_id);
+    const [cuentaGan, cuentaPer] = ganaA ? [cuentaA, cuentaB] : [cuentaB, cuentaA];
+    if (cuentaGan) { gan.pg++; gan.puntos += PUNTOS_VICTORIA; }
+    if (cuentaPer) { per.pp++; per.puntos += wo ? PUNTOS_WO : PUNTOS_DERROTA; }
+    // El enfrentamiento directo solo vale entre partidos que puntúan para las dos
+    if (cuentaA && cuentaB) h2h.set([m.pareja1_id, m.pareja2_id].sort().join('|'), m.resultado.ganador_id);
   }
 
   const filas = [...t.values()].map(r => ({ ...r, dif_sets: r.sf - r.sc, dif_games: r.gf - r.gc }));
@@ -593,6 +671,7 @@ module.exports = {
   plazasLlave, rondaInicial, armarLlavePorZonas,
   PUNTOS_VICTORIA, PUNTOS_DERROTA, ORDEN_RONDAS,
   toMin, toHHMM, diasEntre, validarFranjas,
+  cantidadZonasTodosContraTodos, tamaniosZonas, rngDesdeSemilla, fixtureZonaEquilibrada, puntuablesPorPareja,
   armarZonas, serpentina, cantidadZonas, generateSnakeSeedingZones, ordenarPorRanking, compararSiembra, crucesZona4, nombreZona, roundRobin,
   validarSet, validarTieBreak, validarResultado,
   generarSlots, encajaPreferencia, programar,

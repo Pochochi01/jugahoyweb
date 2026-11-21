@@ -71,7 +71,19 @@ function normalizarFormato(cfg) {
 const reglaTradicional = (tercerSet = 'set') => ({
   tipo: tercerSet === 'super_tiebreak' ? 'dos_sets_super_tb' : 'mejor_de_3', games: 6, tiebreak: 7, super_tiebreak: 10, ventaja: true,
 });
-const esRelampago = (torneo) => torneo?.formato === 'relampago';
+/**
+ * Modalidades (código interno → nombre). El código 'relampago' se conserva (torneos existentes)
+ * y se muestra como "Relámpago con Zonas y Llaves APA".
+ *   zonas: 'config' = parejas_por_zona del torneo (zonas de 4 con cruces APA) · 'todos_contra_todos' = zonas de 4/5 equilibradas
+ */
+const FORMATOS = {
+  tradicional:  { label: 'Tradicional', relampago: false, zonas: 'config' },
+  relampago:    { label: 'Relámpago con Zonas y Llaves APA', relampago: true, zonas: 'config' },
+  relampago_rr: { label: 'Relámpago Todos contra Todos por Zonas', relampago: true, zonas: 'todos_contra_todos' },
+};
+const esRelampago = (torneo) => Boolean(FORMATOS[torneo?.formato]?.relampago);
+const esTodosContraTodos = (torneo) => FORMATOS[torneo?.formato]?.zonas === 'todos_contra_todos';
+const nombreFormato = (formato) => FORMATOS[formato]?.label || FORMATOS.tradicional.label;
 const faseDeRonda = (ronda) => (ronda === 'zona' ? 'zonas' : ronda === 'semifinal' ? 'semifinal' : ronda === 'final' ? 'final' : 'cuartos');
 
 /** Regla que aplica a un partido de `ronda` en el torneo. */
@@ -189,7 +201,7 @@ function resumenFormato(torneo) {
 }
 
 module.exports = {
-  TIPOS, FASES, FASE_LABEL, LIMITES, DEFAULT_RELAMPAGO, MAX_PUNTOS,
+  TIPOS, FORMATOS, esTodosContraTodos, nombreFormato, FASES, FASE_LABEL, LIMITES, DEFAULT_RELAMPAGO, MAX_PUNTOS,
   normalizarRegla, normalizarFormato, reglaTradicional, esRelampago, faseDeRonda, reglaPartido,
   maxGames, setsParaGanar, indiceSuperTb, esSetConTb, ayudaSet,
   validarTieBreak, validarSet, validarResultado, setsWalkover, describirRegla, resumenFormato,
