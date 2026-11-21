@@ -363,6 +363,14 @@ function PartidosSeccion({ svc, torneo, onChange, categoria, permisos = {} }) {
   const llave = fx.llave.flatMap(r => r.partidos).filter(p => !p.es_bye);
   const todos = [...fx.zonas.flatMap(z => z.partidos), ...llave];
   const sinProgramar = todos.filter(p => !p.fecha).length;
+  // ¿Las zonas guardadas responden a la modalidad actual? (p. ej. se cambió de APA a todos contra todos)
+  const rrActual = fmtP.esTodosContraTodos(torneo);
+  const partidosRR = (n) => (n === 5 ? 8 : (n * (n - 1)) / 2);
+  const zonaEsRR = (z) => z.partidos.some(p => p.compensatorio) || z.partidos.length === partidosRR(z.tabla.length);
+  const zonasDeOtraModalidad = fx.zonas.length > 0 && (rrActual
+    ? fx.zonas.some(z => !zonaEsRR(z))
+    // APA: una zona con compensatorio o una de 4 jugada todos contra todos (6 partidos) viene de la otra modalidad
+    : fx.zonas.some(z => z.partidos.some(p => p.compensatorio) || (z.tabla.length === 4 && z.partidos.length === 6)));
 
   // Botones + formularios desplegables de cada partido
   const acciones = (p) => (
