@@ -335,8 +335,8 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
 
     onSave({
       ...form, duracion_turno,
-      // El nombre es el identificador (C1, C2, ...); en alta se usa el próximo.
-      nombre: isEdit ? form.nombre : nextId,
+      // Nombre editable; en alta, vacío = el identificador (C1, C2…)
+      nombre: (form.nombre || '').trim() || (isEdit ? form.identificador || form.nombre : nextId),
       // basket/squash → sin superficie
       superficie: superficiesDep.length > 0 ? form.superficie : null,
       precio_base: base,
@@ -357,15 +357,15 @@ function FieldForm({ initial = CANCHA_INICIAL, onSave, onCancel, saving, isEdit 
         </div>
       )}
 
-      {/* Nombre = identificador auto-asignado (C1, C2, C3…) */}
+      {/* Nombre editable; el identificador (C1, C2, C3…) es interno y no cambia */}
       <div>
-        <label className="label">Nombre de la cancha</label>
-        <input className="input opacity-70 cursor-not-allowed font-semibold" readOnly
-          value={isEdit ? form.nombre : nextId} />
+        <label className="label" htmlFor="cancha-nombre">Nombre de la cancha</label>
+        <input id="cancha-nombre" className="input font-semibold" maxLength={100}
+          placeholder={isEdit ? (form.identificador || '') : `${nextId} (o un nombre, ej. Cancha Central)`}
+          value={form.nombre || ''} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
         <p className="text-xs text-muted-foreground mt-1">
-          {isEdit
-            ? 'El identificador de la cancha no se modifica.'
-            : 'Se asigna automáticamente e incremental (C1, C2, C3…).'}
+          Identificador: <span className="font-mono">{isEdit ? (form.identificador || '—') : nextId}</span> (no cambia).
+          {!isEdit && ' Si dejás el nombre vacío, se usa el identificador.'}
         </p>
       </div>
 

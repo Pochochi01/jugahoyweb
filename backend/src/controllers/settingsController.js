@@ -169,8 +169,8 @@ async function createField(req, res) {
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     body.identificador = `C${max + 1}`;
-    // El nombre de la cancha ES su identificador (C1, C2, ...).
-    body.nombre = body.identificador;
+    // Nombre: el que se cargue (ej. "Cancha Central"); si no se carga, el identificador (C1, C2…)
+    body.nombre = (await resolverNombreCancha(complex_id, body.nombre ? body.nombre : undefined)) || body.identificador;
 
     const field = await Field.create({ ...body, complex_id });
     res.status(201).json(field);
@@ -179,12 +179,33 @@ async function createField(req, res) {
   }
 }
 
+/**
+ * Nombre visible de la cancha (editable). El identificador (C1, C2…) es interno y no cambia.
+ * 1 a 100 caracteres, sin repetir dentro del complejo (sin distinguir mayúsculas).
+ * @returns {Promise<string|undefined>} nombre limpio, o undefined si no vino en el body
+ */
+async function resolverNombreCancha(complexId, nombre, excluirId = null) {
+  if (nombre === undefined) return undefined;
+  const limpio = String(nombre ?? '').replace(/\s+/g, ' ').trim();
+  if (!limpio) throw Object.assign(new Error('El nombre de la cancha no puede quedar vacío.'), { status: 400 });
+  if (limpio.length > 100) throw Object.assign(new Error('El nombre de la cancha admite hasta 100 caracteres.'), { status: 400 });
+  const otras = await Field.findAll({ where: { complex_id: complexId, ...(excluirId && { id: { [Op.ne]: excluirId } }) }, attributes: ['nombre'] });
+  if (otras.some(f => String(f.nombre).trim().toLowerCase() === limpio.toLowerCase())) {
+    throw Object.assign(new Error(`Ya hay una cancha llamada "${limpio}" en este complejo.`), { status: 409 });
+  }
+  return limpio;
+}
+
 async function updateField(req, res) {
   try {
-    const field = await Field.findByPk(req.params.fieldId);
+    const field = await Field.findOne({ where: { id: req.params.fieldId, complex_id: req.params.complexId } });
     if (!field) return res.status(404).json({ message: 'Cancha no encontrada' });
 
     const body = { ...req.body };
+    // Nombre editable (el identificador C1, C2… no cambia)
+    const nombre = await resolverNombreCancha(field.complex_id, body.nombre, field.id);
+    if (nombre === undefined) delete body.nombre; else body.nombre = nombre;
+    delete body.complex_id;
     // Validar superficie según el deporte (el actual o el que venga en el body)
     const deporte = body.deporte || field.deporte;
     body.superficie = resolveSuperficie(deporte, body.superficie ?? field.superficie);
